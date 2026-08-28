@@ -133,17 +133,17 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ## Phase D — Optional ratchets (post C)
 
-**Status:** `in_progress` (D1–D2 done; D3 next)  
+**Status:** `done` (D1–D5 complete)  
 **Depends on:** Phase C signed off  
 **Estimate:** one sub-item per commit + Codex signoff
 
-| Item                                  | Status         | Notes                                              |
-| ------------------------------------- | -------------- | -------------------------------------------------- |
-| D1 `useUnknownInCatchVariables: true` | `done`         | Codex APPROVE_WITH_NITS                            |
-| D2 `verbatimModuleSyntax: true`       | `codex_review` | 0 residual debt; table fixed after REQUEST_CHANGES |
-| D3 `strict-boolean-expressions`       | `todo`         | Own PR                                             |
-| D4 Coverage floors ratchet            | `todo`         | Only when suite grows                              |
-| D5 Package `typecheck` includes tests | `todo`         | Veloir pattern                                     |
+| Item                                  | Status | Notes                                  |
+| ------------------------------------- | ------ | -------------------------------------- |
+| D1 `useUnknownInCatchVariables: true` | `done` | Codex APPROVE_WITH_NITS                |
+| D2 `verbatimModuleSyntax: true`       | `done` | Codex APPROVE                          |
+| D3 `strict-boolean-expressions`       | `done` | Own commit + Codex                     |
+| D4 Coverage floors ratchet            | `done` | lines/stmts 55, funcs 60, branches 40  |
+| D5 Package `typecheck` includes tests | `done` | core tests + react tsconfig.tests.json |
 
 ### D1 — `useUnknownInCatchVariables: true`
 
@@ -174,6 +174,35 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 - Jobs: `task-mtd28yf0-cbi00t` (REQUEST_CHANGES doc), then `task-mtd2dfnr-4kepog`
 - Verdict: **APPROVE** — Phase D2 signoff: **YES**
 - Date: 2026-08-28
+
+### D3 — `strict-boolean-expressions`
+
+**Status:** `done`
+
+- [x] Rule on typed package sources (allowString/Number/NullableObject)
+- [x] Fix residual debt (nullable boolean prop checks)
+- [x] `pnpm lint` green
+- [x] Commit
+- [x] Codex signoff
+
+### D4 — Coverage floors ratchet
+
+**Status:** `done`
+
+- [x] Raise thresholds toward measured suite (not above flaky headroom)
+- [x] `pnpm test:coverage` green
+- [x] Commit
+- [x] Codex signoff
+
+### D5 — Package `typecheck` includes tests
+
+**Status:** `done`
+
+- [x] `packages/core` typecheck includes `tests/`
+- [x] `packages/react` `tsconfig.tests.json` + dual typecheck script
+- [x] `pnpm typecheck` green
+- [x] Commit
+- [x] Codex signoff
 
 ---
 
@@ -209,6 +238,9 @@ not a product decision (AGENTS.md §2: **do not raise again**).
 | 2026-08-28 | C     | Done — Codex APPROVE (no-unnecessary-condition) |
 | 2026-08-28 | D1    | Done — Codex APPROVE_WITH_NITS                  |
 | 2026-08-28 | D2    | Done — Codex APPROVE                            |
+| 2026-08-28 | D3    | Done — strict-boolean-expressions               |
+| 2026-08-28 | D4    | Done — coverage floors ratchet                  |
+| 2026-08-28 | D5    | Done — typecheck includes tests                 |
 
 ---
 
