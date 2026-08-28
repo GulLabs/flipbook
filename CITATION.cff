@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+title: flipbook
+message: If you use this software, please cite it as below.
+type: software
+authors:
+  - name: Gul Labs
+    website: https://github.com/GulLabs
+  - family-names: Gul
+    given-names: Atif
+    website: https://github.com/atifgul99
+repository-code: https://github.com/GulLabs/flipbook
+license: MIT
+abstract: >-
+  Realistic page-turning for the web. Vanilla TypeScript core
+  and a React wrapper. Maintained fork of StPageFlip / react-pageflip.
+keywords:
+  - typescript
+  - react
+  - page-flip
+  - flipbook
+  - canvas
+  - book

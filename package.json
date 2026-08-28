@@ -1,0 +1,28 @@
+{
+  "name": "flipbook",
+  "private": true,
+  "description": "Realistic page-flip libraries for the web — vanilla TypeScript core and React wrapper.",
+  "license": "MIT",
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/GulLabs/flipbook.git"
+  },
+  "homepage": "https://github.com/GulLabs/flipbook",
+  "bugs": {
+    "url": "https://github.com/GulLabs/flipbook/issues"
+  },
+  "scripts": {
+    "lint": "pnpm -r --if-present lint",
+    "build": "pnpm -r --if-present build",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "quality": "node ./scripts/quality.mjs",
+    "quality:ci": "node ./scripts/quality.mjs"
+  },
+  "devDependencies": {}
+}
+
