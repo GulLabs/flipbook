@@ -7,6 +7,10 @@ export default {
     'eslint --fix --max-warnings=0 --no-warn-ignored',
     'prettier --write --ignore-unknown',
   ],
+  'examples/**/*.{ts,tsx,js,jsx,mjs}': [
+    'eslint --fix --max-warnings=0 --no-warn-ignored',
+    'prettier --write --ignore-unknown',
+  ],
   'scripts/**/*.{mjs,js,ts}': [
     'eslint --fix --max-warnings=0 --no-warn-ignored',
     'prettier --write --ignore-unknown',
@@ -15,5 +19,5 @@ export default {
     'eslint --fix --max-warnings=0 --no-warn-ignored',
     'prettier --write --ignore-unknown',
   ],
-  '*.{json,md,yml,yaml,css}': ['prettier --write --ignore-unknown'],
+  '*.{json,md,yml,yaml,css,html}': ['prettier --write --ignore-unknown'],
 };

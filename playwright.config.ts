@@ -10,9 +10,10 @@ export default defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
   webServer: {
-    command: 'pnpm --filter example-vanilla preview -- --host 127.0.0.1 --port 4173',
+    command:
+      'pnpm --filter example-vanilla build && pnpm --filter example-vanilla preview --host 127.0.0.1 --port 4173',
     port: 4173,
-    reuseExistingServer: true,
-    timeout: 60_000,
+    reuseExistingServer: !process.env.CI,
+    timeout: 120_000,
   },
 });

@@ -6,19 +6,20 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import tseslint from 'typescript-eslint';
 
-/** Typed package sources — type-aware rules run only here. */
-const typedFiles = ['packages/*/src/**/*.{ts,tsx}'];
+/** Typed package + example sources — type-aware rules run here. */
+const typedFiles = ['packages/*/src/**/*.{ts,tsx}', 'examples/**/*.{ts,tsx}'];
 
 const nonTypedTsFiles = [
   '**/*.{test,spec}.{ts,tsx}',
   'packages/*/tests/**/*.{ts,tsx}',
   'e2e/**/*.{ts,tsx}',
-  'examples/**/*.{ts,tsx}',
   'fixtures/**/*.{ts,tsx}',
   'scripts/**/*.{ts,mjs,js}',
   'vitest.config.ts',
   'playwright.config.ts',
   'eslint.config.mjs',
+  'examples/**/vite.config.ts',
+  'examples/**/next.config.mjs',
 ];
 
 const nonTypedJsFiles = ['**/*.{js,mjs,cjs}'];
@@ -89,8 +90,9 @@ export default defineConfig(
       '.craftsman/**',
       '.remember/**',
       '.claude/**',
-      'examples/**',
       'fixtures/**',
+      'examples/**/dist/**',
+      'examples/**/.next/**',
     ],
   },
   {

@@ -23,6 +23,7 @@ import {
   type WidgetEvent,
   type FlipbookEventMap,
 } from '@gullabs/flipbook-core';
+import { createPortal } from 'react-dom';
 import type { FlipBookHandle, HTMLFlipBookProps } from './types';
 
 const ENGINE_SETTING_KEYS = [
@@ -85,6 +86,13 @@ const VISUALLY_HIDDEN: CSSProperties = {
   clipPath: 'inset(50%)',
   whiteSpace: 'nowrap',
 };
+
+/** Reference comparison: React reuses DOM nodes for keyed children. */
+function sameNodes(previous: HTMLElement[] | null, next: HTMLElement[]): boolean {
+  if (previous?.length !== next.length) return false;
+
+  return previous.every((node, index) => node === next[index]);
+}
 
 function defaultLiveText(page: number, pageCount: number): string {
   if (pageCount <= 0) return 'Book';
@@ -180,8 +188,16 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     const rootRef = useRef<HTMLDivElement>(null);
     const engineRef = useRef<PageFlip | null>(null);
     const childNodes = useRef<HTMLElement[]>([]);
+    /** Page nodes currently loaded into the engine. */
+    const loadedNodes = useRef<HTMLElement[] | null>(null);
     const [pages, setPages] = useState<ReactElement[]>([]);
     const [hydrated, setHydrated] = useState(false);
+    /**
+     * The engine's `.stf__block`. Pages are portalled into it so React's idea of
+     * their parent matches the DOM: the engine used to move them out of the
+     * root element, and any later React removal/reorder threw NotFoundError.
+     */
+    const [pageHost, setPageHost] = useState<HTMLElement | null>(null);
     const [enginePage, setEnginePage] = useState(props.startPage ?? 0);
     const [pageCount, setPageCount] = useState(0);
 
@@ -289,10 +305,19 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
 
       const engine = new PageFlip(root, settings);
       engineRef.current = engine;
+
+      // Build the DOM shell with no leaves, so there is a portal target before
+      // any page exists. Pages are handed to the engine by the effect below.
+      engine.loadFromHTML([]);
+      loadedNodes.current = [];
+
+      setPageHost(engine.getUI().getDistElement());
       setHydrated(true);
 
       return () => {
         engine.destroy();
+        setPageHost(null);
+        loadedNodes.current = null;
         if (engineRef.current === engine) {
           engineRef.current = null;
         }
@@ -331,7 +356,9 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
 
     useEffect(() => {
       const engine = engineRef.current;
-      if (!engine || pages.length === 0 || childNodes.current.length === 0) {
+      const nodes = childNodes.current;
+
+      if (!engine || !pageHost || pages.length === 0 || nodes.length === 0) {
         return;
       }
 
@@ -339,13 +366,18 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // (upstream removed listeners, emitted `update`, then re-attached).
       bindHandlers(engine);
 
-      if (!engine.getFlipController()) {
-        engine.loadFromHTML(childNodes.current);
-      } else {
-        engine.updateFromHtml(childNodes.current);
+      // Rebuild only when the page nodes themselves changed. A parent re-render
+      // (every flip causes one) hands us new React elements but the SAME DOM
+      // nodes; rebuilding there tore down the PageCollection on every turn,
+      // mid-animation, and emitted a spurious `collectionRebuild`.
+      if (sameNodes(loadedNodes.current, nodes)) {
+        return;
       }
+
+      engine.updateFromHtml(nodes);
+      loadedNodes.current = nodes.slice();
       setPageCount(engine.getPageCount());
-    }, [pages, bindHandlers, remountKey]);
+    }, [pages, pageHost, bindHandlers, remountKey]);
 
     useEffect(() => {
       const engine = engineRef.current;
@@ -394,7 +426,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         tabIndex={useKeyboard ? 0 : undefined}
         onKeyDown={onKeyDown}
       >
-        {pages}
+        {pageHost ? createPortal(pages, pageHost) : null}
         {liveRegion ? (
           <div aria-live="polite" aria-atomic="true" data-flipbook-live="" style={VISUALLY_HIDDEN}>
             {liveRegionText(currentPage, pageCount)}

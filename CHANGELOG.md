@@ -4,6 +4,44 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Engine
+
+- Core compiles under `strictNullChecks`, so the published types no longer hide
+  nullability: `getFlipController()`, `getCalculation()` and `getTemporaryCopy()`
+  are declared `| null`, and `Page.setArea` accepts the sparse clip areas the
+  renderers already tolerated.
+- `direction: 'rtl'` now applies to click, corner fold and drag as well as swipe.
+  The turn direction is mirrored; pointer coordinates are not, so the fold keeps
+  following the finger instead of reversing mid-gesture.
+- Turns are bounded by spreads instead of page indices. In landscape with a
+  two-page final spread, a forward turn used to start and then read past the end
+  of the spread list (`showNext` also walked one index too far).
+- Static pages paint `pageBackground` like the fold does, so a leaf cannot be
+  read through at the start or end of a turn.
+- `pointerleave` no longer force-finishes a fold while a pointer is still down;
+  under pointer capture it fires right after `pointerup` and started a second
+  snap-back animation.
+- `UI.destroy()` restores the host element's class and inline styles, and
+  `updateItems` no longer wipes `.stf__block` wholesale (it kept deleting the
+  render's shadow elements, and nodes a framework still owned).
+
+### React
+
+- Pages are portalled into the engine's block, so React and the DOM agree on
+  their parent. Removing or reordering children threw `NotFoundError` before.
+- Event handlers are dispatched through a ref, and the collection is rebuilt only
+  when the page nodes actually change. An inline `onFlip` used to tear down and
+  rebuild the whole `PageCollection` on every turn, mid-animation.
+- `renderOnlyPageLengthChange` no longer empties the collected page nodes on its
+  early return, which left the next remount with a blank book.
+- The live region is visually hidden. Its text ("Page 2 of 3") rendered under the
+  book for every consumer.
+- A consumer's own `ref` on a page element is preserved instead of overwritten.
+- `updateSettings` runs for every runtime-updatable prop (`clickEventForward`,
+  `mobileScrollSupport`, `maxShadowOpacity`, `startZIndex`, size bounds).
+
+### Repo
+
 - Initial Gul Labs monorepo: `packages/core` (StPageFlip) and `packages/react` (react-pageflip).
 - Public repository under `GulLabs/flipbook` with open-source governance, CI, and branch protection.
 

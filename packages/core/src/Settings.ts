@@ -78,7 +78,9 @@ export interface FlipSetting {
   respectReducedMotion: boolean;
 
   /**
-   * Reading direction. `rtl` mirrors pointer coordinates in the UI (click, fold, swipe).
+   * Reading direction. `rtl` mirrors the *turn direction* for user input —
+   * click, corner fold, drag and swipe all treat the left edge as "next" — while
+   * pointer coordinates stay unmirrored so the fold follows the finger.
    * Programmatic `flipNext`/`flipPrev` still advance by page index.
    */
   direction: FlipDirectionSetting;
