@@ -20,6 +20,7 @@ import {
   FlipCorner,
   FLIPBOOK_INTERACTIVE_SELECTOR,
   PageFlip,
+  PageFlipError,
   type FlipSetting,
   type WidgetEvent,
   type FlipbookEventMap,
@@ -430,7 +431,11 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         if (start !== 0) {
           try {
             engine.turnToPage(start);
-          } catch {
+          } catch (error: unknown) {
+            // Only the engine saying "no such page" means the start page was
+            // bad. A listener throwing, or a real render fault, must not be
+            // relabelled as an invalid `startPage`.
+            if (!(error instanceof PageFlipError)) throw error;
             honored = false;
           }
         }

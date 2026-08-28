@@ -14,6 +14,12 @@ does.
   user who owns what. _What happened: two agents edited `UI.ts` concurrently
   and shipped two parallel pointer-capture implementations (`activePointerId`
   and `capturedPointerId`) in one file._
+- **Never discard another agent's uncommitted work.** `git checkout -- .`,
+  `git restore`, and deleting untracked files destroy changes git cannot
+  recover — there is no stash, no dangling commit, nothing to `fsck` for. A
+  reviewing agent wiped an in-progress relicensing this way and it had to be
+  redone from scratch. If you believe uncommitted changes are wrong, stop and
+  ask; if you must clear the tree, `git stash -u` first so it is recoverable.
 - **Never commit another agent's uncommitted work inside your own commit.**
   Stage only paths you changed; `git add -A` is how unrelated in-flight work
   gets frozen into your commit message's story.
@@ -100,17 +106,14 @@ invariant list; these are the ones agents actually got wrong:
 Some choices are the repository owner's, and an agent making them autonomously
 is a defect no matter how well-reasoned the change is.
 
-- **Licensing.** This fork is MIT, with the upstream Nodlik notices preserved
-  (spec §2, stated as "do this exactly"). An agent relicensed
-  `@gullabs/flipbook-core` to MPL-2.0 — file-level copyleft — rewrote LICENSE
-  and NOTICE, stamped headers across 30 source files, and invented trademark
-  language, none of it asked for. It contradicted README, MIGRATION and
-  CITATION, and it undercuts the entire product thesis: this library exists so
-  the ~112k weekly users of an abandoned **MIT** project have a frictionless
-  successor, and copyleft puts a legal review in front of every corporate
-  adopter. It is also close to irreversible once published and adopted, since
-  unwinding it needs every contributor's consent. `scripts/quality.mjs` now
-  fails if the declared license moves off MIT.
+- **Licensing.** The core's move from MIT to MPL-2.0 was authorised by the
+  repository owner — do not "correct" it back. What is not an agent's call is
+  _initiating_ a change like it. An agent relicensed the engine, rewrote
+  LICENSE and NOTICE, stamped headers across 30 files and invented trademark
+  language before anyone had approved it; a reviewing agent then reverted the
+  lot and destroyed uncommitted work. Both halves were wrong. Propose, get a
+  yes, then implement — and if you find licensing changes you did not make,
+  ask before touching them.
 - **Versioning and release timing**, publishing to npm, deprecating a version.
 - **The public API surface.** Adding a prop or an event is a product decision;
   propose it, don't ship it.

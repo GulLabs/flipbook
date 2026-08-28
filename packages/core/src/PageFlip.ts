@@ -337,14 +337,16 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Run a relative turn and report it as a boolean, never as a throw.
+   * Run a relative turn and report a *refusal* as a boolean rather than a throw.
    *
    * `flipNext` / `flipPrev` are the "turn if you can" API — the browser calls
-   * them from a swipe or an arrow key, where there is nobody to catch. A
-   * failed turn is `false` plus a `turnRejected` event. Explicit navigation
-   * (`turnToPage` / `flip`) still throws, because asking for a specific page
-   * and silently landing somewhere else is the §4.6 bug this fork exists to
-   * fix.
+   * them from a swipe or an arrow key, where there is nobody to catch. A turn
+   * the engine declines is `false` plus a `turnRejected` event. A failure that
+   * is not the engine's own still propagates: hiding a broken renderer behind
+   * "the page would not turn" is the same silent failure in a different place.
+   *
+   * Explicit navigation (`turnToPage` / `flip`) throws instead, because asking
+   * for a specific page and landing elsewhere is the §4.6 bug this fork fixes.
    */
   private requestTurn(run: (flip: Flip) => boolean): boolean {
     const flip = this.flipController;
@@ -385,7 +387,10 @@ export class PageFlip extends EventObject {
    * @param {FlipCorner} corner - Active page corner when turning
    */
   public flip(page: number, corner: FlipCorner = FlipCorner.TOP): void {
-    this.flipController?.flipToPage(page, corner);
+    // Explicit navigation fails loudly, exactly like `turnToPage`. Optional
+    // chaining here made "animate to page 7" a silent no-op before load — the
+    // §4.6 failure this fork exists to remove.
+    this.requireLoaded(this.flipController, 'flip controller').flipToPage(page, corner);
   }
 
   /**

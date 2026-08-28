@@ -67,12 +67,13 @@ describe('PageFlip lifecycle', () => {
   });
 });
 
-describe('relative turns never throw', () => {
+describe('a refused turn is a boolean, a broken one is not', () => {
   /**
    * `flipNext` / `flipPrev` are what a swipe and an arrow key call, where
-   * nothing is there to catch. They are documented to return a boolean and
-   * emit `turnRejected`; an engine-internal `PageFlipError` used to escape
-   * them and reach the consumer as an unhandled exception from a gesture.
+   * nothing is there to catch. A turn the engine *declines* is `false` plus
+   * `turnRejected`. A failure that is not the engine's own still propagates —
+   * hiding a broken renderer behind "the page would not turn" is the same
+   * silent failure in a different place.
    *
    * Explicit navigation keeps throwing — that is the §4.6 contract.
    */

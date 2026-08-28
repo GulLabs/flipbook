@@ -16,6 +16,9 @@ All notable changes to this monorepo will be documented in this file.
   the book simply refuse to turn with nothing in the console — the
   silent-failure class §4.6 exists to remove. Only `PageFlipError` is soft now;
   anything else surfaces.
+- `PageFlip.flip(page)` throws `PageFlipError('NOT_LOADED')` before a load
+  instead of silently doing nothing. Explicit navigation that quietly no-ops is
+  the §4.6 failure, and `turnToPage` already behaved this way.
 - `flipNext` / `flipPrev` no longer throw for a rejected turn. They are what a swipe and an arrow
   key call, and are documented to return a boolean plus a `turnRejected`
   event, but an engine-internal `PageFlipError` escaped them and surfaced as an
