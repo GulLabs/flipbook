@@ -198,6 +198,8 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 **Status:** `done`
 
+Root `tsconfig.json` typechecks `vitest.setup.ts` and `playwright.config.ts`. React `tsconfig.tests.json` includes `vitest.setup.ts`.
+
 - [x] `packages/core` typecheck includes `tests/`
 - [x] `packages/react` `tsconfig.tests.json` + dual typecheck script
 - [x] `vitest.setup.ts` included in root + react test typecheck programs
