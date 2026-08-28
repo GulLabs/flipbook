@@ -133,17 +133,32 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ## Phase D — Optional ratchets (post C)
 
-**Status:** `todo`  
+**Status:** `in_progress` (D1)  
 **Depends on:** Phase C signed off  
-**Estimate:** separate PRs; do not bundle
+**Estimate:** one sub-item per commit + Codex signoff
 
-| Item                                  | Notes                                     |
-| ------------------------------------- | ----------------------------------------- |
-| D1 `useUnknownInCatchVariables: true` | Currently `false` in `tsconfig.base.json` |
-| D2 `verbatimModuleSyntax: true`       | Already lean on `import type`             |
-| D3 `strict-boolean-expressions`       | Own PR                                    |
-| D4 Coverage floors ratchet            | Only when suite grows; no fake excludes   |
-| D5 Package `typecheck` includes tests | Veloir pattern                            |
+| Item                                  | Status         | Notes                         |
+| ------------------------------------- | -------------- | ----------------------------- |
+| D1 `useUnknownInCatchVariables: true` | `codex_review` | 0 residual typecheck debt     |
+| D2 `verbatimModuleSyntax: true`       | `todo`         | Already lean on `import type` |
+| D3 `strict-boolean-expressions`       | `todo`         | Own PR                        |
+| D4 Coverage floors ratchet            | `todo`         | Only when suite grows         |
+| D5 Package `typecheck` includes tests | `todo`         | Veloir pattern                |
+
+### D1 — `useUnknownInCatchVariables: true`
+
+**Status:** `codex_review`
+
+- [x] `tsconfig.base.json`: `"useUnknownInCatchVariables": true`
+- [x] `pnpm typecheck` / `pnpm quality:ci` green
+- [x] Commit
+- [ ] Codex signoff
+
+#### Codex signoff
+
+- Job / thread: _pending launch_
+- Verdict: _pending_
+- Date: _pending_
 
 ---
 
@@ -177,6 +192,7 @@ not a product decision (AGENTS.md §2: **do not raise again**).
 | 2026-08-28 | A     | Done — Codex APPROVE_WITH_NITS                  |
 | 2026-08-28 | B     | Done — Codex APPROVE (NUIA + lifecycle)         |
 | 2026-08-28 | C     | Done — Codex APPROVE (no-unnecessary-condition) |
+| 2026-08-28 | D1    | useUnknownInCatchVariables on; awaiting Codex   |
 
 ---
 
