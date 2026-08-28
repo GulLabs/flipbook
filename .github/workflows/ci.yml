@@ -12,10 +12,12 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# any-llm OSS gate + Veloir/ai-studio quality ordering:
+# secrets → install → audit → typecheck → lint → coverage tests → build → size
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,28 +39,6 @@ jobs:
       - name: Scan for secrets
         run: gitleaks detect --source . -v --redact
 
-      - name: Required open-source files
-        run: |
-          set -euo pipefail
-          for f in \
-            LICENSE \
-            NOTICE \
-            README.md \
-            CONTRIBUTING.md \
-            SECURITY.md \
-            CODE_OF_CONDUCT.md \
-            SUPPORT.md \
-            GOVERNANCE.md \
-            CODEOWNERS \
-            .github/CODEOWNERS \
-            .github/workflows/ci.yml \
-            .github/workflows/codeql.yml \
-            .github/dependabot.yml
-          do
-            test -f "$f" || { echo "missing: $f"; exit 1; }
-          done
-          echo "required files present"
-
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -69,20 +49,17 @@ jobs:
       - name: Install workspace
         run: pnpm install --frozen-lockfile
 
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
+
       - name: Quality gate
-        run: node ./scripts/quality.mjs
+        run: pnpm quality:ci
 
-      - name: Unit tests
-        run: pnpm test
-
-      - name: Build packages
-        run: pnpm build
-
-      - name: Typecheck packages
-        run: pnpm typecheck
-
-      - name: Core size budget
-        run: pnpm size
-
-      - name: Isolated consumer types
-        run: node ./scripts/check-isolated-types.mjs
+      - name: Upload coverage (lcov)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: ignore
+          retention-days: 14

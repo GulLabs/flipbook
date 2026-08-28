@@ -72,6 +72,29 @@ function defaultLiveText(page: number, pageCount: number): string {
   return `Page ${page + 1} of ${pageCount}`;
 }
 
+type PageRef = ((el: HTMLElement | null) => void) | { current: HTMLElement | null } | null;
+
+/**
+ * Keep the consumer's own ref on a page element working: the engine needs the
+ * node too, so both refs are called.
+ */
+function composeRefs(
+  collect: (el: HTMLElement | null) => void,
+  existing: PageRef,
+): (el: HTMLElement | null) => void {
+  if (!existing) return collect;
+
+  return (el) => {
+    collect(el);
+
+    if (typeof existing === 'function') {
+      existing(el);
+    } else {
+      existing.current = el;
+    }
+  };
+}
+
 function wrapChildren(
   children: ReactNode,
   currentPage: number,
@@ -87,12 +110,7 @@ function wrapChildren(
 
     if (far) {
       list.push(
-        <div
-          key={`lazy-${index}`}
-          data-flipbook-lazy="1"
-          aria-hidden="true"
-          ref={collect}
-        />,
+        <div key={`lazy-${index}`} data-flipbook-lazy="1" aria-hidden="true" ref={collect} />,
       );
       return;
     }
@@ -106,10 +124,12 @@ function wrapChildren(
       return;
     }
 
+    const element = child as ReactElement<{ ref?: PageRef }> & { ref?: PageRef };
+
     list.push(
-      cloneElement(child as ReactElement<{ ref?: (el: HTMLElement | null) => void }>, {
+      cloneElement(element, {
         key: child.key ?? `page-${index}`,
-        ref: collect,
+        ref: composeRefs(collect, element.props.ref ?? element.ref ?? null),
       }),
     );
   });
@@ -118,201 +138,209 @@ function wrapChildren(
 
 export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookProps, 'ref'>>(
   function HTMLFlipBook(props, ref) {
-  const {
-    children,
-    className,
-    style,
-    page: controlledPage,
-    onPageChange,
-    onFlip,
-    onChangeOrientation,
-    onChangeState,
-    onInit,
-    onUpdate,
-    onCollectionRebuild,
-    renderOnlyPageLengthChange,
-    useKeyboard = false,
-    lazyRadius,
-    liveRegion = true,
-    liveRegionText = defaultLiveText,
-    'aria-label': ariaLabel = 'Flipbook',
-  } = props;
+    const {
+      children,
+      className,
+      style,
+      page: controlledPage,
+      onPageChange,
+      onFlip,
+      onChangeOrientation,
+      onChangeState,
+      onInit,
+      onUpdate,
+      onCollectionRebuild,
+      renderOnlyPageLengthChange,
+      useKeyboard = false,
+      lazyRadius,
+      liveRegion = true,
+      liveRegionText = defaultLiveText,
+      'aria-label': ariaLabel = 'Flipbook',
+    } = props;
 
-  const rootRef = useRef<HTMLDivElement>(null);
-  const engineRef = useRef<PageFlip | null>(null);
-  const childNodes = useRef<HTMLElement[]>([]);
-  const [pages, setPages] = useState<ReactElement[]>([]);
-  const [hydrated, setHydrated] = useState(false);
-  const [enginePage, setEnginePage] = useState(props.startPage ?? 0);
-  const [pageCount, setPageCount] = useState(0);
+    const rootRef = useRef<HTMLDivElement>(null);
+    const engineRef = useRef<PageFlip | null>(null);
+    const childNodes = useRef<HTMLElement[]>([]);
+    const [pages, setPages] = useState<ReactElement[]>([]);
+    const [hydrated, setHydrated] = useState(false);
+    const [enginePage, setEnginePage] = useState(props.startPage ?? 0);
+    const [pageCount, setPageCount] = useState(0);
 
-  const currentPage = controlledPage ?? enginePage;
-  const settings = pickSettings(props);
-  const remountKey = remountKeyOf(props);
+    const currentPage = controlledPage ?? enginePage;
+    const settings = pickSettings(props);
+    const remountKey = remountKeyOf(props);
 
-  const handle: FlipBookHandle = useMemo(
-    () => ({
-      pageFlip: () => engineRef.current,
-      flipNext: (corner?: FlipCorner) => engineRef.current?.flipNext(corner ?? FlipCorner.TOP),
-      flipPrev: (corner?: FlipCorner) => engineRef.current?.flipPrev(corner ?? FlipCorner.TOP),
-      turnToPage: (page: number) => engineRef.current?.turnToPage(page),
-      flipToPage: (page: number) => engineRef.current?.flip(page),
-    }),
-    [],
-  );
+    const handle: FlipBookHandle = useMemo(
+      () => ({
+        pageFlip: () => engineRef.current,
+        flipNext: (corner?: FlipCorner) => engineRef.current?.flipNext(corner ?? FlipCorner.TOP),
+        flipPrev: (corner?: FlipCorner) => engineRef.current?.flipPrev(corner ?? FlipCorner.TOP),
+        turnToPage: (page: number) => engineRef.current?.turnToPage(page),
+        flipToPage: (page: number) => engineRef.current?.flip(page),
+      }),
+      [],
+    );
 
-  useImperativeHandle(ref, () => handle, [handle]);
+    useImperativeHandle(ref, () => handle, [handle]);
 
-  const lazyPage = lazyRadius !== undefined ? currentPage : 0;
+    const lazyPage = lazyRadius !== undefined ? currentPage : 0;
 
-  useEffect(() => {
-    childNodes.current = [];
-    const collect = (el: HTMLElement | null) => {
-      if (el) childNodes.current.push(el);
-    };
-    const next = wrapChildren(children, lazyPage, lazyRadius, collect);
-    if (renderOnlyPageLengthChange && pages.length === next.length) {
-      return;
-    }
-    setPages(next);
-    // pages.length is the previous render's count; intentional.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [children, lazyPage, lazyRadius, renderOnlyPageLengthChange]);
+    useEffect(() => {
+      childNodes.current = [];
+      const collect = (el: HTMLElement | null) => {
+        if (el) childNodes.current.push(el);
+      };
+      const next = wrapChildren(children, lazyPage, lazyRadius, collect);
+      if (renderOnlyPageLengthChange && pages.length === next.length) {
+        return;
+      }
+      setPages(next);
+      // pages.length is the previous render's count; intentional.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [children, lazyPage, lazyRadius, renderOnlyPageLengthChange]);
 
-  const bindHandlers = useCallback(
-    (flip: PageFlip) => {
-      flip.off('flip');
-      flip.off('changeOrientation');
-      flip.off('changeState');
-      flip.off('init');
-      flip.off('update');
-      flip.off('collectionRebuild');
+    const bindHandlers = useCallback(
+      (flip: PageFlip) => {
+        flip.off('flip');
+        flip.off('changeOrientation');
+        flip.off('changeState');
+        flip.off('init');
+        flip.off('update');
+        flip.off('collectionRebuild');
 
-      flip.on('flip', (e: WidgetEvent<FlipbookEventMap['flip']>) => {
-        const next = typeof e.data === 'number' ? e.data : 0;
-        setEnginePage(next);
-        setPageCount(flip.getPageCount());
-        onPageChange?.(next);
-        onFlip?.(e);
-      });
-      if (onChangeOrientation) flip.on('changeOrientation', onChangeOrientation);
-      if (onChangeState) flip.on('changeState', onChangeState);
-      if (onInit) flip.on('init', onInit);
-      if (onUpdate) flip.on('update', onUpdate);
-      if (onCollectionRebuild) flip.on('collectionRebuild', onCollectionRebuild);
-    },
-    [onChangeOrientation, onChangeState, onCollectionRebuild, onFlip, onInit, onPageChange, onUpdate],
-  );
+        flip.on('flip', (e: WidgetEvent<FlipbookEventMap['flip']>) => {
+          const next = typeof e.data === 'number' ? e.data : 0;
+          setEnginePage(next);
+          setPageCount(flip.getPageCount());
+          onPageChange?.(next);
+          onFlip?.(e);
+        });
+        if (onChangeOrientation) flip.on('changeOrientation', onChangeOrientation);
+        if (onChangeState) flip.on('changeState', onChangeState);
+        if (onInit) flip.on('init', onInit);
+        if (onUpdate) flip.on('update', onUpdate);
+        if (onCollectionRebuild) flip.on('collectionRebuild', onCollectionRebuild);
+      },
+      [
+        onChangeOrientation,
+        onChangeState,
+        onCollectionRebuild,
+        onFlip,
+        onInit,
+        onPageChange,
+        onUpdate,
+      ],
+    );
 
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
+    useEffect(() => {
+      const root = rootRef.current;
+      if (!root) return;
 
-    const engine = new PageFlip(root, settings);
-    engineRef.current = engine;
-    setHydrated(true);
+      const engine = new PageFlip(root, settings);
+      engineRef.current = engine;
+      setHydrated(true);
 
-    return () => {
-      engine.destroy();
-      if (engineRef.current === engine) {
-        engineRef.current = null;
+      return () => {
+        engine.destroy();
+        if (engineRef.current === engine) {
+          engineRef.current = null;
+        }
+      };
+      // Recreate only when constructor-level layout identity changes.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [remountKey]);
+
+    useEffect(() => {
+      const engine = engineRef.current;
+      if (!engine) return;
+      engine.updateSettings(settings);
+      // settings object is rebuilt each render; identity is not load-bearing.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [
+      props.usePortrait,
+      props.useMouseEvents,
+      props.flippingTime,
+      props.respectReducedMotion,
+      props.direction,
+      props.pageBackground,
+      props.drawShadow,
+      props.showPageCorners,
+      props.disableFlipByClick,
+      props.swipeDistance,
+    ]);
+
+    useEffect(() => {
+      const engine = engineRef.current;
+      if (!engine || pages.length === 0 || childNodes.current.length === 0) {
+        return;
+      }
+
+      // Handlers MUST be attached before updateFromHtml so `onUpdate` fires
+      // (upstream removed listeners, emitted `update`, then re-attached).
+      bindHandlers(engine);
+
+      if (!engine.getFlipController()) {
+        engine.loadFromHTML(childNodes.current);
+      } else {
+        engine.updateFromHtml(childNodes.current);
+      }
+      setPageCount(engine.getPageCount());
+    }, [pages, bindHandlers, remountKey]);
+
+    useEffect(() => {
+      const engine = engineRef.current;
+      if (!engine || controlledPage === undefined) return;
+      if (!engine.getFlipController()) return;
+      if (controlledPage === engine.getCurrentPageIndex()) return;
+      try {
+        engine.turnToPage(controlledPage);
+      } catch {
+        // Controlled updates that land out of range are ignored; the engine
+        // still throws on imperative turnToPage/flipToPage.
+      }
+    }, [controlledPage, pages]);
+
+    const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+      if (!useKeyboard) return;
+      const engine = engineRef.current;
+      if (!engine) return;
+      const rtl = props.direction === 'rtl';
+      if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        if (rtl) engine.flipPrev();
+        else engine.flipNext();
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        if (rtl) engine.flipNext();
+        else engine.flipPrev();
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        engine.turnToPage(0);
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        const last = Math.max(0, engine.getPageCount() - 1);
+        engine.turnToPage(last);
       }
     };
-    // Recreate only when constructor-level layout identity changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remountKey]);
 
-  useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    engine.updateSettings(settings);
-    // settings object is rebuilt each render; identity is not load-bearing.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    props.usePortrait,
-    props.useMouseEvents,
-    props.flippingTime,
-    props.respectReducedMotion,
-    props.direction,
-    props.pageBackground,
-    props.drawShadow,
-    props.showPageCorners,
-    props.disableFlipByClick,
-    props.swipeDistance,
-  ]);
-
-  useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine || pages.length === 0 || childNodes.current.length === 0) {
-      return;
-    }
-
-    // Handlers MUST be attached before updateFromHtml so `onUpdate` fires
-    // (upstream removed listeners, emitted `update`, then re-attached).
-    bindHandlers(engine);
-
-    if (!engine.getFlipController()) {
-      engine.loadFromHTML(childNodes.current);
-    } else {
-      engine.updateFromHtml(childNodes.current);
-    }
-    setPageCount(engine.getPageCount());
-  }, [pages, bindHandlers, remountKey]);
-
-  useEffect(() => {
-    const engine = engineRef.current;
-    if (!engine || controlledPage === undefined) return;
-    if (!engine.getFlipController()) return;
-    if (controlledPage === engine.getCurrentPageIndex()) return;
-    try {
-      engine.turnToPage(controlledPage);
-    } catch {
-      // Controlled updates that land out of range are ignored; the engine
-      // still throws on imperative turnToPage/flipToPage.
-    }
-  }, [controlledPage, pages]);
-
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (!useKeyboard) return;
-    const engine = engineRef.current;
-    if (!engine) return;
-    const rtl = props.direction === 'rtl';
-    if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      if (rtl) engine.flipPrev();
-      else engine.flipNext();
-    } else if (event.key === 'ArrowLeft') {
-      event.preventDefault();
-      if (rtl) engine.flipNext();
-      else engine.flipPrev();
-    } else if (event.key === 'Home') {
-      event.preventDefault();
-      engine.turnToPage(0);
-    } else if (event.key === 'End') {
-      event.preventDefault();
-      const last = Math.max(0, engine.getPageCount() - 1);
-      engine.turnToPage(last);
-    }
-  };
-
-  return (
-    <div
-      ref={rootRef}
-      className={className}
-      style={style}
-      data-flipbook-placeholder={hydrated ? undefined : ''}
-      aria-label={ariaLabel}
-      role="group"
-      tabIndex={useKeyboard ? 0 : undefined}
-      onKeyDown={onKeyDown}
-    >
-      {pages}
-      {liveRegion ? (
-        <div aria-live="polite" aria-atomic="true" data-flipbook-live="">
-          {liveRegionText(currentPage, pageCount)}
-        </div>
-      ) : null}
-    </div>
-  );
-},
+    return (
+      <div
+        ref={rootRef}
+        className={className}
+        style={style}
+        data-flipbook-placeholder={hydrated ? undefined : ''}
+        aria-label={ariaLabel}
+        role="group"
+        tabIndex={useKeyboard ? 0 : undefined}
+        onKeyDown={onKeyDown}
+      >
+        {pages}
+        {liveRegion ? (
+          <div aria-live="polite" aria-atomic="true" data-flipbook-live="">
+            {liveRegionText(currentPage, pageCount)}
+          </div>
+        ) : null}
+      </div>
+    );
+  },
 );

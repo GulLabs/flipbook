@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import { FlipCorner } from '@gullabs/flipbook-core';
+import type { FlipCorner } from '@gullabs/flipbook-core';
 import type { FlipBookHandle } from './types';
 
 /**

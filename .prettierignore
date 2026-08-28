@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+coverage
+.turbo
+.next
+pnpm-lock.yaml
+playwright-report
+test-results
+.remember
+.craftsman
+.claude
+examples/**/dist
+packages/*/dist

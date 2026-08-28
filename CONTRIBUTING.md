@@ -10,8 +10,14 @@ Node `>=20.9.0`. Package manager is **pnpm 9.12.0** (see `packageManager` in the
 
 ```bash
 pnpm install
-pnpm build
-pnpm quality   # same gate CI runs
+pnpm build              # packages only
+pnpm typecheck
+pnpm lint               # ESLint flat config, --max-warnings=0
+pnpm test               # Vitest unit (core + react projects)
+pnpm test:coverage      # v8 coverage + thresholds
+pnpm quality            # preflight + typecheck + lint + test
+pnpm quality:ci         # CI gate: coverage + build + size + isolated types
+pnpm quality:full       # quality:ci + format:check + audit
 ```
 
 ## Principles
