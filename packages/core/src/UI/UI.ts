@@ -27,7 +27,6 @@ export abstract class UI {
   private readonly swipeDistance: number;
   private resizeObserver: ResizeObserver | null = null;
   private handlersBound = false;
-  private capturedPointerId: number | null = null;
   /** Active pointer id, so `pointerleave` after `pointerup` is ignored. */
   private activePointerId: number | null = null;
   /** Host inline styles captured at construction so `destroy()` can restore them. */
@@ -93,7 +92,7 @@ export abstract class UI {
   public destroy(): void {
     this.removeHandlers();
     this.unobserveResize();
-     
+
     this.distElement?.remove();
     this.wrapper.remove();
 
@@ -142,18 +141,6 @@ export abstract class UI {
     this.update();
   }
 
-
-  private releasePointerCapture(): void {
-    if (this.capturedPointerId === null) return;
-    try {
-      // distElement may be unset if destroy/removeHandlers runs before loadFromHtml
-      this.distElement?.releasePointerCapture(this.capturedPointerId);
-    } catch {
-      // already released
-    }
-    this.capturedPointerId = null;
-  }
-
   protected removeHandlers(): void {
     // `destroy()` can run before `loadFromHTML`, so there may be no dist element.
     if (!this.distElement) return;
@@ -171,7 +158,7 @@ export abstract class UI {
 
   protected setHandlers(): void {
     if (!this.app.getSettings().useMouseEvents) return;
-     
+
     if (!this.distElement) return;
 
     this.distElement.addEventListener('pointerdown', this.onPointerDown);
@@ -235,13 +222,17 @@ export abstract class UI {
     return true;
   }
 
+  /** Release pointer capture and forget the active pointer. Idempotent. */
   private releaseCapturedPointer(): void {
-    if (this.activePointerId === null || !this.distElement) return;
+    if (this.activePointerId === null) return;
+
     try {
-      this.distElement.releasePointerCapture(this.activePointerId);
+      // distElement may be unset when destroy() runs before loadFromHTML.
+      this.distElement?.releasePointerCapture(this.activePointerId);
     } catch {
       // already released
     }
+
     this.activePointerId = null;
   }
 
@@ -259,9 +250,20 @@ export abstract class UI {
     e.preventDefault();
   };
 
+  /**
+   * Pointer left the book without a release — put the hover corner back.
+   *
+   * Skipped while a pointer is down: under pointer capture `pointerleave` also
+   * fires straight after `pointerup` (always so for touch), and re-entering
+   * `stopMove()` there starts a second snap-back over the one `userStop` began.
+   */
   private onPointerLeave = (): void => {
+    if (this.activePointerId !== null) return;
+
     this.touchPoint = null;
+
     const flip = this.app.getFlipController();
+
     if (flip?.getState() === FlippingState.FOLD_CORNER) {
       this.app.getRender().finishAnimation();
       flip.stopMove();
@@ -274,11 +276,12 @@ export abstract class UI {
 
     const pos = this.getMousePos(e.clientX, e.clientY);
 
+    this.activePointerId = e.pointerId;
+
     try {
       this.distElement.setPointerCapture(e.pointerId);
-      this.activePointerId = e.pointerId;
     } catch {
-      // capture is optional
+      // capture is optional; the id is still tracked for pointerleave
     }
 
     this.touchPoint = {
@@ -316,7 +319,7 @@ export abstract class UI {
   };
 
   private onPointerUp = (e: PointerEvent): void => {
-    this.releasePointerCapture();
+    this.releaseCapturedPointer();
     const pos = this.getMousePos(e.clientX, e.clientY);
     let isSwipe = false;
 

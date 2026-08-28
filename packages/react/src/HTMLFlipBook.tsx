@@ -11,6 +11,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
@@ -66,6 +67,24 @@ function pickSettings(props: HTMLFlipBookProps): Partial<FlipSetting> {
 function remountKeyOf(props: HTMLFlipBookProps): string {
   return [props.showCover, props.size, props.width, props.height].join(':');
 }
+
+/**
+ * The live region announces turns to screen readers, so it must not paint.
+ * Styles are inline rather than in FLIPBOOK_CSS because the region is rendered
+ * server-side too, before the engine has injected any stylesheet.
+ */
+const VISUALLY_HIDDEN: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  margin: -1,
+  padding: 0,
+  border: 0,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+};
 
 function defaultLiveText(page: number, pageCount: number): string {
   if (pageCount <= 0) return 'Book';
@@ -186,51 +205,83 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     const lazyPage = lazyRadius !== undefined ? currentPage : 0;
 
     useEffect(() => {
-      childNodes.current = [];
       const collect = (el: HTMLElement | null) => {
         if (el) childNodes.current.push(el);
       };
       const next = wrapChildren(children, lazyPage, lazyRadius, collect);
+
+      // Bail out BEFORE clearing `childNodes`: emptying it without re-rendering
+      // leaves it empty for good, and the load effect below then skips
+      // `loadFromHTML` on the next remount — a blank book.
       if (renderOnlyPageLengthChange && pages.length === next.length) {
         return;
       }
+
+      // Refs re-attach in DOM order during the commit `setPages` triggers.
+      childNodes.current = [];
       setPages(next);
       // pages.length is the previous render's count; intentional.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [children, lazyPage, lazyRadius, renderOnlyPageLengthChange]);
 
-    const bindHandlers = useCallback(
-      (flip: PageFlip) => {
-        flip.off('flip');
-        flip.off('changeOrientation');
-        flip.off('changeState');
-        flip.off('init');
-        flip.off('update');
-        flip.off('collectionRebuild');
+    // Handlers are dispatched through a ref so `bindHandlers` is stable. With
+    // the props in the dependency list, an inline `onFlip={(e) => …}` gave the
+    // load effect a new identity on every render — and a flip always causes a
+    // render — so the whole PageCollection was torn down and rebuilt on each
+    // turn, mid-animation.
+    const eventHandlersRef = useRef({
+      onPageChange,
+      onFlip,
+      onChangeOrientation,
+      onChangeState,
+      onInit,
+      onUpdate,
+      onCollectionRebuild,
+    });
 
-        flip.on('flip', (e: WidgetEvent<FlipbookEventMap['flip']>) => {
-          const next = typeof e.data === 'number' ? e.data : 0;
-          setEnginePage(next);
-          setPageCount(flip.getPageCount());
-          onPageChange?.(next);
-          onFlip?.(e);
-        });
-        if (onChangeOrientation) flip.on('changeOrientation', onChangeOrientation);
-        if (onChangeState) flip.on('changeState', onChangeState);
-        if (onInit) flip.on('init', onInit);
-        if (onUpdate) flip.on('update', onUpdate);
-        if (onCollectionRebuild) flip.on('collectionRebuild', onCollectionRebuild);
-      },
-      [
+    useEffect(() => {
+      eventHandlersRef.current = {
+        onPageChange,
+        onFlip,
         onChangeOrientation,
         onChangeState,
-        onCollectionRebuild,
-        onFlip,
         onInit,
-        onPageChange,
         onUpdate,
-      ],
-    );
+        onCollectionRebuild,
+      };
+    });
+
+    const bindHandlers = useCallback((flip: PageFlip) => {
+      flip.off('flip');
+      flip.off('changeOrientation');
+      flip.off('changeState');
+      flip.off('init');
+      flip.off('update');
+      flip.off('collectionRebuild');
+
+      flip.on('flip', (e: WidgetEvent<FlipbookEventMap['flip']>) => {
+        const next = typeof e.data === 'number' ? e.data : 0;
+        setEnginePage(next);
+        setPageCount(flip.getPageCount());
+        eventHandlersRef.current.onPageChange?.(next);
+        eventHandlersRef.current.onFlip?.(e);
+      });
+      flip.on('changeOrientation', (e: WidgetEvent<FlipbookEventMap['changeOrientation']>) => {
+        eventHandlersRef.current.onChangeOrientation?.(e);
+      });
+      flip.on('changeState', (e: WidgetEvent<FlipbookEventMap['changeState']>) => {
+        eventHandlersRef.current.onChangeState?.(e);
+      });
+      flip.on('init', (e: WidgetEvent<FlipbookEventMap['init']>) => {
+        eventHandlersRef.current.onInit?.(e);
+      });
+      flip.on('update', (e: WidgetEvent<FlipbookEventMap['update']>) => {
+        eventHandlersRef.current.onUpdate?.(e);
+      });
+      flip.on('collectionRebuild', (e: WidgetEvent<FlipbookEventMap['collectionRebuild']>) => {
+        eventHandlersRef.current.onCollectionRebuild?.(e);
+      });
+    }, []);
 
     useEffect(() => {
       const root = rootRef.current;
@@ -267,6 +318,15 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       props.showPageCorners,
       props.disableFlipByClick,
       props.swipeDistance,
+      props.clickEventForward,
+      props.mobileScrollSupport,
+      props.maxShadowOpacity,
+      props.startZIndex,
+      props.autoSize,
+      props.minWidth,
+      props.maxWidth,
+      props.minHeight,
+      props.maxHeight,
     ]);
 
     useEffect(() => {
@@ -336,7 +396,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       >
         {pages}
         {liveRegion ? (
-          <div aria-live="polite" aria-atomic="true" data-flipbook-live="">
+          <div aria-live="polite" aria-atomic="true" data-flipbook-live="" style={VISUALLY_HIDDEN}>
             {liveRegionText(currentPage, pageCount)}
           </div>
         ) : null}

@@ -108,6 +108,113 @@ describe('HTMLFlipBook (shipped binding)', () => {
     expect(screen.getByText(/Page 2 of/)).toBeTruthy();
   });
 
+  test('live region is announced but not painted', async () => {
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0}>
+        {pages('a', 'b')}
+      </HTMLFlipBook>,
+    );
+
+    const live = container.querySelector<HTMLElement>('[data-flipbook-live]');
+    expect(live).toBeTruthy();
+    expect(live?.getAttribute('aria-live')).toBe('polite');
+    // Visible text under the book was the bug: it must be clipped away.
+    expect(live?.style.position).toBe('absolute');
+    expect(live?.style.clipPath).toBe('inset(50%)');
+    expect(live?.style.width).toBe('1px');
+  });
+
+  test('an inline onFlip does not rebuild the page collection on every turn', async () => {
+    const onCollectionRebuild = vi.fn();
+
+    function Harness() {
+      const book = usePageFlip();
+      return (
+        <>
+          <button type="button" onClick={() => book.flipNext()}>
+            next
+          </button>
+          <HTMLFlipBook
+            ref={book.ref}
+            width={200}
+            height={300}
+            flippingTime={0}
+            // Inline identities: new on every render, which is the whole point.
+            onFlip={() => {}}
+            onPageChange={(page) => book.setPage(page)}
+            onCollectionRebuild={onCollectionRebuild}
+          >
+            {pages('a', 'b', 'c')}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
+    });
+
+    onCollectionRebuild.mockClear();
+    fireEvent.click(screen.getByText('next'));
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 2 of 3/);
+    });
+
+    expect(onCollectionRebuild).not.toHaveBeenCalled();
+  });
+
+  test('removing and reordering children does not throw', async () => {
+    function Harness() {
+      const [labels, setLabels] = useState(['a', 'b', 'c']);
+      return (
+        <>
+          <button type="button" onClick={() => setLabels(['c', 'a'])}>
+            shuffle
+          </button>
+          <HTMLFlipBook width={200} height={300} flippingTime={0}>
+            {pages(...labels)}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-c"]')).toBeTruthy();
+    });
+
+    expect(() => fireEvent.click(screen.getByText('shuffle'))).not.toThrow();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-b"]')).toBeNull();
+      expect(container.querySelector('[data-testid="page-c"]')).toBeTruthy();
+    });
+  });
+
+  test('a consumer ref on a page element still fires', async () => {
+    const seen: (HTMLElement | null)[] = [];
+
+    render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0}>
+        <div
+          data-testid="page-a"
+          ref={(el: HTMLDivElement | null) => {
+            if (el) seen.push(el);
+          }}
+        >
+          a
+        </div>
+        <div data-testid="page-b">b</div>
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(seen.length).toBeGreaterThan(0);
+    });
+  });
+
   test('usePageFlip actions are wired to the handle', async () => {
     function Harness() {
       const book = usePageFlip();
