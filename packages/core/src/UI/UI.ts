@@ -20,7 +20,7 @@ export abstract class UI {
 
   protected readonly app: PageFlip;
   protected readonly wrapper: HTMLElement;
-  protected distElement!: HTMLElement;
+  protected distElement: HTMLElement | null = null;
 
   private touchPoint: SwipeData | null = null;
   private readonly swipeTimeout = 250;
@@ -116,6 +116,9 @@ export abstract class UI {
   }
 
   public getDistElement(): HTMLElement {
+    if (this.distElement === null) {
+      throw new Error('Flipbook UI dist element is not ready');
+    }
     return this.distElement;
   }
 
@@ -203,6 +206,9 @@ export abstract class UI {
    * for swipes.
    */
   private getMousePos(x: number, y: number): Point {
+    if (this.distElement === null) {
+      return { x: 0, y: 0 };
+    }
     const rect = this.distElement.getBoundingClientRect();
 
     return {
@@ -273,6 +279,7 @@ export abstract class UI {
   private onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     if (!this.checkTarget(e.target)) return;
+    if (this.distElement === null) return;
 
     const pos = this.getMousePos(e.clientX, e.clientY);
 

@@ -1,7 +1,6 @@
 import js from '@eslint/js';
 import { defineConfig } from 'eslint/config';
 import globals from 'globals';
-import reactPlugin from 'eslint-plugin-react';
 import reactHooks from 'eslint-plugin-react-hooks';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import tseslint from 'typescript-eslint';
@@ -120,11 +119,7 @@ export default defineConfig(
       },
     },
     plugins: {
-      react: reactPlugin,
       'react-hooks': reactHooks,
-    },
-    settings: {
-      react: { version: 'detect' },
     },
     rules: {
       ...hygieneRules,
@@ -152,8 +147,6 @@ export default defineConfig(
       '@typescript-eslint/no-unsafe-member-access': 'error',
       '@typescript-eslint/no-unsafe-return': 'error',
       '@typescript-eslint/no-unsafe-argument': 'error',
-      'react/jsx-uses-react': 'off',
-      'react/react-in-jsx-scope': 'off',
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
     },

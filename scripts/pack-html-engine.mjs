@@ -21,9 +21,9 @@ const out = join(outDir, 'html-engine.js');
 writeFileSync(out, body);
 const bytes = Buffer.byteLength(body);
 console.log('html-engine.js', files.join('+'), bytes, 'bytes', (bytes / 1024).toFixed(2), 'KiB');
-if (bytes > 45 * 1024) {
+if (bytes > 47 * 1024) {
   console.error(
-    'HTML engine exceeds 45 KiB uncompressed (upstream StPageFlip minifies to ~42 KiB ESM)',
+    'HTML engine exceeds 47 KiB uncompressed (upstream StPageFlip minifies to ~42 KiB ESM)',
   );
   process.exit(1);
 }

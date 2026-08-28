@@ -1,3 +1,4 @@
+import { at } from '../arrayAccess';
 import type { PageFlip } from '../PageFlip';
 import type { Point, PageRect, RectPoints } from '../BasicTypes';
 import { FlipDirection } from '../Flip/Flip';
@@ -128,7 +129,7 @@ export abstract class Render {
       );
 
       if (frameIndex < this.animation.frames.length) {
-        this.animation.frames[frameIndex]();
+        at(this.animation.frames, frameIndex, 'animation frame')();
       } else {
         this.animation.onAnimateEnd();
         this.animation = null;
@@ -181,7 +182,7 @@ export abstract class Render {
 
     if (duration <= 0 || frames.length === 0) {
       if (frames.length > 0) {
-        frames[frames.length - 1]();
+        at(frames, frames.length - 1, 'animation frame')();
       }
       onAnimateEnd();
       this.animation = null;
@@ -202,7 +203,7 @@ export abstract class Render {
    */
   public finishAnimation(): void {
     if (this.animation !== null) {
-      this.animation.frames[this.animation.frames.length - 1]();
+      at(this.animation.frames, this.animation.frames.length - 1, 'animation frame')();
 
       this.animation.onAnimateEnd();
     }

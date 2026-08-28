@@ -22,7 +22,6 @@ export default defineConfig({
   test: {
     globals: false,
     passWithNoTests: false,
-    setupFiles: ['./vitest.setup.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'text-summary', 'json', 'html', 'lcov'],

@@ -1,6 +1,7 @@
 import { Helper } from '../Helper';
 import type { Point, Rect, RectPoints, Segment } from '../BasicTypes';
 import { FlipCorner, FlipDirection } from './enums';
+import { at } from '../arrayAccess';
 
 /**
  * Class representing mathematical methods for calculating page position (rotation angle, clip area ...)
@@ -293,10 +294,10 @@ export class FlipCalculation {
 
   private getRectFromBasePoint(points: Point[], localPos: Point): RectPoints {
     return {
-      topLeft: this.getRotatedPoint(points[0], localPos),
-      topRight: this.getRotatedPoint(points[1], localPos),
-      bottomLeft: this.getRotatedPoint(points[2], localPos),
-      bottomRight: this.getRotatedPoint(points[3], localPos),
+      topLeft: this.getRotatedPoint(at(points, 0, 'rect point'), localPos),
+      topRight: this.getRotatedPoint(at(points, 1, 'rect point'), localPos),
+      bottomLeft: this.getRotatedPoint(at(points, 2, 'rect point'), localPos),
+      bottomRight: this.getRotatedPoint(at(points, 3, 'rect point'), localPos),
     };
   }
 

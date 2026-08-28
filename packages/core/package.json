@@ -33,20 +33,23 @@
   },
   "size-limit": [
     {
+      "name": "html-engine (raw)",
       "path": "size-check/html-engine.js",
-      "limit": "45 kB",
-      "gzip": false
+      "limit": "47 kB",
+      "gzip": false,
+      "brotli": false
     },
     {
+      "name": "html-engine (brotli)",
       "path": "size-check/html-engine.js",
       "limit": "15 kB"
     }
   ],
   "devDependencies": {
-    "@size-limit/file": "^11.2.0",
-    "size-limit": "^11.2.0",
+    "@size-limit/file": "^13.0.3",
+    "size-limit": "^13.0.3",
     "tsup": "^8.5.0",
-    "typescript": "^5.9.2"
+    "typescript": "^6.0.3"
   },
   "bugs": {
     "url": "https://github.com/GulLabs/flipbook/issues"

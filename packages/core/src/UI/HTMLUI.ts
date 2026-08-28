@@ -23,11 +23,12 @@ export class HTMLUI extends UI {
     if (!block) {
       throw new Error('Failed to create flipbook HTML block');
     }
-    this.distElement = block as HTMLElement;
+    const dist = block as HTMLElement;
+    this.distElement = dist;
 
     this.items = items;
     for (const item of items) {
-      this.distElement.appendChild(item);
+      dist.appendChild(item);
     }
 
     this.setHandlers();
@@ -58,9 +59,10 @@ export class HTMLUI extends UI {
       }
     }
 
+    const dist = this.getDistElement();
     for (const item of items) {
-      if (item.parentElement !== this.distElement) {
-        this.distElement.appendChild(item);
+      if (item.parentElement !== dist) {
+        dist.appendChild(item);
       }
     }
 
