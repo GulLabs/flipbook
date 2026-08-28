@@ -82,7 +82,7 @@ Per `AGENTS.md`:
 - [x] `UI.distElement` stays definite-assignment (set in every subclass ctor)
 - [x] `pnpm quality:ci` green
 - [x] Commits on branch (incl. `7be60fd`, `2b19268`, and follow-ups)
-- [ ] Codex signoff (this turn)
+- [x] Codex signoff (this turn)
 
 ### Exit criteria
 
@@ -115,8 +115,8 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 - [x] `eslint.config.mjs`: `no-unnecessary-condition` → `'error'`
 - [x] No new long-term suppressions required
 - [x] `pnpm lint` green
-- [ ] Commit
-- [ ] Codex signoff
+- [x] Commit
+- [x] Codex signoff
 
 ### Exit criteria
 
@@ -171,12 +171,12 @@ not a product decision (AGENTS.md §2: **do not raise again**).
 
 ## Climb log
 
-| Date       | Phase | Event                                            |
-| ---------- | ----- | ------------------------------------------------ |
-| 2026-08-28 | —     | TODO written; baseline measured                  |
-| 2026-08-28 | A     | Done — Codex APPROVE_WITH_NITS                   |
-| 2026-08-28 | B     | Landed (NUIA + AGENTS lifecycle); awaiting Codex |
-| 2026-08-28 | C     | Rule on (0 debt); awaiting Codex                 |
+| Date       | Phase | Event                                           |
+| ---------- | ----- | ----------------------------------------------- |
+| 2026-08-28 | —     | TODO written; baseline measured                 |
+| 2026-08-28 | A     | Done — Codex APPROVE_WITH_NITS                  |
+| 2026-08-28 | B     | Done — Codex APPROVE (NUIA + lifecycle)         |
+| 2026-08-28 | C     | Done — Codex APPROVE (no-unnecessary-condition) |
 
 ---
 
