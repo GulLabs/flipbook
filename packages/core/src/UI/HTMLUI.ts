@@ -19,7 +19,11 @@ export class HTMLUI extends UI {
         // Second wrapper to HTML page
         this.wrapper.insertAdjacentHTML('afterbegin', '<div class="stf__block"></div>');
 
-        this.distElement = inBlock.querySelector('.stf__block');
+        const block = inBlock.querySelector('.stf__block');
+        if (!block) {
+            throw new Error('Failed to create flipbook HTML block');
+        }
+        this.distElement = block as HTMLElement;
 
         this.items = items;
         for (const item of items) {

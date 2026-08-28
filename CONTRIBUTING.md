@@ -36,3 +36,7 @@ See [`CODEOWNERS`](./CODEOWNERS). Default owner is `@atifgul99`.
 ## Conduct
 
 Participation is governed by [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
+
+## Developer Certificate of Origin
+
+Commits should include a `Signed-off-by: Name <email>` trailer (DCO). No CLA.

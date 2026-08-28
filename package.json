@@ -19,10 +19,21 @@
     "lint": "pnpm -r --if-present lint",
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
-    "test": "pnpm -r --if-present test",
+    "test": "vitest run",
     "quality": "node ./scripts/quality.mjs",
-    "quality:ci": "node ./scripts/quality.mjs"
+    "quality:ci": "node ./scripts/quality.mjs",
+    "size": "pnpm --filter @gullabs/flipbook-core size"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@playwright/test": "1.59.0",
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "jsdom": "^26.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
 }
-

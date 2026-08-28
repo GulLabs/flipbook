@@ -1,56 +1,63 @@
-import { PageFlip } from '../PageFlip';
+import type { PageFlip } from '../PageFlip';
+import type { FlippingState } from '../Flip/Flip';
+import type { Orientation } from '../Render/Render';
+
+export type FlipbookEventMap = {
+  flip: number;
+  changeOrientation: Orientation;
+  changeState: FlippingState;
+  init: { page: number; mode: Orientation };
+  update: { page: number; mode: Orientation };
+  collectionRebuild: { page: number; pageCount: number };
+};
 
 /**
  * Data type passed to the event handler
  */
-export type DataType = number | string | boolean | object;
-
-/**
- * Type of object in event handlers
- */
-export interface WidgetEvent {
-    data: DataType;
-    object: PageFlip;
+export interface WidgetEvent<T = unknown> {
+  data: T;
+  object: PageFlip;
 }
 
-type EventCallback = (e: WidgetEvent) => void;
+type EventCallback<T = unknown> = (e: WidgetEvent<T>) => void;
 
 /**
  * A class implementing a basic event model
  */
 export abstract class EventObject {
-    private events = new Map<string, EventCallback[]>();
+  private events = new Map<string, EventCallback[]>();
 
-    /**
-     * Add new event handler
-     *
-     * @param {string} eventName
-     * @param {EventCallback} callback
-     */
-    public on(eventName: string, callback: EventCallback): EventObject {
-        if (!this.events.has(eventName)) {
-            this.events.set(eventName, [callback]);
-        } else {
-            this.events.get(eventName).push(callback);
-        }
-
-        return this;
+  public on<K extends keyof FlipbookEventMap>(
+    eventName: K,
+    callback: EventCallback<FlipbookEventMap[K]>,
+  ): this;
+  public on(eventName: string, callback: EventCallback): this;
+  public on(eventName: string, callback: EventCallback): this {
+    const list = this.events.get(eventName);
+    if (!list) {
+      this.events.set(eventName, [callback]);
+    } else {
+      list.push(callback);
     }
+    return this;
+  }
 
-    /**
-     * Removing all handlers from an event
-     *
-     * @param {string} event - Event name
-     */
-    public off(event: string): void {
-        this.events.delete(event);
+  public off(event: string): this {
+    this.events.delete(event);
+    return this;
+  }
+
+  protected trigger<K extends keyof FlipbookEventMap>(
+    eventName: K,
+    app: PageFlip,
+    data: FlipbookEventMap[K],
+  ): void;
+  protected trigger(eventName: string, app: PageFlip, data?: unknown): void;
+  protected trigger(eventName: string, app: PageFlip, data: unknown = null): void {
+    const list = this.events.get(eventName);
+    if (!list) return;
+    for (const callback of list) {
+      callback({ data, object: app });
     }
-
-    protected trigger(eventName: string, app: PageFlip, data: DataType = null): void {
-        if (!this.events.has(eventName)) return;
-
-        for (const callback of this.events.get(eventName)) {
-            callback({ data, object: app });
-        }
-    }
+  }
 }

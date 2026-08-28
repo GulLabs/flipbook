@@ -7,7 +7,7 @@ import { Point } from '../BasicTypes';
  * Class representing a book page as an image on Canvas
  */
 export class ImagePage extends Page {
-    private readonly image: HTMLImageElement = null;
+    private readonly image: HTMLImageElement;
     private isLoad = false;
 
     private loadingAngle = 0;

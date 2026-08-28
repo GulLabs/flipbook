@@ -16,3 +16,7 @@ coverage/
 package-lock.json
 yarn.lock
 .pnpm-store/
+.next/
+playwright-report/
+test-results/
+examples/*/dist

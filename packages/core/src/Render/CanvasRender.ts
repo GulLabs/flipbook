@@ -15,7 +15,11 @@ export class CanvasRender extends Render {
         super(app, setting);
 
         this.canvas = inCanvas;
-        this.ctx = inCanvas.getContext('2d');
+        const ctx = inCanvas.getContext('2d');
+        if (!ctx) {
+            throw new Error('Canvas 2D context is not available');
+        }
+        this.ctx = ctx;
     }
 
     public getContext(): CanvasRenderingContext2D {

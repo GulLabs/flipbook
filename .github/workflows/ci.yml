@@ -59,11 +59,30 @@ jobs:
           done
           echo "required files present"
 
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.nvmrc'
+          cache: pnpm
 
-      # Full pnpm install / build / test lands with the package modernization PR.
-      # Until then, keep verify green on OSS gates only.
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
       - name: Quality gate
         run: node ./scripts/quality.mjs
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build packages
+        run: pnpm build
+
+      - name: Typecheck packages
+        run: pnpm typecheck
+
+      - name: Core size budget
+        run: pnpm size
+
+      - name: Isolated consumer types
+        run: node ./scripts/check-isolated-types.mjs

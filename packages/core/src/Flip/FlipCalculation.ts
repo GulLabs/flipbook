@@ -1,22 +1,27 @@
 import { Helper } from '../Helper';
 import { Point, Rect, RectPoints, Segment } from '../BasicTypes';
-import { FlipCorner, FlipDirection } from './Flip';
+import { FlipCorner, FlipDirection } from './enums';
 
 /**
  * Class representing mathematical methods for calculating page position (rotation angle, clip area ...)
  */
 export class FlipCalculation {
     /** Calculated rotation angle to flipping page */
-    private angle: number;
+    private angle = 0;
     /** Calculated position to flipping page */
-    private position: Point;
+    private position: Point = { x: 0, y: 0 };
 
-    private rect: RectPoints;
+    private rect: RectPoints = {
+        topLeft: { x: 0, y: 0 },
+        topRight: { x: 0, y: 0 },
+        bottomLeft: { x: 0, y: 0 },
+        bottomRight: { x: 0, y: 0 },
+    };
 
     /** The point of intersection of the page with the borders of the book */
-    private topIntersectPoint: Point = null; // With top border
-    private sideIntersectPoint: Point = null; // With side border
-    private bottomIntersectPoint: Point = null; // With bottom border
+    private topIntersectPoint: Point | null = null; // With top border
+    private sideIntersectPoint: Point | null = null; // With side border
+    private bottomIntersectPoint: Point | null = null; // With bottom border
 
     private readonly pageWidth: number;
     private readonly pageHeight: number;

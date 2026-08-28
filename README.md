@@ -1,6 +1,8 @@
 # flipbook
 
-Realistic page-turning for the web. Vanilla TypeScript core and a React wrapper.
+The maintained page-flip. A modern fork of StPageFlip + react-pageflip with the mobile back-curl finally fixed.
+
+Forked from [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) and [Nodlik/react-pageflip](https://github.com/Nodlik/react-pageflip) (both MIT), merged and maintained by GulLabs.
 
 This is a Gul Labs maintained fork of [StPageFlip](https://github.com/Nodlik/StPageFlip) and [react-pageflip](https://github.com/Nodlik/react-pageflip). Upstream MIT notices are preserved in [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
 
@@ -13,8 +15,27 @@ This is a Gul Labs maintained fork of [StPageFlip](https://github.com/Nodlik/StP
 
 | Package | Path | Role |
 | ------- | ---- | ---- |
-| `@gullabs/flipbook-core` | [`packages/core`](./packages/core) | Core page-flip engine (canvas + HTML modes) |
-| `react-pageflip` → `@gullabs/react-flipbook` | [`packages/react`](./packages/react) | React hooks wrapper around the core |
+| `@gullabs/flipbook-core` | [`packages/core`](./packages/core) | Core page-flip engine (canvas + HTML modes), zero runtime deps |
+| `@gullabs/react-flipbook` | [`packages/react`](./packages/react) | React 18/19 wrapper (`react` peer `>=18`) |
+
+## Why this fork
+
+| Bug | Upstream | Fixed in |
+| --- | -------- | -------- |
+| Portrait back-curl slides in instead of peeling the current leaf | [StPageFlip #49](https://github.com/Nodlik/StPageFlip/issues/49), [#9](https://github.com/Nodlik/StPageFlip/issues/9) | 3.0.0 |
+| Fold is transparent; underlying text bleeds through | engine | 3.0.0 |
+| `onUpdate` never fires (`removeHandlers` → `updateFromHtml` → `setHandlers`) | react-pageflip 2.0.3 | 3.0.0 |
+| `flippingTime: 0` throws in the constructor | Settings.getSettings | 3.0.0 |
+| `flipToPage` swallows errors and lands one page forward | Flip.flipToPage empty catch | 3.0.0 |
+| Shipped types lose `react` under pnpm isolated `node_modules` | react-pageflip `index.d.ts` | 3.0.0 |
+
+## Migration
+
+```bash
+npm uninstall react-pageflip page-flip && npm i @gullabs/react-flipbook
+```
+
+See [`MIGRATION.md`](./MIGRATION.md) for the drop-in `HTMLFlipBook` prop surface and breaking changes.
 
 ## Features
 
@@ -48,7 +69,7 @@ pageFlip.loadFromHtml(htmlCollection);
 ## Usage (React)
 
 ```tsx
-import HTMLFlipBook from 'react-pageflip';
+import HTMLFlipBook from '@gullabs/react-flipbook';
 
 export function Book() {
   return (

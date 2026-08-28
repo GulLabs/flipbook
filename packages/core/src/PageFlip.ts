@@ -13,8 +13,7 @@ import { EventObject } from './Event/EventObject';
 import { HTMLRender } from './Render/HTMLRender';
 import { FlipSetting, Settings } from './Settings';
 import { UI } from './UI/UI';
-
-import './Style/stPageFlip.css';
+import { PageFlipError } from './errors';
 
 /**
  * Class representing a main PageFlip object
@@ -22,18 +21,18 @@ import './Style/stPageFlip.css';
  * @extends EventObject
  */
 export class PageFlip extends EventObject {
-    private mousePosition: Point;
+    private mousePosition: Point = { x: 0, y: 0 };
     private isUserTouch = false;
     private isUserMove = false;
 
-    private readonly setting: FlipSetting = null;
+    private readonly setting: FlipSetting;
     private readonly block: HTMLElement; // Root HTML Element
 
-    private pages: PageCollection = null;
-    private flipController: Flip;
-    private render: Render;
+    private pages!: PageCollection;
+    private flipController: Flip | null = null;
+    private render!: Render;
 
-    private ui: UI;
+    private ui!: UI;
 
     /**
      * Create a new PageFlip instance
@@ -53,8 +52,8 @@ export class PageFlip extends EventObject {
      * Destructor. Remove a root HTML element and all event handlers
      */
     public destroy(): void {
-        this.ui.destroy();
-        this.block.remove();
+        this.ui?.destroy();
+        // The host owns `block` (React/SSR). Do not remove it from the DOM.
     }
 
     /**
@@ -141,6 +140,10 @@ export class PageFlip extends EventObject {
             page: current,
             mode: this.render.getOrientation(),
         });
+        this.trigger('collectionRebuild', this, {
+            page: current,
+            pageCount: this.pages.getPageCount(),
+        });
     }
 
     /**
@@ -162,6 +165,28 @@ export class PageFlip extends EventObject {
             page: current,
             mode: this.render.getOrientation(),
         });
+        this.trigger('collectionRebuild', this, {
+            page: current,
+            pageCount: this.pages.getPageCount(),
+        });
+    }
+
+    /**
+     * Merge settings at runtime. Input handlers rebind when `useMouseEvents` changes;
+     * layout is recalculated for portrait / size updates.
+     */
+    public updateSettings(partial: Partial<FlipSetting>): FlipSetting {
+        const next = new Settings().getSettings({ ...this.setting, ...partial });
+        const mouseChanged = next.useMouseEvents !== this.setting.useMouseEvents;
+        Object.assign(this.setting, next);
+
+        if (this.ui && mouseChanged) {
+            this.ui.refreshHandlers();
+        }
+        if (this.render) {
+            this.update();
+        }
+        return this.setting;
     }
 
     /**
@@ -192,6 +217,16 @@ export class PageFlip extends EventObject {
      * @param {number} page - New page number
      */
     public turnToPage(page: number): void {
+        if (page < 0 || page >= this.pages.getPageCount()) {
+            throw new PageFlipError(`Invalid page: ${page}`, 'INVALID_PAGE');
+        }
+        const spreadIndex = this.pages.getSpreadIndexByPage(page);
+        if (spreadIndex === null) {
+            throw new PageFlipError(
+                `Cannot turn to page ${page}: not in any spread`,
+                'INVALID_PAGE',
+            );
+        }
         this.pages.show(page);
     }
 
@@ -201,7 +236,7 @@ export class PageFlip extends EventObject {
      * @param {FlipCorner} corner - Active page corner when turning
      */
     public flipNext(corner: FlipCorner = FlipCorner.TOP): void {
-        this.flipController.flipNext(corner);
+        this.flipController?.flipNext(corner);
     }
 
     /**
@@ -210,7 +245,7 @@ export class PageFlip extends EventObject {
      * @param {FlipCorner} corner - Active page corner when turning
      */
     public flipPrev(corner: FlipCorner = FlipCorner.TOP): void {
-        this.flipController.flipPrev(corner);
+        this.flipController?.flipPrev(corner);
     }
 
     /**
@@ -220,7 +255,7 @@ export class PageFlip extends EventObject {
      * @param {FlipCorner} corner - Active page corner when turning
      */
     public flip(page: number, corner: FlipCorner = FlipCorner.TOP): void {
-        this.flipController.flipToPage(page, corner);
+        this.flipController?.flipToPage(page, corner);
     }
 
     /**
@@ -340,7 +375,7 @@ export class PageFlip extends EventObject {
      * @returns {FlippingState}
      */
     public getState(): FlippingState {
-        return this.flipController.getState();
+        return this.flipController?.getState() ?? FlippingState.READ;
     }
 
     /**
@@ -371,11 +406,11 @@ export class PageFlip extends EventObject {
      */
     public userMove(pos: Point, isTouch: boolean): void {
         if (!this.isUserTouch && !isTouch && this.setting.showPageCorners) {
-            this.flipController.showCorner(pos); // fold Page Corner
+            this.flipController?.showCorner(pos); // fold Page Corner
         } else if (this.isUserTouch) {
             if (Helper.GetDistanceBetweenTwoPoint(this.mousePosition, pos) > 5) {
                 this.isUserMove = true;
-                this.flipController.fold(pos);
+                this.flipController?.fold(pos);
             }
         }
     }
@@ -391,8 +426,8 @@ export class PageFlip extends EventObject {
             this.isUserTouch = false;
 
             if (!isSwipe) {
-                if (!this.isUserMove) this.flipController.flip(pos);
-                else this.flipController.stopMove();
+                if (!this.isUserMove) this.flipController?.flip(pos);
+                else this.flipController?.stopMove();
             }
         }
     }

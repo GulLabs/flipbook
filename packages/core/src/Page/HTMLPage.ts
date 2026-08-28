@@ -3,15 +3,16 @@ import { Render } from '../Render/Render';
 import { Helper } from '../Helper';
 import { FlipDirection } from '../Flip/Flip';
 import { Point } from '../BasicTypes';
+import { foldFill, foldFillCss } from '../Render/pageBackground';
 
 /**
  * Class representing a book page as a HTML Element
  */
 export class HTMLPage extends Page {
     private readonly element: HTMLElement;
-    private copiedElement: HTMLElement = null;
+    private copiedElement: HTMLElement | null = null;
 
-    private temporaryCopy: Page = null;
+    private temporaryCopy: Page | null = null;
 
     private isLoad = false;
 
@@ -30,7 +31,10 @@ export class HTMLPage extends Page {
 
         if (this.temporaryCopy === null) {
             this.copiedElement = this.element.cloneNode(true) as HTMLElement;
-            this.element.parentElement.appendChild(this.copiedElement);
+            this.copiedElement.style.backgroundColor = foldFill(
+                this.render.getSettings().pageBackground
+            );
+            this.element.parentElement?.appendChild(this.copiedElement);
 
             this.temporaryCopy = new HTMLPage(
                 this.render,
@@ -48,7 +52,7 @@ export class HTMLPage extends Page {
 
     public hideTemporaryCopy(): void {
         if (this.temporaryCopy !== null) {
-            this.copiedElement.remove();
+            this.copiedElement?.remove();
             this.copiedElement = null;
             this.temporaryCopy = null;
         }
@@ -57,7 +61,7 @@ export class HTMLPage extends Page {
     public draw(tempDensity?: PageDensity): void {
         const density = tempDensity ? tempDensity : this.nowDrawingDensity;
 
-        const pagePos = this.render.convertToGlobal(this.state.position);
+        const pagePos = this.render.convertToGlobal(this.state.position) ?? { x: 0, y: 0 };
         const pageWidth = this.render.getRect().pageWidth;
         const pageHeight = this.render.getRect().height;
 
@@ -70,6 +74,7 @@ export class HTMLPage extends Page {
             top: 0;
             width: ${pageWidth}px;
             height: ${pageHeight}px;
+            ${foldFillCss(this.render.getSettings().pageBackground)}
         `;
 
         density === PageDensity.HARD
@@ -149,7 +154,8 @@ export class HTMLPage extends Page {
             left: ${x}px; 
             top: ${y}px; 
             width: ${pageWidth}px; 
-            z-index: ${this.render.getSettings().startZIndex + 1};`;
+            z-index: ${this.render.getSettings().startZIndex + 1};
+            ${foldFillCss(this.render.getSettings().pageBackground)}`;
     }
 
     public getElement(): HTMLElement {

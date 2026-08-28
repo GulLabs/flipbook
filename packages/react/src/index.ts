@@ -1,3 +1,15 @@
-import { HTMLFlipBook } from './html-flip-book';
+export { HTMLFlipBook } from './HTMLFlipBook';
+export { usePageFlip } from './usePageFlip';
+export type {
+  HTMLFlipBookProps,
+  FlipBookHandle,
+  IFlipSetting,
+  IEventProps,
+  IBookState,
+  PageState,
+  PageOrientation,
+  WidgetEvent,
+  FlipbookEventMap,
+} from './types';
 
-export default HTMLFlipBook;
+export { HTMLFlipBook as default } from './HTMLFlipBook';

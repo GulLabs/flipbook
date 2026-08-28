@@ -21,15 +21,15 @@ export interface PageState {
     hardDrawingAngle: number;
 }
 
-export const enum PageOrientation {
+export enum PageOrientation {
     /** Left side page */
-    LEFT,
+    LEFT = 0,
 
     /** Right side page */
-    RIGHT,
+    RIGHT = 1,
 }
 
-export const enum PageDensity {
+export enum PageDensity {
     SOFT = 'soft',
     HARD = 'hard',
 }
@@ -44,7 +44,7 @@ export abstract class Page {
     protected render: Render;
 
     /** Page Orientation */
-    protected orientation: PageOrientation;
+    protected orientation: PageOrientation = PageOrientation.RIGHT;
 
     /** Density at creation */
     protected createdDensity: PageDensity;

@@ -3,6 +3,7 @@ import { Point, PageRect, RectPoints } from '../BasicTypes';
 import { FlipDirection } from '../Flip/Flip';
 import { Page, PageOrientation } from '../Page/Page';
 import { FlipSetting, SizeType } from '../Settings';
+import { convertPageToGlobal } from '../geometry';
 
 type FrameAction = () => void;
 type AnimationSuccessAction = () => void;
@@ -45,7 +46,7 @@ type AnimationProcess = {
 /**
  * Book orientation
  */
-export const enum Orientation {
+export enum Orientation {
     PORTRAIT = 'portrait',
     LANDSCAPE = 'landscape',
 }
@@ -58,27 +59,27 @@ export abstract class Render {
     protected readonly app: PageFlip;
 
     /** Left static book page */
-    protected leftPage: Page = null;
+    protected leftPage: Page | null = null;
     /** Right static book page */
-    protected rightPage: Page = null;
+    protected rightPage: Page | null = null;
 
     /** Page currently flipping */
-    protected flippingPage: Page = null;
+    protected flippingPage: Page | null = null;
     /** Next page at the time of flipping */
-    protected bottomPage: Page = null;
+    protected bottomPage: Page | null = null;
 
     /** Current flipping direction */
-    protected direction: FlipDirection = null;
+    protected direction: FlipDirection | null = null;
     /** Current book orientation */
-    protected orientation: Orientation = null;
+    protected orientation: Orientation | null = null;
     /** Сurrent state of the shadows */
-    protected shadow: Shadow = null;
+    protected shadow: Shadow | null = null;
     /** Сurrent animation process */
-    protected animation: AnimationProcess = null;
+    protected animation: AnimationProcess | null = null;
     /** Page borders while flipping */
-    protected pageRect: RectPoints = null;
+    protected pageRect: RectPoints | null = null;
     /** Current book area */
-    private boundsRect: PageRect = null;
+    private boundsRect: PageRect | null = null;
 
     /** Timer started from start of rendering */
     protected timer = 0;
@@ -94,9 +95,8 @@ export abstract class Render {
         this.setting = setting;
         this.app = app;
 
-        // detect safari
-        const regex = new RegExp('Version\\/[\\d\\.]+.*Safari/');
-        this.safari = regex.exec(window.navigator.userAgent) !== null;
+        // detect safari — never touch window at module scope; guard for Node/SSR
+        this.safari = isSafariUserAgent();
     }
 
     /**
@@ -160,6 +160,15 @@ export abstract class Render {
         onAnimateEnd: AnimationSuccessAction
     ): void {
         this.finishAnimation(); // finish the previous animation process
+
+        if (duration <= 0 || frames.length === 0) {
+            if (frames.length > 0) {
+                frames[frames.length - 1]();
+            }
+            onAnimateEnd();
+            this.animation = null;
+            return;
+        }
 
         this.animation = {
             frames,
@@ -360,7 +369,7 @@ export abstract class Render {
      *
      * @param page
      */
-    public setRightPage(page: Page): void {
+    public setRightPage(page: Page | null): void {
         if (page !== null) page.setOrientation(PageOrientation.RIGHT);
 
         this.rightPage = page;
@@ -370,7 +379,7 @@ export abstract class Render {
      * Set left static book page
      * @param page
      */
-    public setLeftPage(page: Page): void {
+    public setLeftPage(page: Page | null): void {
         if (page !== null) page.setOrientation(PageOrientation.LEFT);
 
         this.leftPage = page;
@@ -380,7 +389,7 @@ export abstract class Render {
      * Set next page at the time of flipping
      * @param page
      */
-    public setBottomPage(page: Page): void {
+    public setBottomPage(page: Page | null): void {
         if (page !== null)
             page.setOrientation(
                 this.direction === FlipDirection.BACK ? PageOrientation.LEFT : PageOrientation.RIGHT
@@ -394,7 +403,7 @@ export abstract class Render {
      *
      * @param page
      */
-    public setFlippingPage(page: Page): void {
+    public setFlippingPage(page: Page | null): void {
         if (page !== null)
             page.setOrientation(
                 this.direction === FlipDirection.FORWARD &&
@@ -433,8 +442,8 @@ export abstract class Render {
      *
      * @returns {Point} Coordinates relative to the work page
      */
-    public convertToPage(pos: Point, direction?: FlipDirection): Point {
-        if (!direction) direction = this.direction;
+    public convertToPage(pos: Point, direction?: FlipDirection | null): Point {
+        if (!direction) direction = this.direction ?? FlipDirection.FORWARD;
 
         const rect = this.getRect();
         const x =
@@ -456,22 +465,12 @@ export abstract class Render {
      *
      * @returns {Point} Global coordinates relative to the window
      */
-    public convertToGlobal(pos: Point, direction?: FlipDirection): Point {
+    public convertToGlobal(pos: Point | null, direction?: FlipDirection | null): Point | null {
         if (!direction) direction = this.direction;
 
-        if (pos == null) return null;
+        if (pos == null || direction == null) return null;
 
-        const rect = this.getRect();
-
-        const x =
-            direction === FlipDirection.FORWARD
-                ? pos.x + rect.left + rect.width / 2
-                : rect.width / 2 - pos.x + rect.left;
-
-        return {
-            x,
-            y: pos.y + rect.top,
-        };
+        return convertPageToGlobal(pos, direction, this.getRect());
     }
 
     /**
@@ -492,4 +491,11 @@ export abstract class Render {
             bottomRight: this.convertToGlobal(rect.bottomRight, direction),
         };
     }
+}
+
+function isSafariUserAgent(): boolean {
+    if (typeof navigator === 'undefined' || !navigator.userAgent) {
+        return false;
+    }
+    return /Version\/[\d.]+.*Safari/.test(navigator.userAgent);
 }

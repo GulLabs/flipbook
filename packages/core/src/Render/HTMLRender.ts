@@ -5,6 +5,7 @@ import { PageDensity, PageOrientation } from '../Page/Page';
 import { HTMLPage } from '../Page/HTMLPage';
 import { Helper } from '../Helper';
 import { FlipSetting } from '../Settings';
+import { shouldDrawBottomPage } from './bottomPage';
 
 /**
  * Class responsible for rendering the HTML book
@@ -13,13 +14,10 @@ export class HTMLRender extends Render {
     /** Parent HTML Element */
     private readonly element: HTMLElement;
 
-    /** Pages List as HTMLElements */
-    private readonly items: NodeListOf<HTMLElement> | HTMLElement[];
-
-    private outerShadow: HTMLElement = null;
-    private innerShadow: HTMLElement = null;
-    private hardShadow: HTMLElement = null;
-    private hardInnerShadow: HTMLElement = null;
+    private outerShadow: HTMLElement | null = null;
+    private innerShadow: HTMLElement | null = null;
+    private hardShadow: HTMLElement | null = null;
+    private hardInnerShadow: HTMLElement | null = null;
 
     /**
      * @constructor
@@ -49,6 +47,9 @@ export class HTMLRender extends Render {
         this.innerShadow = this.element.querySelector('.stf__innerShadow');
         this.hardShadow = this.element.querySelector('.stf__hardShadow');
         this.hardInnerShadow = this.element.querySelector('.stf__hardInnerShadow');
+        if (!this.outerShadow || !this.innerShadow || !this.hardShadow || !this.hardInnerShadow) {
+            throw new Error('Failed to create flipbook shadow elements');
+        }
     }
 
     public clearShadow(): void {
@@ -306,21 +307,21 @@ export class HTMLRender extends Render {
     }
 
     /**
-     * Draw the next page at the time of flipping
+     * Draw the next page at the time of flipping.
+     * Skip only when the mover is the bottom page (hard-cover), never on
+     * portrait BACK as a direction — that skip is the duplicate-current-page bug.
      */
-    private drawBottomPage(): void {
-        if (this.bottomPage === null) return;
+    public drawBottomPage(): void {
+        if (!shouldDrawBottomPage(this.flippingPage, this.bottomPage)) return;
 
         const tempDensity =
-            this.flippingPage != null ? this.flippingPage.getDrawingDensity() : null;
+            this.flippingPage != null ? this.flippingPage.getDrawingDensity() : undefined;
 
-        if (!(this.orientation === Orientation.PORTRAIT && this.direction === FlipDirection.BACK)) {
-            (this.bottomPage as HTMLPage).getElement().style.zIndex = (
-                this.getSettings().startZIndex + 3
-            ).toString(10);
+        (this.bottomPage as HTMLPage).getElement().style.zIndex = (
+            this.getSettings().startZIndex + 3
+        ).toString(10);
 
-            this.bottomPage.draw(tempDensity);
-        }
+        this.bottomPage!.draw(tempDensity);
     }
 
     protected drawFrame(): void {

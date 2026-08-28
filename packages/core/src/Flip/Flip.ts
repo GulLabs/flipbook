@@ -4,39 +4,12 @@ import { Helper } from '../Helper';
 import { PageRect, Point } from '../BasicTypes';
 import { FlipCalculation } from './FlipCalculation';
 import { Page, PageDensity } from '../Page/Page';
+import { portraitCurlLocal } from '../geometry';
+import { effectiveFlippingTime } from '../reducedMotion';
+import { PageFlipError } from '../errors';
+import { FlipCorner, FlipDirection, FlippingState } from './enums';
 
-/**
- * Flipping direction
- */
-export const enum FlipDirection {
-    FORWARD,
-    BACK,
-}
-
-/**
- * Active corner when flipping
- */
-export const enum FlipCorner {
-    TOP = 'top',
-    BOTTOM = 'bottom',
-}
-
-/**
- * State of the book
- */
-export const enum FlippingState {
-    /** The user folding the page */
-    USER_FOLD = 'user_fold',
-
-    /** Mouse over active corners */
-    FOLD_CORNER = 'fold_corner',
-
-    /** During flipping animation */
-    FLIPPING = 'flipping',
-
-    /** Base state */
-    READ = 'read',
-}
+export { FlipCorner, FlipDirection, FlippingState } from './enums';
 
 /**
  * Class representing the flipping process
@@ -45,10 +18,10 @@ export class Flip {
     private readonly render: Render;
     private readonly app: PageFlip;
 
-    private flippingPage: Page = null;
-    private bottomPage: Page = null;
+    private flippingPage: Page | null = null;
+    private bottomPage: Page | null = null;
 
-    private calc: FlipCalculation = null;
+    private calc: FlipCalculation | null = null;
 
     private state: FlippingState = FlippingState.READ;
 
@@ -76,10 +49,16 @@ export class Flip {
      *
      * @param globalPos - Touch Point Coordinates (relative window)
      */
-    public flip(globalPos: Point): void {
-        if (this.app.getSettings().disableFlipByClick && !this.isPointOnCorners(globalPos)) return;
+    public flip(globalPos: Point, skipClickCheck = false): void {
+        if (
+            !skipClickCheck &&
+            this.app.getSettings().disableFlipByClick &&
+            !this.isPointOnCorners(globalPos)
+        ) {
+            return;
+        }
 
-        // the flipiing process is already running
+        // the flipping process is already running
         if (this.calc !== null) this.render.finishAnimation();
 
         if (!this.start(globalPos)) return;
@@ -88,24 +67,14 @@ export class Flip {
 
         this.setState(FlippingState.FLIPPING);
 
-        // Margin from top to start flipping
-        const topMargins = rect.height / 10;
+        const corner = this.calc.getCorner() === FlipCorner.BOTTOM ? 'bottom' : 'top';
+        // SAME local curl for forward and back. BACK looks right on screen
+        // because convertToGlobal mirrors. Do not send to.x past +pageWidth.
+        const curl = portraitCurlLocal(rect.pageWidth, rect.height, corner);
 
-        // Defining animation start points
-        const yStart =
-            this.calc.getCorner() === FlipCorner.BOTTOM ? rect.height - topMargins : topMargins;
+        this.calc.calc(curl.from);
 
-        const yDest = this.calc.getCorner() === FlipCorner.BOTTOM ? rect.height : 0;
-
-        // Сalculations for these points
-        this.calc.calc({ x: rect.pageWidth - topMargins, y: yStart });
-
-        // Run flipping animation
-        this.animateFlippingTo(
-            { x: rect.pageWidth - topMargins, y: yStart },
-            { x: -rect.pageWidth, y: yDest },
-            true
-        );
+        this.animateFlippingTo(curl.from, curl.to, true);
     }
 
     /**
@@ -218,20 +187,37 @@ export class Flip {
      * @param {FlipCorner} corner - Active page corner when turning
      */
     public flipToPage(page: number, corner: FlipCorner): void {
-        const current = this.app.getPageCollection().getCurrentSpreadIndex();
-        const next = this.app.getPageCollection().getSpreadIndexByPage(page);
+        const collection = this.app.getPageCollection();
+        const current = collection.getCurrentSpreadIndex();
+        const next = collection.getSpreadIndexByPage(page);
+
+        if (next === null || next === undefined) {
+            throw new PageFlipError(
+                `Cannot flip to page ${page}: page is not in any spread`,
+                'FLIP_SETUP',
+            );
+        }
+        if (next === current) {
+            return;
+        }
+
+        const dir = next > current ? 'next' : 'prev';
+        collection.setCurrentSpreadIndex(dir === 'next' ? next - 1 : next + 1);
 
         try {
-            if (next > current) {
-                this.app.getPageCollection().setCurrentSpreadIndex(next - 1);
+            if (dir === 'next') {
                 this.flipNext(corner);
-            }
-            if (next < current) {
-                this.app.getPageCollection().setCurrentSpreadIndex(next + 1);
+            } else {
                 this.flipPrev(corner);
             }
-        } catch (e) {
-            //
+        } catch (err) {
+            collection.setCurrentSpreadIndex(current);
+            throw err;
+        }
+
+        if (this.calc === null && this.state !== FlippingState.FLIPPING) {
+            collection.setCurrentSpreadIndex(current);
+            throw new PageFlipError(`Flip setup failed for page ${page}`, 'FLIP_SETUP');
         }
     }
 
@@ -241,10 +227,13 @@ export class Flip {
      * @param {FlipCorner} corner - Active page corner when turning
      */
     public flipNext(corner: FlipCorner): void {
-        this.flip({
-            x: this.render.getRect().left + this.render.getRect().pageWidth * 2 - 10,
-            y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2,
-        });
+        this.flip(
+            {
+                x: this.render.getRect().left + this.render.getRect().pageWidth * 2 - 10,
+                y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2,
+            },
+            true,
+        );
     }
 
     /**
@@ -253,10 +242,13 @@ export class Flip {
      * @param {FlipCorner} corner - Active page corner when turning
      */
     public flipPrev(corner: FlipCorner): void {
-        this.flip({
-            x: 10,
-            y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2,
-        });
+        this.flip(
+            {
+                x: 10,
+                y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2,
+            },
+            true,
+        );
     }
 
     /**
@@ -289,6 +281,7 @@ export class Flip {
         if (this.isPointOnCorners(globalPos)) {
             if (this.calc === null) {
                 if (!this.start(globalPos)) return;
+                if (this.calc === null) return;
 
                 this.setState(FlippingState.FOLD_CORNER);
 
@@ -384,20 +377,32 @@ export class Flip {
 
     private getDirectionByPoint(touchPos: Point): FlipDirection {
         const rect = this.getBoundsRect();
+        let direction: FlipDirection = FlipDirection.FORWARD;
 
         if (this.render.getOrientation() === Orientation.PORTRAIT) {
             if (touchPos.x - rect.pageWidth <= rect.width / 5) {
-                return FlipDirection.BACK;
+                direction = FlipDirection.BACK;
             }
         } else if (touchPos.x < rect.width / 2) {
-            return FlipDirection.BACK;
+            direction = FlipDirection.BACK;
         }
 
-        return FlipDirection.FORWARD;
+        if (this.app.getSettings().direction === 'rtl') {
+            direction =
+                direction === FlipDirection.FORWARD ? FlipDirection.BACK : FlipDirection.FORWARD;
+        }
+
+        return direction;
     }
 
     private getAnimationDuration(size: number): number {
-        const defaultTime = this.app.getSettings().flippingTime;
+        const settings = this.app.getSettings();
+        const defaultTime = effectiveFlippingTime(
+            settings.flippingTime,
+            settings.respectReducedMotion,
+        );
+
+        if (defaultTime <= 0) return 0;
 
         if (size >= 1000) return defaultTime;
 

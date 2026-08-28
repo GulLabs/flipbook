@@ -2,6 +2,7 @@ import { Orientation, Render } from '../Render/Render';
 import { Page, PageDensity } from '../Page/Page';
 import { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
+import { getPortraitFlippingPage } from './flippingPage';
 
 type NumberArray = number[];
 
@@ -86,7 +87,7 @@ export abstract class PageCollection {
      *
      * @param {number} pageNum - page index
      */
-    public getSpreadIndexByPage(pageNum: number): number {
+    public getSpreadIndexByPage(pageNum: number): number | null {
         const spread = this.getSpread();
 
         for (let i = 0; i < spread.length; i++)
@@ -127,7 +128,7 @@ export abstract class PageCollection {
      *
      * @param {Page} current
      */
-    public nextBy(current: Page): Page {
+    public nextBy(current: Page): Page | null {
         const idx = this.pages.indexOf(current);
 
         if (idx < this.pages.length - 1) return this.pages[idx + 1];
@@ -140,7 +141,7 @@ export abstract class PageCollection {
      *
      * @param {Page} current
      */
-    public prevBy(current: Page): Page {
+    public prevBy(current: Page): Page | null {
         const idx = this.pages.indexOf(current);
 
         if (idx > 0) return this.pages[idx - 1];
@@ -157,9 +158,7 @@ export abstract class PageCollection {
         const current = this.currentSpreadIndex;
 
         if (this.render.getOrientation() === Orientation.PORTRAIT) {
-            return direction === FlipDirection.FORWARD
-                ? this.pages[current].newTemporaryCopy()
-                : this.pages[current - 1];
+            return getPortraitFlippingPage(this.pages, current, direction);
         } else {
             const spread =
                 direction === FlipDirection.FORWARD
@@ -231,7 +230,7 @@ export abstract class PageCollection {
      * Show specified page
      * @param {number} pageNum - Page index (from 0s)
      */
-    public show(pageNum: number = null): void {
+    public show(pageNum: number | null = null): void {
         if (pageNum === null) pageNum = this.currentPageIndex;
 
         if (pageNum < 0 || pageNum >= this.pages.length) return;
