@@ -7,7 +7,7 @@
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 const root = process.cwd();
 const required = [
@@ -308,5 +308,29 @@ const missingHeaders = walk(coreSrc).filter((f) => !readFileSync(f, 'utf8').star
 if (missingHeaders.length > 0) {
   const list = missingHeaders.map((f) => `  ${f.slice(root.length + 1)}`).join('\n');
   console.error(`packages/core/src: MPL Exhibit A header missing from:\n${list}`);
+  process.exit(1);
+}
+
+// The header walk covers packages/core/src, but tsup bundles whatever the entry
+// imports and does not confine that to src/. A relative import reaching outside
+// src/ would pull an unheadered file into the published bundle with the walk
+// none the wiser, so the boundary is enforced rather than assumed.
+const RELATIVE_IMPORT = /(?:from|import)\s*\(?\s*['"](\.[^'"]*)['"]/g;
+const escapees = [];
+for (const file of walk(coreSrc)) {
+  const text = readFileSync(file, 'utf8');
+  for (const [, specifier] of text.matchAll(RELATIVE_IMPORT)) {
+    const target = resolve(dirname(file), specifier);
+    if (target !== coreSrc && !target.startsWith(`${coreSrc}/`)) {
+      escapees.push(`  ${file.slice(root.length + 1)} -> ${specifier}`);
+    }
+  }
+}
+if (escapees.length > 0) {
+  console.error(
+    'packages/core/src: relative imports must stay inside src/ — these escape it,\n' +
+      'so they would be bundled without passing the Exhibit A check:\n' +
+      escapees.join('\n'),
+  );
   process.exit(1);
 }
