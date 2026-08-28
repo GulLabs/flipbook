@@ -34,12 +34,12 @@
   },
   "size-limit": [
     {
-      "path": "dist/html-engine.js",
+      "path": "size-check/html-engine.js",
       "limit": "45 kB",
       "gzip": false
     },
     {
-      "path": "dist/html-engine.js",
+      "path": "size-check/html-engine.js",
       "limit": "15 kB"
     }
   ],

@@ -8,12 +8,12 @@ Powerful, simple, and flexible JS Library for creating realistic and beautiful p
 
 ### Features
 
--   Works with simple images on canvas and complex HTML blocks
--   Has simple API and flexible configuration
--   Compatible with mobile devices
--   Supports landscape and portrait screen mode
--   Supports soft and hard page types (only in HTML mode)
--   No dependencies
+- Works with simple images on canvas and complex HTML blocks
+- Has simple API and flexible configuration
+- Compatible with mobile devices
+- Supports landscape and portrait screen mode
+- Supports soft and hard page types (only in HTML mode)
+- No dependencies
 
 Demo and docs: https://nodlik.github.io/StPageFlip/
 
@@ -55,7 +55,7 @@ const pageFlip = new St.PageFlip(htmlParentElement, settings);
 To draw on a canvas, use `loadFromImages`:
 
 ```js
-pageFlip.loadFromImages(['path/to/image1.jpg', 'path/to/image2.jpg' ... ]);
+await pageFlip.loadFromImages(['path/to/image1.jpg', 'path/to/image2.jpg']);
 ```
 
 To load page from html elements - use `loadFromHtml`:
@@ -68,31 +68,19 @@ For example:
 
 ```html
 <div id="book">
-    <div class="my-page" data-density="hard">
-        Page Cover
-    </div>
-    <div class="my-page">
-        Page one
-    </div>
-    <div class="my-page">
-        Page two
-    </div>
-    <div class="my-page">
-        Page three
-    </div>
-    <div class="my-page">
-        Page four
-    </div>
-    <div class="my-page" data-density="hard">
-        Last page
-    </div>
+  <div class="my-page" data-density="hard">Page Cover</div>
+  <div class="my-page">Page one</div>
+  <div class="my-page">Page two</div>
+  <div class="my-page">Page three</div>
+  <div class="my-page">Page four</div>
+  <div class="my-page" data-density="hard">Last page</div>
 </div>
 ```
 
 ```js
 const pageFlip = new PageFlip(document.getElementById('book'), {
-    width: 400, // required parameter - base page width
-    height: 600, // required parameter - base page height
+  width: 400, // required parameter - base page width
+  height: 600, // required parameter - base page height
 });
 
 pageFlip.loadFromHTML(document.querySelectorAll('.my-page'));
@@ -104,23 +92,23 @@ Use `data-density="hard"` attribute to specify page type (`soft | hard`) and def
 
 To set configuration define these parameters when creating an object:
 
--   `width: number` - required
--   `height: number` - required
--   `size: ("fixed", "stretch")` - default: `"fixed"` Whether the book will be stretched under the parent element or not
--   `minWidth, maxWidth, minHeight, maxHeight: number` You must set threshold values ​​with size: `"stretch"`
--   `drawShadow: bool` - default: `true` Draw shadows or not when page flipping
--   `flippingTime: number` (milliseconds) - default: `1000` Flipping animation time
--   `usePortrait: bool` - default: `true` Enable switching to portrait mode. !This mode uses cloning of html elements (pages)
--   `startZIndex: number` - default: `0` Initial value to z-index
--   `startPage: number` - default: `0` Page number from which to start viewing
--   `autoSize: bool` - default: `true` If this value is true, the parent element will be equal to the size of the book
--   `maxShadowOpacity: number [0..1]` - default: `1` Shadow intensity (1: max intensity, 0: hidden shadows)
--   `showCover: boolean` - default: `false` If this value is true, the first and the last pages will be marked as hard and will be shown in single page mode
--   `mobileScrollSupport: boolean` - default: `true` disable content scrolling when touching a book on mobile devices
--   `swipeDistance: number` - default: `30` (px) minimum distance to detect swipe (new on 1.1.0)
--   `clickEventForward: boolean` - default: `true` forwarding click events to the page children html elements (only for `a` and `button` tags) (new on 1.1.0)
--   `useMouseEvents: boolean` - default: `true` using mouse and touch events to page flipping (new on 1.2.0)
--   `disableFlipByClick: boolean` - default: `false` if this value is true, flipping by clicking on the whole book will be locked. Clicking will only work in corners (new on 2.0.3)
+- `width: number` - required
+- `height: number` - required
+- `size: ("fixed", "stretch")` - default: `"fixed"` Whether the book will be stretched under the parent element or not
+- `minWidth, maxWidth, minHeight, maxHeight: number` You must set threshold values ​​with size: `"stretch"`
+- `drawShadow: bool` - default: `true` Draw shadows or not when page flipping
+- `flippingTime: number` (milliseconds) - default: `1000` Flipping animation time
+- `usePortrait: bool` - default: `true` Enable switching to portrait mode. !This mode uses cloning of html elements (pages)
+- `startZIndex: number` - default: `0` Initial value to z-index
+- `startPage: number` - default: `0` Page number from which to start viewing
+- `autoSize: bool` - default: `true` If this value is true, the parent element will be equal to the size of the book
+- `maxShadowOpacity: number [0..1]` - default: `1` Shadow intensity (1: max intensity, 0: hidden shadows)
+- `showCover: boolean` - default: `false` If this value is true, the first and the last pages will be marked as hard and will be shown in single page mode
+- `mobileScrollSupport: boolean` - default: `true` disable content scrolling when touching a book on mobile devices
+- `swipeDistance: number` - default: `30` (px) minimum distance to detect swipe (new on 1.1.0)
+- `clickEventForward: boolean` - default: `true` forwarding click events to the page children html elements (only for `a` and `button` tags) (new on 1.1.0)
+- `useMouseEvents: boolean` - default: `true` using mouse and touch events to page flipping (new on 1.2.0)
+- `disableFlipByClick: boolean` - default: `false` if this value is true, flipping by clicking on the whole book will be locked. Clicking will only work in corners (new on 2.0.3)
 
 ### Events
 
@@ -128,38 +116,38 @@ To listen events use the method `on`:
 
 ```js
 pageFlip.on('flip', (e) => {
-    // callback code
-    alert(e.data); // current page number
+  // callback code
+  alert(e.data); // current page number
 });
 ```
 
 Available events:
 
--   `flip: number` - triggered by page turning
--   `changeOrientation: ("portrait", "landscape")` - triggered when page orientation changes
--   `changeState: ("user_fold", "fold_corner", "flipping", "read")` - triggered when the state of the book changes
--   `init: ({page: number, mode: 'portrait', 'landscape'})` - triggered when the book is init and the start page is loaded. Listen (`on`) this event before using the "loadFrom..." methods
--   `update: ({page: number, mode: 'portrait', 'landscape'})` - triggered when the book pages are updated (using the "updateFrom..." methods)
+- `flip: number` - triggered by page turning
+- `changeOrientation: ("portrait", "landscape")` - triggered when page orientation changes
+- `changeState: ("user_fold", "fold_corner", "flipping", "read")` - triggered when the state of the book changes
+- `init: ({page: number, mode: 'portrait', 'landscape'})` - triggered when the book is init and the start page is loaded. Listen (`on`) this event before using the "loadFrom..." methods
+- `update: ({page: number, mode: 'portrait', 'landscape'})` - triggered when the book pages are updated (using the "updateFrom..." methods)
 
 Event object has two fields: `data: number | string` and `object: PageFlip`
 
 ### Methods
 
--   `getPageCount: number` - Get number of all pages
--   `getOrientation: 'portrait', 'landscape'` - Get the current orientation: portrait or landscape
--   `getBoundsRect: PageRect` - Get current book sizes and position
--   `getCurrentPageIndex: number` - Get the current page number (starts at 0)
--   `turnToPage(pageNum: number)` - Turn to the specified page number (without animation)
--   `turnToNextPage()` - Turn to the next page (without animation)
--   `turnToPrevPage()` - Turn to the previous page (without animation)
--   `flipNext(corner: 'top' | 'bottom')` - Turn to the next page (with animation)
--   `flipPrev(corner: 'top' | 'bottom')` - Turn to the previous page (with animation)
--   `flip(pageNum: number, corner: 'top' | 'bottom')` - Turn to the specified page (with animation)
--   `loadFromImages(images: ['path-to-image1.jpg', ...])` - Load page from images
--   `loadFromHtml(items: NodeListOf | HTMLElement[])` - Load page from html elements
--   `updateFromHtml(items: NodeListOf | HTMLElement[])` - Update page from html elements (new on 0.4.0)
--   `updateFromImages(images: ['path-to-image1.jpg', ...])` - Update page from images (new on 0.4.0)
--   `destroy()` - Destructor. Remove a root HTML element and all event handlers (new on 0.4.0)
+- `getPageCount: number` - Get number of all pages
+- `getOrientation: 'portrait', 'landscape'` - Get the current orientation: portrait or landscape
+- `getBoundsRect: PageRect` - Get current book sizes and position
+- `getCurrentPageIndex: number` - Get the current page number (starts at 0)
+- `turnToPage(pageNum: number)` - Turn to the specified page number (without animation)
+- `turnToNextPage()` - Turn to the next page (without animation)
+- `turnToPrevPage()` - Turn to the previous page (without animation)
+- `flipNext(corner: 'top' | 'bottom')` - Turn to the next page (with animation)
+- `flipPrev(corner: 'top' | 'bottom')` - Turn to the previous page (with animation)
+- `flip(pageNum: number, corner: 'top' | 'bottom')` - Turn to the specified page (with animation)
+- `loadFromImages(imagesHref: string[]): Promise<void>` - Load pages from images (lazy canvas chunk)
+- `loadFromHtml(items: NodeListOf | HTMLElement[])` - Load page from html elements
+- `updateFromHtml(items: NodeListOf | HTMLElement[])` - Update page from html elements (new on 0.4.0)
+- `updateFromImages(images: ['path-to-image1.jpg', ...])` - Update page from images (new on 0.4.0)
+- `destroy()` - Destructor. Remove a root HTML element and all event handlers (new on 0.4.0)
 
 ### Contacts
 

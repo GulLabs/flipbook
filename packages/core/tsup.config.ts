@@ -9,12 +9,7 @@ export default defineConfig({
   treeshake: true,
   target: 'es2020',
   splitting: true,
-  dts: {
-    compilerOptions: {
-      strictNullChecks: false,
-      exactOptionalPropertyTypes: false,
-    },
-  },
+  dts: true,
   esbuildOptions(options) {
     options.legalComments = 'none';
   },

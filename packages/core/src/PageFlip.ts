@@ -32,6 +32,7 @@ export class PageFlip extends EventObject {
 
   private ui!: UI;
   private initTimer: ReturnType<typeof setTimeout> | null = null;
+  private destroyed = false;
 
   /**
    * Create a new PageFlip instance
@@ -51,6 +52,7 @@ export class PageFlip extends EventObject {
    * Destructor. Remove a root HTML element and all event handlers
    */
   public destroy(): void {
+    this.destroyed = true;
     if (this.initTimer !== null) {
       clearTimeout(this.initTimer);
       this.initTimer = null;
@@ -59,6 +61,10 @@ export class PageFlip extends EventObject {
     this.render?.stop();
     this.ui?.destroy();
     // The host owns `block` (React/SSR). Do not remove it from the DOM.
+  }
+
+  public isDestroyed(): boolean {
+    return this.destroyed;
   }
 
   /**
@@ -78,6 +84,7 @@ export class PageFlip extends EventObject {
    * lazily-loaded canvas path so CanvasRender stays out of the HTML bundle.
    */
   public replacePages(pages: PageCollection, current: number): void {
+    if (this.destroyed) return;
     this.pages.destroy();
     this.pages = pages;
     this.pages.load();
@@ -93,6 +100,11 @@ export class PageFlip extends EventObject {
   }
 
   public attachMode(ui: UI, render: Render, pages: PageCollection): void {
+    if (this.destroyed) {
+      ui.destroy();
+      render.stop();
+      return;
+    }
     this.ui = ui;
     this.render = render;
     this.flipController = new Flip(render, this);
@@ -117,7 +129,17 @@ export class PageFlip extends EventObject {
    * Canvas renderer is a separate chunk so the HTML engine stays ≤ 35 kB.
    */
   public loadFromImages(imagesHref: string[]): Promise<void> {
-    return import('./canvas-loader').then((m) => m.loadFromImages(this, imagesHref));
+    return import('./canvas-loader')
+      .then((m) => {
+        if (this.destroyed) return;
+        m.loadFromImages(this, imagesHref);
+      })
+      .catch((err: unknown) => {
+        throw new PageFlipError(
+          `Failed to load canvas renderer: ${err instanceof Error ? err.message : String(err)}`,
+          'CANVAS_LOAD',
+        );
+      });
   }
 
   /**
@@ -138,7 +160,17 @@ export class PageFlip extends EventObject {
    * @param {string[]} imagesHref - List of paths to images
    */
   public updateFromImages(imagesHref: string[]): Promise<void> {
-    return import('./canvas-loader').then((m) => m.updateFromImages(this, imagesHref));
+    return import('./canvas-loader')
+      .then((m) => {
+        if (this.destroyed) return;
+        m.updateFromImages(this, imagesHref);
+      })
+      .catch((err: unknown) => {
+        throw new PageFlipError(
+          `Failed to load canvas renderer: ${err instanceof Error ? err.message : String(err)}`,
+          'CANVAS_LOAD',
+        );
+      });
   }
 
   /**
@@ -176,11 +208,11 @@ export class PageFlip extends EventObject {
     Object.assign(this.setting, next);
 
     // updateSettings can run before create() wires render/ui (React effects).
-     
+
     if (this.ui && mouseChanged) {
       this.ui.refreshHandlers();
     }
-     
+
     if (this.render) {
       this.update();
     }

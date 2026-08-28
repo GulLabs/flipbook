@@ -13,21 +13,21 @@ This is a Gul Labs maintained fork of [StPageFlip](https://github.com/Nodlik/StP
 
 ## Packages
 
-| Package | Path | Role |
-| ------- | ---- | ---- |
-| `@gullabs/flipbook-core` | [`packages/core`](./packages/core) | Core page-flip engine (canvas + HTML modes), zero runtime deps |
-| `@gullabs/react-flipbook` | [`packages/react`](./packages/react) | React 18/19 wrapper (`react` peer `>=18`) |
+| Package                   | Path                                 | Role                                                           |
+| ------------------------- | ------------------------------------ | -------------------------------------------------------------- |
+| `@gullabs/flipbook-core`  | [`packages/core`](./packages/core)   | Core page-flip engine (canvas + HTML modes), zero runtime deps |
+| `@gullabs/react-flipbook` | [`packages/react`](./packages/react) | React 18/19 wrapper (`react` peer `>=18`)                      |
 
 ## Why this fork
 
-| Bug | Upstream | Fixed in |
-| --- | -------- | -------- |
-| Portrait back-curl slides in instead of peeling the current leaf | [StPageFlip #49](https://github.com/Nodlik/StPageFlip/issues/49), [#9](https://github.com/Nodlik/StPageFlip/issues/9) | 3.0.0 |
-| Fold is transparent; underlying text bleeds through | engine | 3.0.0 |
-| `onUpdate` never fires (`removeHandlers` → `updateFromHtml` → `setHandlers`) | react-pageflip 2.0.3 | 3.0.0 |
-| `flippingTime: 0` throws in the constructor | Settings.getSettings | 3.0.0 |
-| `flipToPage` swallows errors and lands one page forward | Flip.flipToPage empty catch | 3.0.0 |
-| Shipped types lose `react` under pnpm isolated `node_modules` | react-pageflip `index.d.ts` | 3.0.0 |
+| Bug                                                                          | Upstream                                                                                                              | Fixed in |
+| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------- |
+| Portrait back-curl slides in instead of peeling the current leaf             | [StPageFlip #49](https://github.com/Nodlik/StPageFlip/issues/49), [#9](https://github.com/Nodlik/StPageFlip/issues/9) | 3.0.0    |
+| Fold is transparent; underlying text bleeds through                          | engine                                                                                                                | 3.0.0    |
+| `onUpdate` never fires (`removeHandlers` → `updateFromHtml` → `setHandlers`) | react-pageflip 2.0.3                                                                                                  | 3.0.0    |
+| `flippingTime: 0` throws in the constructor                                  | Settings.getSettings                                                                                                  | 3.0.0    |
+| `flipToPage` swallows errors and lands one page forward                      | Flip.flipToPage empty catch                                                                                           | 3.0.0    |
+| Shipped types lose `react` under pnpm isolated `node_modules`                | react-pageflip `index.d.ts`                                                                                           | 3.0.0    |
 
 ## Migration
 
@@ -60,7 +60,7 @@ See [`RELEASING.md`](./RELEASING.md) for publish status.
 import { PageFlip } from '@gullabs/flipbook-core';
 
 const pageFlip = new PageFlip(htmlParentElement, settings);
-pageFlip.loadFromImages(['page1.jpg', 'page2.jpg']);
+await pageFlip.loadFromImages(['page1.jpg', 'page2.jpg']);
 // or
 pageFlip.loadFromHTML(htmlCollection);
 ```
