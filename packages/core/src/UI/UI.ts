@@ -209,7 +209,7 @@ export abstract class UI {
 
   private checkTarget(targer: EventTarget | null): boolean {
     if (!this.app.getSettings().clickEventForward) return true;
-    if (!targer || !(targer instanceof Element)) return true;
+    if (!(targer instanceof Element)) return true;
     return targer.closest(FLIPBOOK_INTERACTIVE_SELECTOR) === null;
   }
 
