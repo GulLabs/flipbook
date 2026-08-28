@@ -126,8 +126,8 @@ export class PageFlip extends EventObject {
 
   /**
    * Load pages from images on the Canvas mode.
-   * Canvas renderer is a separate chunk so the HTML engine stays ≤ 45 kB
-   * uncompressed / ≤ 15 kB gzip (see packages/core size-limit).
+   * Canvas renderer is a separate chunk so the HTML engine stays within
+   * packages/core size-limit (47 kB raw / 15 kB brotli on html-engine).
    */
   public loadFromImages(imagesHref: string[]): Promise<void> {
     return import('./canvas-loader')

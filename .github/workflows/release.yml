@@ -81,7 +81,7 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # OIDC trusted publishing only — no long-lived NPM_TOKEN (SEC-002).
+      # OIDC trusted publishing only (SEC-002) — no classic npm automation token.
       # Register this workflow as a trusted publisher on npm for both packages
       # before the first publish (see RELEASING.md).
       - name: Create Release Pull Request or Publish

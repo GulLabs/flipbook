@@ -12,8 +12,8 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# any-llm OSS gate + Veloir/ai-studio quality ordering:
-# secrets → install → audit → typecheck → lint → coverage tests → build → size
+# Packages gate is required for merge confidence; examples are a separate job
+# so a Next demo flake does not block the library release bar (INFRA-003).
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -49,13 +49,11 @@ jobs:
       - name: Install workspace
         run: pnpm install --frozen-lockfile
 
-      # Production deps only: the core ships zero runtime dependencies, so this
-      # gate stays meaningful and cannot be turned red by a dev-tool advisory.
-      # `pnpm quality:full` runs the full (dev-inclusive) audit locally.
-      - name: Audit production dependencies
-        run: pnpm audit --prod --audit-level=high
+      - name: Audit dependencies
+        run: pnpm audit --audit-level=high
 
-      - name: Quality gate
+      # Packages-only quality bar (not build:examples) — INFRA-003.
+      - name: Quality gate (packages)
         run: pnpm quality:ci
 
       - name: Upload coverage (lcov)
@@ -66,3 +64,22 @@ jobs:
           path: coverage/lcov.info
           if-no-files-found: ignore
           retention-days: 14
+
+  examples:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Build examples
+        run: pnpm quality:examples

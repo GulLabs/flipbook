@@ -2,7 +2,7 @@
 /**
  * Local quality entry that documents the gate order.
  * Prefer `pnpm quality` / `pnpm quality:ci` package scripts — this script is a
- * thin structural preflight (OSS files + package repository URLs).
+ * thin structural preflight (OSS files + package repository URLs + core invariants).
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -47,6 +47,29 @@ for (const dir of ['packages/core', 'packages/react']) {
     );
     process.exit(1);
   }
+}
+
+const core = JSON.parse(readFileSync(join(root, 'packages/core/package.json'), 'utf8'));
+if (core.dependencies && Object.keys(core.dependencies).length > 0) {
+  console.error(
+    'packages/core must stay zero runtime dependencies; found:',
+    Object.keys(core.dependencies).join(', '),
+  );
+  process.exit(1);
+}
+for (const dir of ['packages/core', 'packages/react']) {
+  const pkg = JSON.parse(readFileSync(join(root, dir, 'package.json'), 'utf8'));
+  const files = pkg.files ?? [];
+  if (!Array.isArray(files) || !files.includes('dist') || files.includes('src')) {
+    console.error(`${dir}: package.json "files" must be dist-only (got ${JSON.stringify(files)})`);
+    process.exit(1);
+  }
+}
+
+const rootPkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+if (!rootPkg.pnpm?.onlyBuiltDependencies?.length) {
+  console.error('root package.json must define pnpm.onlyBuiltDependencies allowlist');
+  process.exit(1);
 }
 
 console.log('quality preflight: ok');

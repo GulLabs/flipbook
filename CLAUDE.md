@@ -18,7 +18,7 @@ pnpm test               # vitest run, both projects
 pnpm build              # tsup per package (see caveat below)
 pnpm typecheck          # tsc --noEmit per package
 pnpm lint               # eslint flat config, repo-wide
-pnpm size               # size-limit on core dist (budget 35 kB)
+pnpm size               # size-limit on core dist (budget 47 kB raw / 15 kB brotli (packages/core size-limit))
 node ./scripts/check-isolated-types.mjs   # pnpm-isolated consumer type fixture
 ```
 
