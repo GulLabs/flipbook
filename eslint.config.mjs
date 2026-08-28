@@ -144,6 +144,18 @@ export default defineConfig(
       '@typescript-eslint/prefer-optional-chain': 'error',
       // Phase C (docs/QUALITY_BAR_CLIMB.md): honest after NUIA + lifecycle guards.
       '@typescript-eslint/no-unnecessary-condition': 'error',
+      '@typescript-eslint/strict-boolean-expressions': [
+        'error',
+        {
+          allowString: true,
+          allowNumber: true,
+          allowNullableObject: true,
+          allowNullableBoolean: false,
+          allowNullableString: false,
+          allowNullableNumber: false,
+          allowAny: false,
+        },
+      ],
       '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
       '@typescript-eslint/restrict-template-expressions': 'off',
       '@typescript-eslint/require-await': 'warn',

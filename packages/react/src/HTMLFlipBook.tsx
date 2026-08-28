@@ -234,7 +234,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // Bail out BEFORE clearing `childNodes`: emptying it without re-rendering
       // leaves it empty for good, and the load effect below then skips
       // `loadFromHTML` on the next remount — a blank book.
-      if (renderOnlyPageLengthChange && pages.length === next.length) {
+      if (renderOnlyPageLengthChange === true && pages.length === next.length) {
         return;
       }
 
