@@ -28,7 +28,7 @@
     "typedoc": "^0.17.8",
     "typescript": "latest",
     "webpack": "^4.43.0",
-    "webpack-cli": "^3.3.11"
+    "webpack-cli": "^7.2.2"
   },
   "scripts": {
     "eslint": "eslint . --ext .ts",
