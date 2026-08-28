@@ -34,7 +34,7 @@
   "scripts": {
     "build": "tsup && node ../../scripts/banner-use-client.mjs",
     "prepack": "pnpm run build",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.tests.json",
     "test": "vitest run --project react"
   },
   "peerDependencies": {
