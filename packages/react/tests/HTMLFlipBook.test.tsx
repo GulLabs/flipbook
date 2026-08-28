@@ -97,7 +97,7 @@ describe('HTMLFlipBook (shipped binding)', () => {
     const { container } = render(<Harness />);
     fireEvent.click(screen.getByText('go'));
     await waitFor(() => {
-      expect(container.querySelector('[aria-label="Flipbook"]')).toBeTruthy();
+      expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 2 of/);
     });
   });
 

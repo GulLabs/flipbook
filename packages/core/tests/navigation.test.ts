@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { Flip, FlipCorner, FlippingState, PageFlipError } from '@gullabs/flipbook-core';
+import { Flip, FlipCorner, FlipDirection, FlippingState, PageFlipError } from '@gullabs/flipbook-core';
 import type { Render } from '@gullabs/flipbook-core';
 
 type CollectionStub = {
@@ -54,7 +54,11 @@ function makeFlip(options?: { pageCount?: number; currentPage?: number }) {
     setBottomPage() {},
     setFlippingPage() {},
     setShadowData() {},
-    startAnimation() {},
+    startAnimation(_frames: Array<() => void>, _duration: number, onEnd: () => void) {
+      const last = _frames[_frames.length - 1];
+      if (last) last();
+      onEnd();
+    },
     clearShadow() {},
   };
 
@@ -92,5 +96,27 @@ describe('flipToPage / turnToPage failure surface (shipped Flip)', () => {
     expect(() => flip.flipToPage(3, FlipCorner.TOP)).toThrow(/Flip setup failed/);
     expect(collection.spread).toBe(before);
     expect(flip.getState()).not.toBe(FlippingState.FLIPPING);
+  });
+
+  test('flipToPage with flippingTime 0 does not throw after a successful instant turn', () => {
+    const { flip, collection } = makeFlip({ pageCount: 8, currentPage: 1 });
+    expect(() => flip.flipToPage(3, FlipCorner.TOP)).not.toThrow();
+    expect(collection.spread).not.toBe(1);
+  });
+
+  test('flipNext stays FORWARD under direction rtl (no shared-resolver invert)', () => {
+    const seen: number[] = [];
+    const { flip } = makeFlip({ pageCount: 8, currentPage: 1 });
+    const app = (flip as unknown as { app: { getSettings: () => Record<string, unknown> } }).app;
+    const orig = app.getSettings;
+    app.getSettings = () => ({ ...orig(), direction: 'rtl' });
+    const render = (flip as unknown as { render: { setDirection: (d: number) => void } }).render;
+    const setDirection = render.setDirection.bind(render);
+    render.setDirection = (d: number) => {
+      seen.push(d);
+      setDirection(d);
+    };
+    flip.flipNext(FlipCorner.TOP);
+    expect(seen[0]).toBe(FlipDirection.FORWARD);
   });
 });

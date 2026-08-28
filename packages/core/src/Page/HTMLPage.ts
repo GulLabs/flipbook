@@ -154,8 +154,7 @@ export class HTMLPage extends Page {
             left: ${x}px; 
             top: ${y}px; 
             width: ${pageWidth}px; 
-            z-index: ${this.render.getSettings().startZIndex + 1};
-            ${foldFillCss(this.render.getSettings().pageBackground)}`;
+            z-index: ${this.render.getSettings().startZIndex + 1};`;
     }
 
     public getElement(): HTMLElement {

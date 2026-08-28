@@ -35,7 +35,7 @@ import HTMLFlipBook from '@gullabs/react-flipbook';
 | `direction: 'rtl'` | New. Inverts next/prev hit-testing. |
 | `turnToPage` / `flipToPage` (`PageFlip.flip`) | Throw `PageFlipError` on setup failure instead of silently advancing one page. |
 | React types | `react` is a **peer** (`>=18`). Isolated pnpm `node_modules` type-checks props. |
-| React 19 | `ref` is a prop (no `forwardRef`). Imperative handle still exposes `pageFlip()`. |
+| React 18/19 | Imperative handle is attached via `forwardRef` so `ref.current.pageFlip()` works on React 18 and 19. React 19 can also pass `ref` as a prop. |
 | `PageFlip.destroy()` | No longer removes the host DOM node (the React tree owns it). |
 | CSS | Injected at runtime. Also exported as `@gullabs/flipbook-core/style.css`. |
 | `updateFromHtml` | Rebuilds `PageCollection` and emits typed `update` **and** `collectionRebuild`. Attach listeners before calling (the binding does this). |

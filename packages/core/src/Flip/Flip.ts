@@ -49,19 +49,19 @@ export class Flip {
      *
      * @param globalPos - Touch Point Coordinates (relative window)
      */
-    public flip(globalPos: Point, skipClickCheck = false): void {
+    public flip(globalPos: Point, skipClickCheck = false): boolean {
         if (
             !skipClickCheck &&
             this.app.getSettings().disableFlipByClick &&
             !this.isPointOnCorners(globalPos)
         ) {
-            return;
+            return false;
         }
 
         // the flipping process is already running
         if (this.calc !== null) this.render.finishAnimation();
 
-        if (!this.start(globalPos)) return;
+        if (!this.start(globalPos)) return false;
 
         const rect = this.getBoundsRect();
 
@@ -75,6 +75,7 @@ export class Flip {
         this.calc.calc(curl.from);
 
         this.animateFlippingTo(curl.from, curl.to, true);
+        return true;
     }
 
     /**
@@ -204,18 +205,17 @@ export class Flip {
         const dir = next > current ? 'next' : 'prev';
         collection.setCurrentSpreadIndex(dir === 'next' ? next - 1 : next + 1);
 
+        let started = false;
         try {
-            if (dir === 'next') {
-                this.flipNext(corner);
-            } else {
-                this.flipPrev(corner);
-            }
+            started = dir === 'next' ? this.flipNext(corner) : this.flipPrev(corner);
         } catch (err) {
             collection.setCurrentSpreadIndex(current);
             throw err;
         }
 
-        if (this.calc === null && this.state !== FlippingState.FLIPPING) {
+        // Instant turns (`flippingTime: 0` / reduced motion) reset `calc` in
+        // the animation callback before we return. Do not treat that as failure.
+        if (!started) {
             collection.setCurrentSpreadIndex(current);
             throw new PageFlipError(`Flip setup failed for page ${page}`, 'FLIP_SETUP');
         }
@@ -226,8 +226,8 @@ export class Flip {
      *
      * @param {FlipCorner} corner - Active page corner when turning
      */
-    public flipNext(corner: FlipCorner): void {
-        this.flip(
+    public flipNext(corner: FlipCorner): boolean {
+        return this.flip(
             {
                 x: this.render.getRect().left + this.render.getRect().pageWidth * 2 - 10,
                 y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2,
@@ -241,8 +241,8 @@ export class Flip {
      *
      * @param {FlipCorner} corner - Active page corner when turning
      */
-    public flipPrev(corner: FlipCorner): void {
-        this.flip(
+    public flipPrev(corner: FlipCorner): boolean {
+        return this.flip(
             {
                 x: 10,
                 y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2,
@@ -385,11 +385,6 @@ export class Flip {
             }
         } else if (touchPos.x < rect.width / 2) {
             direction = FlipDirection.BACK;
-        }
-
-        if (this.app.getSettings().direction === 'rtl') {
-            direction =
-                direction === FlipDirection.FORWARD ? FlipDirection.BACK : FlipDirection.FORWARD;
         }
 
         return direction;

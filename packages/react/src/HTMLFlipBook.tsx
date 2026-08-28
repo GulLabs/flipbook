@@ -3,6 +3,7 @@
 import {
   Children,
   cloneElement,
+  forwardRef,
   isValidElement,
   useCallback,
   useEffect,
@@ -115,9 +116,9 @@ function wrapChildren(
   return list;
 }
 
-export function HTMLFlipBook(props: HTMLFlipBookProps) {
+export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookProps, 'ref'>>(
+  function HTMLFlipBook(props, ref) {
   const {
-    ref,
     children,
     className,
     style,
@@ -162,19 +163,21 @@ export function HTMLFlipBook(props: HTMLFlipBookProps) {
 
   useImperativeHandle(ref, () => handle, [handle]);
 
+  const lazyPage = lazyRadius !== undefined ? currentPage : 0;
+
   useEffect(() => {
     childNodes.current = [];
     const collect = (el: HTMLElement | null) => {
       if (el) childNodes.current.push(el);
     };
-    const next = wrapChildren(children, currentPage, lazyRadius, collect);
+    const next = wrapChildren(children, lazyPage, lazyRadius, collect);
     if (renderOnlyPageLengthChange && pages.length === next.length) {
       return;
     }
     setPages(next);
     // pages.length is the previous render's count; intentional.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [children, currentPage, lazyRadius, renderOnlyPageLengthChange]);
+  }, [children, lazyPage, lazyRadius, renderOnlyPageLengthChange]);
 
   const bindHandlers = useCallback(
     (flip: PageFlip) => {
@@ -254,7 +257,7 @@ export function HTMLFlipBook(props: HTMLFlipBookProps) {
       engine.updateFromHtml(childNodes.current);
     }
     setPageCount(engine.getPageCount());
-  }, [pages, bindHandlers]);
+  }, [pages, bindHandlers, remountKey]);
 
   useEffect(() => {
     const engine = engineRef.current;
@@ -276,10 +279,12 @@ export function HTMLFlipBook(props: HTMLFlipBookProps) {
     const rtl = props.direction === 'rtl';
     if (event.key === 'ArrowRight') {
       event.preventDefault();
-      rtl ? engine.flipPrev() : engine.flipNext();
+      if (rtl) engine.flipPrev();
+      else engine.flipNext();
     } else if (event.key === 'ArrowLeft') {
       event.preventDefault();
-      rtl ? engine.flipNext() : engine.flipPrev();
+      if (rtl) engine.flipNext();
+      else engine.flipPrev();
     } else if (event.key === 'Home') {
       event.preventDefault();
       engine.turnToPage(0);
@@ -309,4 +314,5 @@ export function HTMLFlipBook(props: HTMLFlipBookProps) {
       ) : null}
     </div>
   );
-}
+},
+);

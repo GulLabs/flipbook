@@ -120,6 +120,7 @@ export abstract class UI {
         this.distElement.removeEventListener('pointermove', this.onPointerMove);
         this.distElement.removeEventListener('pointerup', this.onPointerUp);
         this.distElement.removeEventListener('pointercancel', this.onPointerUp);
+        this.distElement.removeEventListener('pointerleave', this.onPointerLeave);
         this.handlersBound = false;
     }
 
@@ -131,6 +132,7 @@ export abstract class UI {
         this.distElement.addEventListener('pointermove', this.onPointerMove);
         this.distElement.addEventListener('pointerup', this.onPointerUp);
         this.distElement.addEventListener('pointercancel', this.onPointerUp);
+        this.distElement.addEventListener('pointerleave', this.onPointerLeave);
         this.handlersBound = true;
     }
 
@@ -188,9 +190,19 @@ export abstract class UI {
         return rtl ? 'prev' : 'next';
     }
 
+    private onPointerLeave = (): void => {
+        this.touchPoint = null;
+        const flip = this.app.getFlipController();
+        if (flip && flip.getState() === FlippingState.FOLD_CORNER) {
+            this.app.getRender().finishAnimation();
+            flip.stopMove();
+        }
+    };
+
     private onPointerDown = (e: PointerEvent): void => {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (!this.checkTarget(e.target)) return;
+        if (e.pointerType === 'mouse' && e.cancelable) e.preventDefault();
 
         const pos = this.getMousePos(e.clientX, e.clientY);
 

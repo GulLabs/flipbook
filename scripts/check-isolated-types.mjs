@@ -15,8 +15,5 @@ if (result.status !== 0) {
   process.stderr.write('isolated-consumer typecheck failed\n');
   process.exit(result.status ?? 1);
 }
-if (!out.includes('missing-props.tsx') && !/error TS/.test(out) === false) {
-  // tsc --noEmit succeeds because missing-props uses @ts-expect-error.
-  // If width/height stop being required, @ts-expect-error unused → tsc fails.
-}
+// missing-props.tsx uses @ts-expect-error: unused error if width/height stop being required.
 console.log('isolated-consumer: types ok (width/height required)');
