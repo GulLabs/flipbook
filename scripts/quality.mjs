@@ -7,7 +7,8 @@
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const root = process.cwd();
 const required = [
@@ -311,25 +312,59 @@ if (missingHeaders.length > 0) {
   process.exit(1);
 }
 
-// The header walk covers packages/core/src, but tsup bundles whatever the entry
-// imports and does not confine that to src/. A relative import reaching outside
-// src/ would pull an unheadered file into the published bundle with the walk
-// none the wiser, so the boundary is enforced rather than assumed.
-const RELATIVE_IMPORT = /(?:from|import)\s*\(?\s*['"](\.[^'"]*)['"]/g;
-const escapees = [];
-for (const file of walk(coreSrc)) {
-  const text = readFileSync(file, 'utf8');
-  for (const [, specifier] of text.matchAll(RELATIVE_IMPORT)) {
-    const target = resolve(dirname(file), specifier);
-    if (target !== coreSrc && !target.startsWith(`${coreSrc}/`)) {
-      escapees.push(`  ${file.slice(root.length + 1)} -> ${specifier}`);
-    }
-  }
-}
-if (escapees.length > 0) {
-  const list = escapees.join('\n');
+// The header walk covers files that live in src/. What actually ships is
+// whatever the entry pulls in, and tsup does not confine that to src/ — so the
+// authoritative list is esbuild's own. Any regex over import syntax is
+// guessable around (require(), template specifiers, comments); asking the
+// bundler what it bundled is exact, and closes the whole class.
+const esbuildEntry = createRequire(
+  createRequire(join(root, 'packages/core/package.json')).resolve('tsup'),
+).resolve('esbuild');
+const { build } = await import(pathToFileURL(esbuildEntry).href);
+
+let bundled;
+try {
+  bundled = await build({
+    entryPoints: [join(coreSrc, 'index.ts')],
+    bundle: true,
+    write: false,
+    metafile: true,
+    format: 'esm',
+    target: 'es2020',
+    logLevel: 'silent',
+  });
+} catch (error) {
+  // Preflight runs before typecheck, so a syntax or resolution error lands here
+  // first. Say which check failed rather than surfacing a bare esbuild throw.
   console.error(
-    `packages/core/src: relative imports must stay inside src/ — these escape it,\nso they would be bundled without passing the Exhibit A check:\n${list}`,
+    `packages/core: could not bundle src/index.ts to check MPL headers.\n${String(error)}`,
+  );
+  process.exit(1);
+}
+
+const corePrefix = join(root, 'packages/core');
+const bundledCoreFiles = Object.keys(bundled.metafile.inputs)
+  .map((p) => resolve(root, p))
+  .filter((p) => p.startsWith(`${corePrefix}/`) && !p.includes('/node_modules/'));
+
+// JSON cannot carry a comment, so it can never satisfy Exhibit A. Rather than
+// exempt it — which is how an unheadered file gets in — refuse to bundle it.
+const bundledJson = bundledCoreFiles.filter((f) => f.endsWith('.json'));
+if (bundledJson.length > 0) {
+  const list = bundledJson.map((f) => `  ${f.slice(root.length + 1)}`).join('\n');
+  console.error(
+    `packages/core: JSON cannot carry the MPL Exhibit A notice, so it must not be bundled.\nMove the data into a .ts module:\n${list}`,
+  );
+  process.exit(1);
+}
+
+const unheaderedBundled = bundledCoreFiles.filter(
+  (f) => !readFileSync(f, 'utf8').startsWith(EXHIBIT_A),
+);
+if (unheaderedBundled.length > 0) {
+  const list = unheaderedBundled.map((f) => `  ${f.slice(root.length + 1)}`).join('\n');
+  console.error(
+    `packages/core: these files are bundled into the published engine but carry no MPL Exhibit A header:\n${list}`,
   );
   process.exit(1);
 }
