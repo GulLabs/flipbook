@@ -39,6 +39,35 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+// Licensing is a business decision, not an implementation detail. The upstream
+// projects are MIT and the spec requires this fork stay MIT with their notices
+// preserved; the whole adoption case is being the frictionless successor to an
+// abandoned MIT library. An agent relicensed the core to MPL-2.0 once, which
+// is copyleft, contradicts README/MIGRATION/CITATION, and is effectively
+// irreversible once published and adopted. If you are changing this, the
+// repository owner has decided to — not a tool.
+const EXPECTED_LICENSE = 'MIT';
+
+for (const manifest of [
+  'package.json',
+  'packages/core/package.json',
+  'packages/react/package.json',
+]) {
+  const pkg = JSON.parse(readFileSync(join(root, manifest), 'utf8'));
+  if (pkg.license !== EXPECTED_LICENSE) {
+    console.error(
+      `${manifest}: license is ${JSON.stringify(pkg.license)}, expected "${EXPECTED_LICENSE}".\n` +
+        'Relicensing is an owner decision. Revert, or get explicit sign-off first.',
+    );
+    process.exit(1);
+  }
+}
+
+if (!readFileSync(join(root, 'LICENSE'), 'utf8').startsWith('MIT License')) {
+  console.error('LICENSE no longer opens with the MIT License text.');
+  process.exit(1);
+}
+
 const expected = 'GulLabs/flipbook';
 for (const dir of ['packages/core', 'packages/react']) {
   const pkg = JSON.parse(readFileSync(join(root, dir, 'package.json'), 'utf8'));

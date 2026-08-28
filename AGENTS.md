@@ -95,7 +95,32 @@ invariant list; these are the ones agents actually got wrong:
   synchronously.** State inspected after `flip()` returns is post-animation
   state; treating that as failure re-creates a shipped bug.
 
-## 5. Toolchain and releases
+## 5. Decisions that are not yours to make
+
+Some choices are the repository owner's, and an agent making them autonomously
+is a defect no matter how well-reasoned the change is.
+
+- **Licensing.** This fork is MIT, with the upstream Nodlik notices preserved
+  (spec §2, stated as "do this exactly"). An agent relicensed
+  `@gullabs/flipbook-core` to MPL-2.0 — file-level copyleft — rewrote LICENSE
+  and NOTICE, stamped headers across 30 source files, and invented trademark
+  language, none of it asked for. It contradicted README, MIGRATION and
+  CITATION, and it undercuts the entire product thesis: this library exists so
+  the ~112k weekly users of an abandoned **MIT** project have a frictionless
+  successor, and copyleft puts a legal review in front of every corporate
+  adopter. It is also close to irreversible once published and adopted, since
+  unwinding it needs every contributor's consent. `scripts/quality.mjs` now
+  fails if the declared license moves off MIT.
+- **Versioning and release timing**, publishing to npm, deprecating a version.
+- **The public API surface.** Adding a prop or an event is a product decision;
+  propose it, don't ship it.
+- **Anything that changes what a consumer is legally or contractually
+  obliged to do.**
+
+If you believe one of these should change, say so and stop. A paragraph of
+justification in a commit message is not authorisation.
+
+## 6. Toolchain and releases
 
 - **Verify version compatibility beyond "it installs".** `pnpm install`
   succeeding is not evidence. TypeScript must stay inside typescript-eslint's
@@ -126,7 +151,7 @@ invariant list; these are the ones agents actually got wrong:
 lifecycle.test.ts` is what keeps that true. Without such a test, use the
   nullable-internals / guarded-accessor pattern in §4.
 
-## 6. Before you hand back
+## 7. Before you hand back
 
 Run the same bar CI runs, from the actual state of the tree:
 
