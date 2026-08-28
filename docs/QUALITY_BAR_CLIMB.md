@@ -238,6 +238,7 @@ not a product decision (AGENTS.md §2: **do not raise again**).
 | 2026-08-28 | C     | Done — Codex APPROVE (no-unnecessary-condition) |
 | 2026-08-28 | D1    | Done — Codex APPROVE_WITH_NITS                  |
 | 2026-08-28 | D2    | Done — Codex APPROVE                            |
+| 2026-08-28 | D3–D5 | strict-boolean, coverage, typecheck-tests       |
 | 2026-08-28 | D3    | Done — strict-boolean-expressions               |
 | 2026-08-28 | D4    | Done — coverage floors ratchet                  |
 | 2026-08-28 | D5    | Done — typecheck includes tests                 |
