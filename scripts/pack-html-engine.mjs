@@ -35,17 +35,23 @@ body = body
 const out = join(outDir, 'html-engine.js');
 writeFileSync(out, body);
 const bytes = Buffer.byteLength(body);
-console.log('html-engine.js', files.join('+'), bytes, 'bytes', (bytes / 1024).toFixed(2), 'KiB');
+console.log(`html-engine.js ${files.join('+')} ${bytes} B (${(bytes / 1000).toFixed(2)} kB)`);
 
-// Two budgets, both enforced by size-limit as well: raw bytes here, and the
-// brotli number consumers actually pay for. The spec's §5 target is 35 KiB raw
-// and the engine is over it — see docs/QUALITY_BAR_CLIMB.md. This ceiling
-// exists to stop the number drifting further, not to bless it.
-// Honest floor after dropping broken cross-chunk mangle.properties (was 48,
-// briefly claimed 42 with a broken build). Do not raise past 48 (AGENTS.md).
-const RAW_BUDGET_KIB = 44;
+// Raw bytes are a *drift alarm*, not the ratchet. Consumers pay transfer size,
+// which `size-limit` enforces tightly against the brotli number. Enforcing raw
+// bytes to 0.5% precision is what drove helper names down to `iseg`/`lim` and
+// error messages down to "Bad page" for a measured 19-byte return — see
+// docs/QUALITY_BAR_CLIMB.md.
+//
+// Units matter: `size-limit` reads "45 kB" as 45000, so this uses the same
+// decimal convention. Previously this file used KiB (45056) while size-limit
+// used kB (44000), and the 1056-byte disagreement is what left CI red.
+const RAW_ALARM_BYTES = 45_000;
 
-if (bytes > RAW_BUDGET_KIB * 1024) {
-  console.error(`HTML engine exceeds ${RAW_BUDGET_KIB} KiB uncompressed`);
+if (bytes > RAW_ALARM_BYTES) {
+  console.error(
+    `HTML engine raw size ${bytes} B exceeds the ${RAW_ALARM_BYTES} B drift alarm.\n` +
+      'Find the regression; do not raise this (AGENTS.md §2).',
+  );
   process.exit(1);
 }

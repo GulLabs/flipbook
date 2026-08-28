@@ -136,7 +136,7 @@ export abstract class PageCollection {
       return at(this.pages, pageIndex);
     }
 
-    throw new PageFlipError('Invalid page', 'INVALID_PAGE');
+    throw new PageFlipError(`Invalid page index ${pageIndex}`, 'INVALID_PAGE');
   }
 
   /**
@@ -274,7 +274,10 @@ export abstract class PageCollection {
     if (newIndex >= 0 && newIndex < this.getSpread().length) {
       this.currentSpreadIndex = newIndex;
     } else {
-      throw new PageFlipError('Invalid page', 'INVALID_PAGE');
+      throw new PageFlipError(
+        `Invalid spread index ${newIndex} (have ${this.getSpread().length})`,
+        'INVALID_SPREAD',
+      );
     }
   }
 

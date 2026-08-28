@@ -242,21 +242,60 @@ not a product decision (AGENTS.md §2: **do not raise again**).
 
 ## Climb log
 
-
-| Date       | Phase | Event                                           |
-| ---------- | ----- | ----------------------------------------------- |
-| 2026-08-28 | —     | TODO written; baseline measured                 |
-| 2026-08-28 | A     | Done — Codex APPROVE_WITH_NITS                  |
-| 2026-08-28 | B     | Done — Codex APPROVE (NUIA + lifecycle)         |
-| 2026-08-28 | C     | Done — Codex APPROVE (no-unnecessary-condition) |
-| 2026-08-28 | D1    | Done — Codex APPROVE_WITH_NITS                  |
-| 2026-08-28 | D2    | Done — Codex APPROVE                            |
-| 2026-08-28 | D3–D5 | strict-boolean, coverage, typecheck-tests       |
-| 2026-08-28 | D3    | Done — strict-boolean-expressions               |
-| 2026-08-28 | D4    | Done — coverage floors ratchet                  |
-| 2026-08-28 | D5    | Done — typecheck includes tests                 |
+| Date       | Phase | Event                                                 |
+| ---------- | ----- | ----------------------------------------------------- |
+| 2026-08-28 | —     | TODO written; baseline measured                       |
+| 2026-08-28 | A     | Done — Codex APPROVE_WITH_NITS                        |
+| 2026-08-28 | B     | Done — Codex APPROVE (NUIA + lifecycle)               |
+| 2026-08-28 | C     | Done — Codex APPROVE (no-unnecessary-condition)       |
+| 2026-08-28 | D1    | Done — Codex APPROVE_WITH_NITS                        |
+| 2026-08-28 | D2    | Done — Codex APPROVE                                  |
+| 2026-08-28 | D3–D5 | strict-boolean, coverage, typecheck-tests             |
+| 2026-08-28 | D3    | Done — strict-boolean-expressions                     |
+| 2026-08-28 | D4    | Done — coverage floors ratchet                        |
+| 2026-08-28 | D5    | Done — typecheck includes tests                       |
 | 2026-08-28 | size  | Merged quality-guards: extra engine tests + size pass |
+| 2026-08-28 | cov   | Lock-in after engine tests — global + per-area floors |
 
+---
+
+## Coverage lock-in (post engine-test climb)
+
+**Status:** `done` (measured 2026-08-28; floors only move UP)
+
+After the geometry / pointer / fold / canvas / React test climb, global and
+per-area floors were ratcheted to just under measured. `pnpm quality:ci` runs
+both `test:coverage` (global) and `test:coverage-areas` (critical files).
+
+### Global (`vitest.config.ts`)
+
+| Metric     | Floor | Measured |
+| ---------- | ----- | -------- |
+| Lines      | 90    | ~92.2    |
+| Statements | 88    | ~90.2    |
+| Branches   | 74    | ~75.1    |
+| Functions  | 94    | ~95.1    |
+
+### Per-area (`scripts/check-coverage-areas.mjs`)
+
+| File               | Floor L/B | Role                                     |
+| ------------------ | --------- | ---------------------------------------- |
+| FlipCalculation.ts | 93 / 85   | Mirror-invariant fold math               |
+| UI.ts              | 86 / 66   | Pointer / swipe / capture                |
+| HTMLRender.ts      | 89 / 63   | Fold opacity, z-order (cssText)          |
+| HTMLPage.ts        | 98 / 73   | Page draw path                           |
+| Flip.ts            | 86 / 78   | State machine                            |
+| CanvasRender.ts    | 87 / 70   | Minority canvas path (above smoke floor) |
+| ImagePage.ts       | 86 / 64   | Image page draw                          |
+| HTMLFlipBook.tsx   | 92 / 77   | React binding                            |
+| usePageFlip.ts     | 98 / 98   | Hook actions + pre-attach no-ops         |
+
+Do **not** drop a floor to make CI green. If coverage falls, restore the test
+or the path — AGENTS.md §2.
+
+Remaining low-ROI pockets (not area-gated): `Settings.ts` validation branches,
+base `Render.ts` animation edge paths. Prefer invariant / e2e work over chasing
+global 95%+.
 
 ---
 
@@ -267,4 +306,5 @@ pnpm quality:ci
 pnpm lint
 pnpm typecheck
 pnpm test:coverage
+pnpm test:coverage-areas   # after test:coverage; needs coverage/coverage-final.json
 ```

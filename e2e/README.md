@@ -95,3 +95,31 @@ Extra vanilla query params for this suite: `?swipeDistance=N`,
 The vanilla Vite config aliases `@gullabs/flipbook-core` to `packages/core/src`
 so the suite exercises the engine source (same as unit tests), not a mid-flight
 minified `dist`.
+
+## Golden baselines are per-platform
+
+Playwright resolves a screenshot baseline as
+`<name>-<project>-<platform>.png`, so a baseline written on macOS is invisible
+to CI's `ubuntu-latest` runner — the test fails with "A snapshot doesn't
+exist", it does not silently pass. Both sets are committed:
+
+- `*-chromium-darwin.png` / `*-webkit-darwin.png` — local development on macOS
+- `*-chromium-linux.png` / `*-webkit-linux.png` — what CI compares against
+
+Regenerate the Linux set inside the same container image CI uses (requires
+Docker running):
+
+```bash
+pnpm test:e2e:golden:update:linux
+```
+
+That script stages a clean copy of the worktree, installs and builds inside
+`mcr.microsoft.com/playwright:v<version>-noble`, runs the golden suite with
+`--update-snapshots`, and copies the `*-linux.png` files back. Never hand-copy
+macOS baselines to Linux names: font rasterisation and antialiasing differ, and
+you would be blessing a diff you never looked at.
+
+Update the macOS set with `pnpm test:e2e:golden:update`.
+
+**Review every baseline change.** A changed golden is either a real rendering
+regression or an intended visual change — decide which before committing.

@@ -1,6 +1,6 @@
 import { Page, PageDensity, PageOrientation } from './Page';
 import type { Render } from '../Render/Render';
-import { rot } from '../Helper';
+import { rotatePoint } from '../Helper';
 import { FlipDirection } from '../Flip/Flip';
 import type { Point } from '../BasicTypes';
 import { foldFill, foldFillCss } from '../Render/pageBackground';
@@ -100,7 +100,7 @@ export class HTMLPage extends Page {
                 y: p.y - this.state.position.y,
               };
 
-        g = rot(g, { x: 0, y: 0 }, this.state.angle);
+        g = rotatePoint(g, { x: 0, y: 0 }, this.state.angle);
         polygon += `${g.x}px ${g.y}px, `;
       }
     }

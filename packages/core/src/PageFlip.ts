@@ -4,7 +4,7 @@ import type { PageRect, Point } from './BasicTypes';
 import { Flip, FlipCorner, FlippingState } from './Flip/Flip';
 import type { Orientation, Render } from './Render/Render';
 import { HTMLUI } from './UI/HTMLUI';
-import { dist } from './Helper';
+import { distanceBetween } from './Helper';
 import type { Page } from './Page/Page';
 import { EventObject } from './Event/EventObject';
 import { HTMLRender } from './Render/HTMLRender';
@@ -176,8 +176,10 @@ export class PageFlip extends EventObject {
 
   /**
    * Load pages from images on the Canvas mode.
-   * Canvas renderer is a separate chunk so the HTML engine stays within
-   * packages/core size-limit (48 kB raw / 12 kB brotli (debt; spec target 35 kB) on html-engine).
+   *
+   * The canvas renderer is a separate chunk, so an HTML-only consumer never
+   * downloads it. Budgets live in `packages/core/package.json`; the enforced
+   * one is brotli, which is what a consumer actually pays for.
    */
   public loadFromImages(imagesHref: string[]): Promise<void> {
     return import('./canvas-loader')
@@ -265,8 +267,14 @@ export class PageFlip extends EventObject {
 
     // updateSettings can run before create() wires render/ui (React effects).
 
-    if (this.ui && mouseChanged) {
-      this.ui.refreshHandlers();
+    if (this.ui) {
+      if (mouseChanged) {
+        this.ui.refreshHandlers();
+      }
+      // Size-shaped settings are stamped onto the host element, so a changed
+      // `width` / `height` / `size` has to be restamped here. Otherwise the
+      // only way to resize a book is to rebuild the engine.
+      this.ui.applyHostSize(this.setting);
     }
 
     if (this.render) {
@@ -503,7 +511,7 @@ export class PageFlip extends EventObject {
     if (!this.isUserTouch && !isTouch && this.setting.showPageCorners) {
       this.flipController?.showCorner(pos); // fold Page Corner
     } else if (this.isUserTouch) {
-      if (dist(this.mousePosition, pos) > 5) {
+      if (distanceBetween(this.mousePosition, pos) > 5) {
         this.isUserMove = true;
         this.flipController?.fold(pos);
       }

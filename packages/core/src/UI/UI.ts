@@ -69,25 +69,38 @@ export abstract class UI {
 
     this.app = app;
 
-    const k = this.app.getSettings().usePortrait ? 1 : 2;
-
-    inBlock.style.minWidth = `${setting.minWidth * k}px`;
-    inBlock.style.minHeight = `${setting.minHeight}px`;
-
-    if (setting.size === SizeType.FIXED) {
-      inBlock.style.minWidth = `${setting.width * k}px`;
-      inBlock.style.minHeight = `${setting.height}px`;
-    }
-
-    if (setting.autoSize) {
-      inBlock.style.width = '100%';
-      inBlock.style.maxWidth = `${setting.maxWidth * 2}px`;
-    }
-
-    inBlock.style.display = 'block';
+    this.applyHostSize(setting);
 
     this.swipeDistance = setting.swipeDistance;
     this.observeResize();
+  }
+
+  /**
+   * Stamp the host element's sizing constraints from the current settings.
+   *
+   * Also called on `updateSettings`, so a responsive `width` / `height` is a
+   * restyle rather than a teardown. Without this the React binding had to
+   * treat size as constructor-only and rebuild the whole engine on every
+   * resize step — losing the current page and any in-flight turn.
+   */
+  public applyHostSize(setting: FlipSetting = this.app.getSettings()): void {
+    const host = this.parentElement;
+    const k = this.app.getSettings().usePortrait ? 1 : 2;
+
+    host.style.minWidth = `${setting.minWidth * k}px`;
+    host.style.minHeight = `${setting.minHeight}px`;
+
+    if (setting.size === SizeType.FIXED) {
+      host.style.minWidth = `${setting.width * k}px`;
+      host.style.minHeight = `${setting.height}px`;
+    }
+
+    if (setting.autoSize) {
+      host.style.width = '100%';
+      host.style.maxWidth = `${setting.maxWidth * 2}px`;
+    }
+
+    host.style.display = 'block';
   }
 
   public destroy(): void {

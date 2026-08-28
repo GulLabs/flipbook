@@ -34,14 +34,14 @@
   },
   "size-limit": [
     {
-      "name": "html-engine (raw)",
+      "name": "html-engine (raw, drift alarm)",
       "path": "size-check/html-engine.js",
-      "limit": "44 kB",
+      "limit": "45 kB",
       "gzip": false,
       "brotli": false
     },
     {
-      "name": "html-engine (brotli)",
+      "name": "html-engine (brotli, the budget consumers pay)",
       "path": "size-check/html-engine.js",
       "limit": "11 kB"
     }

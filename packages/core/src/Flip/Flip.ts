@@ -1,7 +1,7 @@
 import type { Render } from '../Render/Render';
 import { Orientation } from '../Render/Render';
 import type { PageFlip } from '../PageFlip';
-import { cords } from '../Helper';
+import { pointsBetween } from '../Helper';
 import type { PageRect, Point } from '../BasicTypes';
 import { FlipCalculation } from './FlipCalculation';
 import type { Page } from '../Page/Page';
@@ -341,7 +341,7 @@ export class Flip {
    * @param {boolean} needReset - reset the flipping process at the end of the animation
    */
   private animateFlippingTo(start: Point, dest: Point, isTurned: boolean, needReset = true): void {
-    const points = cords(start, dest);
+    const points = pointsBetween(start, dest);
 
     // Create frames
     const frames = [];

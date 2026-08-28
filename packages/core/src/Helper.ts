@@ -1,7 +1,7 @@
 import type { Point, Rect, Segment } from './BasicTypes';
 
 /** Distance between two points, or Infinity if either is null. */
-export function dist(a: Point | null, b: Point | null): number {
+export function distanceBetween(a: Point | null, b: Point | null): number {
   if (a === null || b === null) return Infinity;
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -9,7 +9,7 @@ export function dist(a: Point | null, b: Point | null): number {
 }
 
 /** Angle (radians) between two line segments. */
-export function ang(a: Segment, b: Segment): number {
+export function angleBetweenSegments(a: Segment, b: Segment): number {
   const A1 = a[0].y - a[1].y;
   const A2 = b[0].y - b[1].y;
   const B1 = a[1].x - a[0].x;
@@ -20,7 +20,7 @@ export function ang(a: Segment, b: Segment): number {
 }
 
 /** Return `pos` if inside `rect`, else null. */
-export function inRect(rect: Rect, pos: Point | null): Point | null {
+export function pointInRect(rect: Rect, pos: Point | null): Point | null {
   if (pos === null) return null;
   if (
     pos.x >= rect.left &&
@@ -34,15 +34,15 @@ export function inRect(rect: Rect, pos: Point | null): Point | null {
 }
 
 /** Rotate `p` around `o` by `a` radians. */
-export function rot(p: Point, o: Point, a: number): Point {
+export function rotatePoint(p: Point, o: Point, a: number): Point {
   const c = Math.cos(a);
   const s = Math.sin(a);
   return { x: p.x * c + p.y * s + o.x, y: p.y * c - p.x * s + o.y };
 }
 
 /** Clamp `p` to the circle at `c` with the given radius. */
-export function lim(c: Point, radius: number, p: Point): Point {
-  if (dist(c, p) <= radius) return p;
+export function limitToCircle(c: Point, radius: number, p: Point): Point {
+  if (distanceBetween(c, p) <= radius) return p;
 
   const a = c.x;
   const b = c.y;
@@ -62,12 +62,12 @@ export function lim(c: Point, radius: number, p: Point): Point {
 }
 
 /** Intersection of two segments, or null if outside `border` / parallel. */
-export function iseg(border: Rect, one: Segment, two: Segment): Point | null {
-  return inRect(border, iline(one, two));
+export function intersectSegments(border: Rect, one: Segment, two: Segment): Point | null {
+  return pointInRect(border, intersectLines(one, two));
 }
 
 /** Intersection of two infinite lines, or null if parallel. */
-export function iline(one: Segment, two: Segment): Point | null {
+export function intersectLines(one: Segment, two: Segment): Point | null {
   const A1 = one[0].y - one[1].y;
   const A2 = two[0].y - two[1].y;
   const B1 = one[1].x - one[0].x;
@@ -81,12 +81,13 @@ export function iline(one: Segment, two: Segment): Point | null {
   const y = -((A1 * C2 - A2 * C1) / den);
 
   if (isFinite(x) && isFinite(y)) return { x, y };
-  if (Math.abs(det1 - det2) < 0.1) throw new Error('Segment included');
+  if (Math.abs(det1 - det2) < 0.1)
+    throw new Error('Segments are collinear: no single intersection point');
   return null;
 }
 
 /** 1px-step point list from `a` to `b` (inclusive). */
-export function cords(a: Point, b: Point): Point[] {
+export function pointsBetween(a: Point, b: Point): Point[] {
   const sx = Math.abs(a.x - b.x);
   const sy = Math.abs(a.y - b.y);
   const len = Math.max(sx, sy);

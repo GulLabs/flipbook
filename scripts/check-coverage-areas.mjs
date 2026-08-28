@@ -18,17 +18,17 @@ const AREAS = [
   {
     label: 'FlipCalculation.ts',
     match: /[/\\]Flip[/\\]FlipCalculation\.ts$/,
-    lines: 90,
-    branches: 80,
+    lines: 93,
+    branches: 85,
   },
-  { label: 'UI.ts', match: /[/\\]UI[/\\]UI\.ts$/, lines: 80, branches: 65 },
-  { label: 'HTMLRender.ts', match: /[/\\]Render[/\\]HTMLRender\.ts$/, lines: 70, branches: 55 },
-  { label: 'HTMLPage.ts', match: /[/\\]Page[/\\]HTMLPage\.ts$/, lines: 70, branches: 55 },
-  { label: 'Flip.ts', match: /[/\\]Flip[/\\]Flip\.ts$/, lines: 85, branches: 70 },
-  { label: 'CanvasRender.ts', match: /[/\\]Render[/\\]CanvasRender\.ts$/, lines: 50, branches: 40 },
-  { label: 'ImagePage.ts', match: /[/\\]Page[/\\]ImagePage\.ts$/, lines: 50, branches: 40 },
-  { label: 'HTMLFlipBook.tsx', match: /[/\\]HTMLFlipBook\.tsx$/, lines: 85, branches: 75 },
-  { label: 'usePageFlip.ts', match: /[/\\]usePageFlip\.ts$/, lines: 85, branches: 75 },
+  { label: 'UI.ts', match: /[/\\]UI[/\\]UI\.ts$/, lines: 86, branches: 66 },
+  { label: 'HTMLRender.ts', match: /[/\\]Render[/\\]HTMLRender\.ts$/, lines: 89, branches: 63 },
+  { label: 'HTMLPage.ts', match: /[/\\]Page[/\\]HTMLPage\.ts$/, lines: 98, branches: 73 },
+  { label: 'Flip.ts', match: /[/\\]Flip[/\\]Flip\.ts$/, lines: 86, branches: 78 },
+  { label: 'CanvasRender.ts', match: /[/\\]Render[/\\]CanvasRender\.ts$/, lines: 87, branches: 70 },
+  { label: 'ImagePage.ts', match: /[/\\]Page[/\\]ImagePage\.ts$/, lines: 86, branches: 64 },
+  { label: 'HTMLFlipBook.tsx', match: /[/\\]HTMLFlipBook\.tsx$/, lines: 92, branches: 77 },
+  { label: 'usePageFlip.ts', match: /[/\\]usePageFlip\.ts$/, lines: 98, branches: 98 },
 ];
 
 function pct(hit, total) {

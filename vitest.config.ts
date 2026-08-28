@@ -7,7 +7,9 @@ const reactSrc = path.resolve(import.meta.dirname, 'packages/react/src/index.ts'
 /**
  * Vitest workspace projects + v8 coverage.
  * Pattern mirrors ai-studio vitest.config.base + any-llm thresholds style.
- * Thresholds start pragmatic for a fork modernization; ratchet up as tests grow.
+ *
+ * Global floors are the coarse net; `scripts/check-coverage-areas.mjs` holds the
+ * per-file floors that stop the average from hiding an untested renderer.
  */
 export default defineConfig({
   resolve: {
@@ -31,16 +33,16 @@ export default defineConfig({
         '**/dist/**',
         '**/node_modules/**',
         '**/types.ts',
-        '**/html-flip-book/settings.ts',
       ],
-      // Floor for CI. Only move UP (AGENTS.md §2). Incoming engine tests should
-      // lift coverage; if quality:ci fails, keep the higher of the two floors
-      // that actually pass.
+      // Ratcheted 2026-08-28 to just under measured suite
+      // (stmts ~90.2 / branches ~75.1 / fns ~95.1 / lines ~92.2).
+      // Floors only move UP (AGENTS.md §2). Per-file floors live in
+      // scripts/check-coverage-areas.mjs (also run from quality:ci).
       thresholds: {
-        lines: 75,
-        functions: 75,
-        branches: 60,
-        statements: 75,
+        lines: 90,
+        functions: 94,
+        branches: 74,
+        statements: 88,
       },
     },
     projects: [

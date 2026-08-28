@@ -16,9 +16,10 @@ pnpm build:all          # packages + examples
 pnpm typecheck          # packages + examples
 pnpm lint               # ESLint flat config, --max-warnings=0 (incl. examples)
 pnpm test               # Vitest unit (core + react projects)
-pnpm test:coverage      # v8 coverage + thresholds
+pnpm test:coverage      # v8 coverage + global floors (see vitest.config.ts)
+pnpm test:coverage-areas  # per-file floors on Flip/UI/Render/React critical paths
 pnpm quality            # fast local: preflight + typecheck + lint + test
-pnpm quality:ci         # **merge bar**: + format:check + coverage + package build + size + isolated types
+pnpm quality:ci         # **merge bar**: + format + coverage + areas + build + size + isolated types
 pnpm quality:examples   # demo builds only
 pnpm quality:full       # quality:ci + examples + full audit
 ```

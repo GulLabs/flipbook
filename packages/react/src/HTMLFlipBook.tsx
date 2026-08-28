@@ -66,8 +66,16 @@ function pickSettings(props: HTMLFlipBookProps): Partial<FlipSetting> {
   return out;
 }
 
+/**
+ * Settings the engine can only read at construction.
+ *
+ * `width` / `height` are deliberately NOT here: they are stamped onto the host
+ * element and recalculated by `updateSettings`, so a responsive book restyles
+ * instead of rebuilding. Keying on them destroyed and recreated the engine on
+ * every resize step, losing the current page and any in-flight turn.
+ */
 function remountKeyOf(props: HTMLFlipBookProps): string {
-  return [props.showCover, props.size, props.width, props.height].join(':');
+  return [props.showCover, props.size].join(':');
 }
 
 /**
@@ -349,6 +357,8 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // settings object is rebuilt each render; identity is not load-bearing.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
+      props.width,
+      props.height,
       props.usePortrait,
       props.useMouseEvents,
       props.flippingTime,

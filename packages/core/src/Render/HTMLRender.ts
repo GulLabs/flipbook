@@ -3,7 +3,7 @@ import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { PageDensity, PageOrientation } from '../Page/Page';
 import type { HTMLPage } from '../Page/HTMLPage';
-import { rot } from '../Helper';
+import { rotatePoint } from '../Helper';
 import type { FlipSetting } from '../Settings';
 import { shouldDrawBottomPage } from './bottomPage';
 import { PageFlipError } from '../errors';
@@ -159,7 +159,7 @@ export class HTMLRender extends Render {
               y: p.y - shadow.pos.y,
             };
 
-      g = rot(g, { x: shadowTranslate, y: 100 }, angle);
+      g = rotatePoint(g, { x: shadowTranslate, y: 100 }, angle);
 
       polygon += `${g.x}px ${g.y}px, `;
     }
@@ -208,7 +208,7 @@ export class HTMLRender extends Render {
               y: p.y - shadow.pos.y,
             };
 
-      g = rot(g, { x: shadowTranslate, y: 100 }, angle);
+      g = rotatePoint(g, { x: shadowTranslate, y: 100 }, angle);
 
       polygon += `${g.x}px ${g.y}px, `;
     }

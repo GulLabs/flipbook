@@ -36,6 +36,20 @@ does.
   files exist, or two size-limit entries that both measure brotli while
   claiming one is raw, is theater. If you add a gate, prove it can fail: break
   the thing, watch the gate go red, fix it back.
+- **A gate you did not wire up is not a gate.** `scripts/check-coverage-areas.mjs`
+  was written with per-file floors, given an npm script, and left out of
+  `quality:ci` — so nobody noticed it failed on the very code that shipped it.
+  Adding a check means adding it to `quality:ci` _and_ watching it run.
+- **Never push with the gate red.** `pnpm quality:ci` is the definition of done.
+  It has been pushed red three separate times: an unformatted markdown file, a
+  size budget the committed code already exceeded, and a coverage floor the
+  committed code missed. Run it; do not assume.
+- **Optimising for a number must be justified against what it costs.** Helper
+  names were golfed to `iseg`/`lim`/`ang` and error messages to "Bad page" to
+  chase a raw-byte budget. Measured return: **19 bytes** — because those symbols
+  are module-internal and terser already mangles them. Measure the win before
+  you spend readability on it, and prefer the metric consumers actually pay
+  (transfer size) over a proxy.
 
 ## 3. Scope of a change
 
@@ -100,6 +114,17 @@ invariant list; these are the ones agents actually got wrong:
 - **Prove the publish artifact.** Before touching release code: delete `dist/`,
   `pnpm pack` both packages, list the tarballs, load the CJS entry in plain
   Node. Empty-tarball and broken-require bugs are found here, not on npm.
+- **CI runs Linux; your laptop does not.** Anything platform-shaped has to be
+  verified for the runner, not just locally. Screenshot baselines are named
+  `<name>-<project>-<platform>.png`, so a macOS-only set fails every CI run —
+  regenerate with `pnpm test:e2e:golden:update:linux`. Likewise, each CI job is
+  a fresh runner: `needs:` orders jobs, it does not share `dist/`, so a job that
+  needs built packages must build them itself.
+- **Definite assignment (`!`) is allowed only for a constructor invariant you
+  can point at, and it must be pinned by a test.** `UI.distElement!` is sound
+  because `PageFlip.ui` stays null until a load completes; `packages/core/tests/
+lifecycle.test.ts` is what keeps that true. Without such a test, use the
+  nullable-internals / guarded-accessor pattern in §4.
 
 ## 6. Before you hand back
 

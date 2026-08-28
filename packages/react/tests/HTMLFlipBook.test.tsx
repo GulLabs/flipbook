@@ -579,3 +579,94 @@ describe('usePageFlip actions + keyboard / error paths', () => {
     });
   });
 });
+
+describe('usePageFlip before a book is attached', () => {
+  /**
+   * Consumers call these from event handlers that can fire before mount or
+   * after unmount — the hook's `?.` / `?? false` fallbacks are that contract,
+   * not dead code.
+   */
+  test('actions are safe no-ops and report failure while ref is unset', () => {
+    const seen: { next?: boolean; prev?: boolean } = {};
+
+    function Harness() {
+      const book = usePageFlip();
+      // Rendered without <HTMLFlipBook>, so `book.ref.current` stays null.
+      return (
+        <button
+          type="button"
+          onClick={() => {
+            seen.next = book.flipNext();
+            seen.prev = book.flipPrev();
+            book.turnToPage(2);
+            book.flipToPage(3);
+          }}
+        >
+          act
+        </button>
+      );
+    }
+
+    render(<Harness />);
+    expect(() => fireEvent.click(screen.getByText('act'))).not.toThrow();
+
+    // A turn that never reached an engine must report `false`, not `undefined`:
+    // callers branch on this to show "already at the last page" affordances.
+    expect(seen.next).toBe(false);
+    expect(seen.prev).toBe(false);
+  });
+});
+
+describe('responsive size', () => {
+  /**
+   * A book sized from its container (`width={measuredWidth}`) changes width on
+   * every resize step. Keying the engine's identity on width meant each of
+   * those destroyed and rebuilt the engine — losing the current page, the rAF
+   * loop and any in-flight turn. Size is a restyle, not a remount.
+   */
+  test('changing width restyles the host instead of rebuilding the engine', async () => {
+    let inits = 0;
+
+    function Harness() {
+      const [width, setWidth] = useState(300);
+      return (
+        <>
+          <button type="button" onClick={() => setWidth(320)}>
+            resize
+          </button>
+          <HTMLFlipBook
+            width={width}
+            height={400}
+            flippingTime={0}
+            onInit={() => {
+              inits += 1;
+            }}
+          >
+            {pages('a', 'b', 'c', 'd')}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
+    });
+
+    const host = container.querySelector('.stf__parent');
+    expect(host).toBeInstanceOf(HTMLElement);
+    await waitFor(() => {
+      expect(inits).toBe(1);
+    });
+
+    fireEvent.click(screen.getByText('resize'));
+
+    // The new width reaches the host element…
+    await waitFor(() => {
+      expect((host as HTMLElement).style.minWidth).toBe('320px');
+    });
+
+    // …without a second `init`, which would mean a fresh engine.
+    expect(inits).toBe(1);
+  });
+});

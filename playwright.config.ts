@@ -23,8 +23,11 @@ export default defineConfig({
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
   webServer: {
+    // The example typechecks against the core package's built `dist`, so the
+    // packages must be built here: the CI e2e job runs on a fresh runner and
+    // does not inherit the `verify` job's build output.
     command:
-      'pnpm --filter example-vanilla build && pnpm --filter example-vanilla preview --host 127.0.0.1 --port 4173',
+      'pnpm build && pnpm --filter example-vanilla build && pnpm --filter example-vanilla preview --host 127.0.0.1 --port 4173',
     port: 4173,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

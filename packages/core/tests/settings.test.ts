@@ -50,4 +50,55 @@ describe('Settings.getSettings (shipped)', () => {
     });
     expect(settings.direction).toBe('rtl');
   });
+
+  test('rejects invalid size, dimensions, and direction', () => {
+    expect(() =>
+      new Settings().getSettings({
+        width: 100,
+        height: 200,
+        size: 'fluid' as 'fixed',
+      }),
+    ).toThrow(PageFlipError);
+
+    expect(() => new Settings().getSettings({ width: 0, height: 200 })).toThrow(PageFlipError);
+    expect(() => new Settings().getSettings({ width: 100, height: -1 })).toThrow(PageFlipError);
+
+    expect(() =>
+      new Settings().getSettings({
+        width: 100,
+        height: 200,
+        direction: 'ttb' as 'ltr',
+      }),
+    ).toThrow(PageFlipError);
+  });
+
+  test('stretch size fills missing min/max bounds', () => {
+    const settings = new Settings().getSettings({
+      width: 300,
+      height: 400,
+      size: 'stretch',
+      minWidth: 0,
+      maxWidth: 0,
+      minHeight: 0,
+      maxHeight: 0,
+    });
+    expect(settings.minWidth).toBe(100);
+    expect(settings.maxWidth).toBe(2000);
+    expect(settings.minHeight).toBe(100);
+    expect(settings.maxHeight).toBe(2000);
+  });
+
+  test('fixed size pins min/max to width/height', () => {
+    const settings = new Settings().getSettings({
+      width: 320,
+      height: 480,
+      size: 'fixed',
+      minWidth: 1,
+      maxWidth: 9999,
+    });
+    expect(settings.minWidth).toBe(320);
+    expect(settings.maxWidth).toBe(320);
+    expect(settings.minHeight).toBe(480);
+    expect(settings.maxHeight).toBe(480);
+  });
 });

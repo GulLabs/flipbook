@@ -1,4 +1,4 @@
-import { ang, dist, iseg, lim } from '../Helper';
+import { angleBetweenSegments, distanceBetween, intersectSegments, limitToCircle } from '../Helper';
 import type { Point, Rect, RectPoints, Segment } from '../BasicTypes';
 import { FlipCorner, FlipDirection } from './enums';
 import { at } from '../arrayAccess';
@@ -114,7 +114,7 @@ export class FlipCalculation {
     }
 
     if (this.sideIntersectPoint !== null && this.topIntersectPoint !== null) {
-      if (dist(this.sideIntersectPoint, this.topIntersectPoint) >= 10) {
+      if (distanceBetween(this.sideIntersectPoint, this.topIntersectPoint) >= 10) {
         result.push(this.sideIntersectPoint);
       }
     } else {
@@ -214,7 +214,7 @@ export class FlipCalculation {
    * Get the rotate angle of the shadow
    */
   public getShadowAngle(): number {
-    const angle = ang(this.getSegmentToShadowLine(), [
+    const angle = angleBetweenSegments(this.getSegmentToShadowLine(), [
       { x: 0, y: 0 },
       { x: this.pageWidth, y: 0 },
     ]);
@@ -258,7 +258,8 @@ export class FlipCalculation {
     if (top < 0) angle = -angle;
 
     const da = Math.PI - angle;
-    if (!isFinite(angle) || (da >= 0 && da < 0.003)) throw new Error('G too small');
+    if (!isFinite(angle) || (da >= 0 && da < 0.003))
+      throw new Error('The G point is too small to compute a fold angle');
 
     if (this.corner === FlipCorner.BOTTOM) angle = -angle;
 
@@ -320,7 +321,7 @@ export class FlipCalculation {
     };
 
     if (this.corner === FlipCorner.TOP) {
-      this.topIntersectPoint = iseg(
+      this.topIntersectPoint = intersectSegments(
         boundRect,
         [pos, this.rect.topRight],
         [
@@ -329,7 +330,7 @@ export class FlipCalculation {
         ],
       );
 
-      this.sideIntersectPoint = iseg(
+      this.sideIntersectPoint = intersectSegments(
         boundRect,
         [pos, this.rect.bottomLeft],
         [
@@ -338,7 +339,7 @@ export class FlipCalculation {
         ],
       );
 
-      this.bottomIntersectPoint = iseg(
+      this.bottomIntersectPoint = intersectSegments(
         boundRect,
         [this.rect.bottomLeft, this.rect.bottomRight],
         [
@@ -347,7 +348,7 @@ export class FlipCalculation {
         ],
       );
     } else {
-      this.topIntersectPoint = iseg(
+      this.topIntersectPoint = intersectSegments(
         boundRect,
         [this.rect.topLeft, this.rect.topRight],
         [
@@ -356,7 +357,7 @@ export class FlipCalculation {
         ],
       );
 
-      this.sideIntersectPoint = iseg(
+      this.sideIntersectPoint = intersectSegments(
         boundRect,
         [pos, this.rect.topLeft],
         [
@@ -365,7 +366,7 @@ export class FlipCalculation {
         ],
       );
 
-      this.bottomIntersectPoint = iseg(
+      this.bottomIntersectPoint = intersectSegments(
         boundRect,
         [this.rect.bottomLeft, this.rect.bottomRight],
         [
@@ -379,7 +380,7 @@ export class FlipCalculation {
   private checkPositionAtCenterLine(checkedPos: Point, centerOne: Point, centerTwo: Point): Point {
     let result = checkedPos;
 
-    const tmp = lim(centerOne, this.pageWidth, result);
+    const tmp = limitToCircle(centerOne, this.pageWidth, result);
     if (result !== tmp) {
       result = tmp;
       this.updateAngleAndGeometry(result);
@@ -396,7 +397,7 @@ export class FlipCalculation {
     }
 
     if (checkPointOne.x <= 0) {
-      const bottomPoint = lim(centerTwo, rad, checkPointTwo);
+      const bottomPoint = limitToCircle(centerTwo, rad, checkPointTwo);
 
       if (bottomPoint !== result) {
         result = bottomPoint;

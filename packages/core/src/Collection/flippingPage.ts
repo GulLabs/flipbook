@@ -18,7 +18,7 @@ export function getPortraitFlippingPage<T extends { newTemporaryCopy(): T }>(
   // Runtime guard: index may be OOB even if TS array access is typed as T.
 
   if (current === undefined) {
-    throw new PageFlipError('Bad spread', 'INVALID_SPREAD');
+    throw new PageFlipError(`Invalid current spread index ${currentSpreadIndex}`, 'INVALID_SPREAD');
   }
 
   if (direction === FlipDirection.FORWARD) {
@@ -30,7 +30,10 @@ export function getPortraitFlippingPage<T extends { newTemporaryCopy(): T }>(
     const previous = pages[currentSpreadIndex - 1];
 
     if (previous === undefined) {
-      throw new PageFlipError('Bad page', 'INVALID_PAGE');
+      throw new PageFlipError(
+        `No previous page at index ${currentSpreadIndex - 1} for portrait BACK`,
+        'INVALID_PAGE',
+      );
     }
     return previous;
   }
