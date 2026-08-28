@@ -1,5 +1,5 @@
-import { Render } from '../Render/Render';
-import { Point } from '../BasicTypes';
+import type { Render } from '../Render/Render';
+import type { Point } from '../BasicTypes';
 
 /**
  * State of the page on the basis of which rendering
@@ -8,8 +8,8 @@ export interface PageState {
     /** Page rotation angle */
     angle: number;
 
-    /** Page scope */
-    area: Point[];
+    /** Page scope. `null` entries are skipped by the renderers. */
+    area: (Point | null)[];
 
     /** Page position */
     position: Point;
@@ -127,7 +127,7 @@ export abstract class Page {
      * 
      * @param {Point[]} area 
      */
-    public setArea(area: Point[]): void {
+    public setArea(area: (Point | null)[]): void {
         this.state.area = area;
     }
 
@@ -181,6 +181,6 @@ export abstract class Page {
     }
 
     public abstract newTemporaryCopy(): Page;
-    public abstract getTemporaryCopy(): Page;
+    public abstract getTemporaryCopy(): Page | null;
     public abstract hideTemporaryCopy(): void;
 }

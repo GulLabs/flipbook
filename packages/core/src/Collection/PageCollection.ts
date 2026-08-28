@@ -1,6 +1,8 @@
-import { Orientation, Render } from '../Render/Render';
-import { Page, PageDensity } from '../Page/Page';
-import { PageFlip } from '../PageFlip';
+import type { Render } from '../Render/Render';
+import { Orientation } from '../Render/Render';
+import type { Page} from '../Page/Page';
+import { PageDensity } from '../Page/Page';
+import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { getPortraitFlippingPage } from './flippingPage';
 
@@ -80,6 +82,14 @@ export abstract class PageCollection {
         return this.render.getOrientation() === Orientation.LANDSCAPE
             ? this.landscapeSpread
             : this.portraitSpread;
+    }
+
+    /**
+     * Number of spreads in the current orientation. In portrait this equals the
+     * page count; in landscape two pages usually share one spread.
+     */
+    public getSpreadCount(): number {
+        return this.getSpread().length;
     }
 
     /**
@@ -203,7 +213,9 @@ export abstract class PageCollection {
      * Show next spread
      */
     public showNext(): void {
-        if (this.currentSpreadIndex < this.getSpread().length) {
+        // `length - 1`, not `length`: upstream walked one past the end and then
+        // read `getSpread()[length]`, which throws inside `showSpread`.
+        if (this.currentSpreadIndex < this.getSpread().length - 1) {
             this.currentSpreadIndex++;
             this.showSpread();
         }
@@ -231,7 +243,7 @@ export abstract class PageCollection {
      * @param {number} pageNum - Page index (from 0s)
      */
     public show(pageNum: number | null = null): void {
-        if (pageNum === null) pageNum = this.currentPageIndex;
+        pageNum ??= this.currentPageIndex;
 
         if (pageNum < 0 || pageNum >= this.pages.length) return;
 

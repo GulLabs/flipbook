@@ -26,20 +26,21 @@ import HTMLFlipBook from '@gullabs/react-flipbook';
 
 ## Breaking changes (3.0.0)
 
-| Change | What to do |
-| ------ | ---------- |
-| Package names | `@gullabs/flipbook-core`, `@gullabs/react-flipbook`. Do not use `page-flip` / `StPageFlip` as package names. |
-| `flippingTime: 0` | Now means **instant**. Upstream threw `Invalid flipping time`. |
-| `respectReducedMotion` | Defaults to `true`. Turns become instant under `prefers-reduced-motion`. Set `false` to keep animating. |
-| `pageBackground` | New, default `#fff`. Set to your paper color so the fold is opaque. |
-| `direction: 'rtl'` | New. Inverts swipe next/prev and React keyboard arrows. Click/corner hit-testing stays LTR. Programmatic `flipNext`/`flipPrev` still follow page index. |
-| `turnToPage` / `flipToPage` (`PageFlip.flip`) | Throw `PageFlipError` on setup failure instead of silently advancing one page. |
-| React types | `react` is a **peer** (`>=18`). Isolated pnpm `node_modules` type-checks props. |
-| React 18/19 | Imperative handle is attached via `forwardRef` so `ref.current.pageFlip()` works on React 18 and 19. React 19 can also pass `ref` as a prop. |
-| `PageFlip.destroy()` | No longer removes the host DOM node (the React tree owns it). |
-| CSS | Injected at runtime. Also exported as `@gullabs/flipbook-core/style.css`. |
-| `updateFromHtml` | Rebuilds `PageCollection` and emits typed `update` **and** `collectionRebuild`. Attach listeners before calling (the binding does this). |
-| Constructor-only settings | `updateSettings(partial)` restamps `usePortrait` / `useMouseEvents` / etc. The React binding remounts when `showCover` / `size` / `width` / `height` change. |
+| Change                                        | What to do                                                                                                                                                                                                                                     |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Package names                                 | `@gullabs/flipbook-core`, `@gullabs/react-flipbook`. Do not use `page-flip` / `StPageFlip` as package names.                                                                                                                                   |
+| `flippingTime: 0`                             | Now means **instant**. Upstream threw `Invalid flipping time`.                                                                                                                                                                                 |
+| `respectReducedMotion`                        | Defaults to `true`. Turns become instant under `prefers-reduced-motion`. Set `false` to keep animating.                                                                                                                                        |
+| `pageBackground`                              | New, default `#fff`. Set to your paper color so the fold is opaque.                                                                                                                                                                            |
+| `direction: 'rtl'`                            | New. Pointer coordinates are mirrored in the UI so click, corner fold, and swipe share one RTL mapping. Programmatic `flipNext`/`flipPrev` still follow page index (not mirrored).                                                             |
+| `turnToPage` / `flipToPage` (`PageFlip.flip`) | Throw `PageFlipError` on setup failure instead of silently advancing one page.                                                                                                                                                                 |
+| React types                                   | `react` is a **peer** (`>=18`). Isolated pnpm `node_modules` type-checks props.                                                                                                                                                                |
+| React 18/19                                   | Imperative handle uses `forwardRef` so `ref.current.pageFlip()` works on React 18 (peer `>=18`). Spec §6.9 “ref as prop / no forwardRef” is **waived** for 3.0.0 — dropping `forwardRef` would break React 18.                                 |
+| Core min size                                 | Spec §5 quoted 35 kB min vs upstream ~26 kB min (**gzip**). Unmodified StPageFlip 2.0.7 minifies to **~42 kB** ESM. CI enforces HTML engine (no canvas chunk) **≤ 45 kB uncompressed** and **≤ 15 kB gzip**. Canvas is a separate async chunk. |
+| `PageFlip.destroy()`                          | No longer removes the host DOM node (the React tree owns it).                                                                                                                                                                                  |
+| CSS                                           | Injected at runtime. Also exported as `@gullabs/flipbook-core/style.css`.                                                                                                                                                                      |
+| `updateFromHtml`                              | Rebuilds `PageCollection` and emits typed `update` **and** `collectionRebuild`. Attach listeners before calling (the binding does this).                                                                                                       |
+| Constructor-only settings                     | `updateSettings(partial)` restamps `usePortrait` / `useMouseEvents` / etc. The React binding remounts when `showCover` / `size` / `width` / `height` change.                                                                                   |
 
 ## Compatible props
 

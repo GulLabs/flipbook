@@ -1,8 +1,8 @@
-import { Orientation, Render } from './Render';
-import { PageFlip } from '../PageFlip';
+import { Orientation, Render, type Shadow } from './Render';
+import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { PageOrientation } from '../Page/Page';
-import { FlipSetting } from '../Settings';
+import type { FlipSetting } from '../Settings';
 
 /**
  * Class responsible for rendering the Canvas book
@@ -44,9 +44,11 @@ export class CanvasRender extends Render {
 
         if (this.flippingPage != null) this.flippingPage.draw();
 
-        if (this.shadow != null) {
-            this.drawOuterShadow();
-            this.drawInnerShadow();
+        const shadow = this.shadow;
+
+        if (shadow !== null) {
+            this.drawOuterShadow(shadow);
+            this.drawInnerShadow(shadow);
         }
 
         const rect = this.getRect();
@@ -87,7 +89,7 @@ export class CanvasRender extends Render {
         this.ctx.restore();
     }
 
-    private drawOuterShadow(): void {
+    private drawOuterShadow(shadow: Shadow): void {
         const rect = this.getRect();
 
         this.ctx.save();
@@ -95,64 +97,67 @@ export class CanvasRender extends Render {
 
         this.ctx.rect(rect.left, rect.top, rect.width, rect.height);
 
-        const shadowPos = this.convertToGlobal({ x: this.shadow.pos.x, y: this.shadow.pos.y });
+        const shadowPos = this.convertPointToGlobal({ x: shadow.pos.x, y: shadow.pos.y });
         this.ctx.translate(shadowPos.x, shadowPos.y);
 
-        this.ctx.rotate(Math.PI + this.shadow.angle + Math.PI / 2);
+        this.ctx.rotate(Math.PI + shadow.angle + Math.PI / 2);
 
-        const outerGradient = this.ctx.createLinearGradient(0, 0, this.shadow.width, 0);
+        const outerGradient = this.ctx.createLinearGradient(0, 0, shadow.width, 0);
 
-        if (this.shadow.direction === FlipDirection.FORWARD) {
+        if (shadow.direction === FlipDirection.FORWARD) {
             this.ctx.translate(0, -100);
-            outerGradient.addColorStop(0, 'rgba(0, 0, 0, ' + this.shadow.opacity + ')');
+            outerGradient.addColorStop(0, `rgba(0, 0, 0, ${  shadow.opacity  })`);
             outerGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
         } else {
-            this.ctx.translate(-this.shadow.width, -100);
+            this.ctx.translate(-shadow.width, -100);
             outerGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
-            outerGradient.addColorStop(1, 'rgba(0, 0, 0, ' + this.shadow.opacity + ')');
+            outerGradient.addColorStop(1, `rgba(0, 0, 0, ${  shadow.opacity  })`);
         }
 
         this.ctx.clip();
 
         this.ctx.fillStyle = outerGradient;
-        this.ctx.fillRect(0, 0, this.shadow.width, rect.height * 2);
+        this.ctx.fillRect(0, 0, shadow.width, rect.height * 2);
 
         this.ctx.restore();
     }
 
-    private drawInnerShadow(): void {
+    private drawInnerShadow(shadow: Shadow): void {
+        const pageRect = this.pageRect;
+        if (pageRect === null) return;
+
         const rect = this.getRect();
 
         this.ctx.save();
         this.ctx.beginPath();
 
-        const shadowPos = this.convertToGlobal({ x: this.shadow.pos.x, y: this.shadow.pos.y });
+        const shadowPos = this.convertPointToGlobal({ x: shadow.pos.x, y: shadow.pos.y });
 
-        const pageRect = this.convertRectToGlobal(this.pageRect);
-        this.ctx.moveTo(pageRect.topLeft.x, pageRect.topLeft.y);
-        this.ctx.lineTo(pageRect.topRight.x, pageRect.topRight.y);
-        this.ctx.lineTo(pageRect.bottomRight.x, pageRect.bottomRight.y);
-        this.ctx.lineTo(pageRect.bottomLeft.x, pageRect.bottomLeft.y);
+        const globalPageRect = this.convertRectToGlobal(pageRect);
+        this.ctx.moveTo(globalPageRect.topLeft.x, globalPageRect.topLeft.y);
+        this.ctx.lineTo(globalPageRect.topRight.x, globalPageRect.topRight.y);
+        this.ctx.lineTo(globalPageRect.bottomRight.x, globalPageRect.bottomRight.y);
+        this.ctx.lineTo(globalPageRect.bottomLeft.x, globalPageRect.bottomLeft.y);
         this.ctx.translate(shadowPos.x, shadowPos.y);
 
-        this.ctx.rotate(Math.PI + this.shadow.angle + Math.PI / 2);
+        this.ctx.rotate(Math.PI + shadow.angle + Math.PI / 2);
 
-        const isw = (this.shadow.width * 3) / 4;
+        const isw = (shadow.width * 3) / 4;
         const innerGradient = this.ctx.createLinearGradient(0, 0, isw, 0);
 
-        if (this.shadow.direction === FlipDirection.FORWARD) {
+        if (shadow.direction === FlipDirection.FORWARD) {
             this.ctx.translate(-isw, -100);
 
-            innerGradient.addColorStop(1, 'rgba(0, 0, 0, ' + this.shadow.opacity + ')');
+            innerGradient.addColorStop(1, `rgba(0, 0, 0, ${  shadow.opacity  })`);
             innerGradient.addColorStop(0.9, 'rgba(0, 0, 0, 0.05)');
-            innerGradient.addColorStop(0.7, 'rgba(0, 0, 0, ' + this.shadow.opacity + ')');
+            innerGradient.addColorStop(0.7, `rgba(0, 0, 0, ${  shadow.opacity  })`);
             innerGradient.addColorStop(0, 'rgba(0, 0, 0, 0)');
         } else {
             this.ctx.translate(0, -100);
 
-            innerGradient.addColorStop(0, 'rgba(0, 0, 0, ' + this.shadow.opacity + ')');
+            innerGradient.addColorStop(0, `rgba(0, 0, 0, ${  shadow.opacity  })`);
             innerGradient.addColorStop(0.1, 'rgba(0, 0, 0, 0.05)');
-            innerGradient.addColorStop(0.3, 'rgba(0, 0, 0, ' + this.shadow.opacity + ')');
+            innerGradient.addColorStop(0.3, `rgba(0, 0, 0, ${  shadow.opacity  })`);
             innerGradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
         }
 

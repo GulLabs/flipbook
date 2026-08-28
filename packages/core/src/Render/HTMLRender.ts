@@ -1,11 +1,12 @@
-import { Orientation, Render } from './Render';
-import { PageFlip } from '../PageFlip';
+import { Orientation, Render, type Shadow } from './Render';
+import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { PageDensity, PageOrientation } from '../Page/Page';
-import { HTMLPage } from '../Page/HTMLPage';
+import type { HTMLPage } from '../Page/HTMLPage';
 import { Helper } from '../Helper';
-import { FlipSetting } from '../Settings';
+import type { FlipSetting } from '../Settings';
 import { shouldDrawBottomPage } from './bottomPage';
+import { PageFlipError } from '../errors';
 
 /**
  * Class responsible for rendering the HTML book
@@ -14,10 +15,10 @@ export class HTMLRender extends Render {
     /** Parent HTML Element */
     private readonly element: HTMLElement;
 
-    private outerShadow: HTMLElement | null = null;
-    private innerShadow: HTMLElement | null = null;
-    private hardShadow: HTMLElement | null = null;
-    private hardInnerShadow: HTMLElement | null = null;
+    private outerShadow!: HTMLElement;
+    private innerShadow!: HTMLElement;
+    private hardShadow!: HTMLElement;
+    private hardInnerShadow!: HTMLElement;
 
     /**
      * @constructor
@@ -43,13 +44,19 @@ export class HTMLRender extends Render {
              <div class="stf__hardInnerShadow"></div>`
         );
 
-        this.outerShadow = this.element.querySelector('.stf__outerShadow');
-        this.innerShadow = this.element.querySelector('.stf__innerShadow');
-        this.hardShadow = this.element.querySelector('.stf__hardShadow');
-        this.hardInnerShadow = this.element.querySelector('.stf__hardInnerShadow');
-        if (!this.outerShadow || !this.innerShadow || !this.hardShadow || !this.hardInnerShadow) {
-            throw new Error('Failed to create flipbook shadow elements');
+        const outer = this.element.querySelector<HTMLElement>('.stf__outerShadow');
+        const inner = this.element.querySelector<HTMLElement>('.stf__innerShadow');
+        const hard = this.element.querySelector<HTMLElement>('.stf__hardShadow');
+        const hardInner = this.element.querySelector<HTMLElement>('.stf__hardInnerShadow');
+
+        if (!outer || !inner || !hard || !hardInner) {
+            throw new PageFlipError('Failed to create flipbook shadow elements', 'RENDER_SETUP');
         }
+
+        this.outerShadow = outer;
+        this.innerShadow = inner;
+        this.hardShadow = hard;
+        this.hardInnerShadow = hardInner;
     }
 
     public clearShadow(): void {
@@ -72,11 +79,10 @@ export class HTMLRender extends Render {
     /**
      * Draw inner shadow to the hard page
      */
-    private drawHardInnerShadow(): void {
+    private drawHardInnerShadow(shadow: Shadow): void {
         const rect = this.getRect();
 
-        const progress =
-            this.shadow.progress > 100 ? 200 - this.shadow.progress : this.shadow.progress;
+        const progress = shadow.progress > 100 ? 200 - shadow.progress : shadow.progress;
 
         let innerShadowSize = ((100 - progress) * (2.5 * rect.pageWidth)) / 100 + 20;
         if (innerShadowSize > rect.pageWidth) innerShadowSize = rect.pageWidth;
@@ -87,15 +93,15 @@ export class HTMLRender extends Render {
             width: ${innerShadowSize}px;
             height: ${rect.height}px;
             background: linear-gradient(to right,
-                rgba(0, 0, 0, ${(this.shadow.opacity * progress) / 100}) 5%,
+                rgba(0, 0, 0, ${(shadow.opacity * progress) / 100}) 5%,
                 rgba(0, 0, 0, 0) 100%);
             left: ${rect.left + rect.width / 2}px;
             transform-origin: 0 0;
         `;
 
         newStyle +=
-            (this.getDirection() === FlipDirection.FORWARD && this.shadow.progress > 100) ||
-            (this.getDirection() === FlipDirection.BACK && this.shadow.progress <= 100)
+            (this.getDirection() === FlipDirection.FORWARD && shadow.progress > 100) ||
+            (this.getDirection() === FlipDirection.BACK && shadow.progress <= 100)
                 ? `transform: translate3d(0, 0, 0);`
                 : `transform: translate3d(0, 0, 0) rotateY(180deg);`;
 
@@ -105,11 +111,10 @@ export class HTMLRender extends Render {
     /**
      * Draw outer shadow to the hard page
      */
-    private drawHardOuterShadow(): void {
+    private drawHardOuterShadow(shadow: Shadow): void {
         const rect = this.getRect();
 
-        const progress =
-            this.shadow.progress > 100 ? 200 - this.shadow.progress : this.shadow.progress;
+        const progress = shadow.progress > 100 ? 200 - shadow.progress : shadow.progress;
 
         let shadowSize = ((100 - progress) * (2.5 * rect.pageWidth)) / 100 + 20;
         if (shadowSize > rect.pageWidth) shadowSize = rect.pageWidth;
@@ -120,15 +125,15 @@ export class HTMLRender extends Render {
             width: ${shadowSize}px;
             height: ${rect.height}px;
             background: linear-gradient(to left, rgba(0, 0, 0, ${
-                this.shadow.opacity
+                shadow.opacity
             }) 5%, rgba(0, 0, 0, 0) 100%);
             left: ${rect.left + rect.width / 2}px;
             transform-origin: 0 0;
         `;
 
         newStyle +=
-            (this.getDirection() === FlipDirection.FORWARD && this.shadow.progress > 100) ||
-            (this.getDirection() === FlipDirection.BACK && this.shadow.progress <= 100)
+            (this.getDirection() === FlipDirection.FORWARD && shadow.progress > 100) ||
+            (this.getDirection() === FlipDirection.BACK && shadow.progress <= 100)
                 ? `transform: translate3d(0, 0, 0) rotateY(180deg);`
                 : `transform: translate3d(0, 0, 0);`;
 
@@ -138,24 +143,27 @@ export class HTMLRender extends Render {
     /**
      * Draw inner shadow to the soft page
      */
-    private drawInnerShadow(): void {
+    private drawInnerShadow(shadow: Shadow): void {
+        const pageRect = this.pageRect;
+        if (pageRect === null) return;
+
         const rect = this.getRect();
 
-        const innerShadowSize = (this.shadow.width * 3) / 4;
+        const innerShadowSize = (shadow.width * 3) / 4;
         const shadowTranslate = this.getDirection() === FlipDirection.FORWARD ? innerShadowSize : 0;
 
         const shadowDirection =
             this.getDirection() === FlipDirection.FORWARD ? 'to left' : 'to right';
 
-        const shadowPos = this.convertToGlobal(this.shadow.pos);
+        const shadowPos = this.convertPointToGlobal(shadow.pos);
 
-        const angle = this.shadow.angle + (3 * Math.PI) / 2;
+        const angle = shadow.angle + (3 * Math.PI) / 2;
 
         const clip = [
-            this.pageRect.topLeft,
-            this.pageRect.topRight,
-            this.pageRect.bottomRight,
-            this.pageRect.bottomLeft,
+            pageRect.topLeft,
+            pageRect.topRight,
+            pageRect.bottomRight,
+            pageRect.bottomLeft,
         ];
 
         let polygon = 'polygon( ';
@@ -163,17 +171,17 @@ export class HTMLRender extends Render {
             let g =
                 this.getDirection() === FlipDirection.BACK
                     ? {
-                          x: -p.x + this.shadow.pos.x,
-                          y: p.y - this.shadow.pos.y,
+                          x: -p.x + shadow.pos.x,
+                          y: p.y - shadow.pos.y,
                       }
                     : {
-                          x: p.x - this.shadow.pos.x,
-                          y: p.y - this.shadow.pos.y,
+                          x: p.x - shadow.pos.x,
+                          y: p.y - shadow.pos.y,
                       };
 
             g = Helper.GetRotatedPoint(g, { x: shadowTranslate, y: 100 }, angle);
 
-            polygon += g.x + 'px ' + g.y + 'px, ';
+            polygon += `${g.x  }px ${  g.y  }px, `;
         }
         polygon = polygon.slice(0, -2);
         polygon += ')';
@@ -184,9 +192,9 @@ export class HTMLRender extends Render {
             width: ${innerShadowSize}px;
             height: ${rect.height * 2}px;
             background: linear-gradient(${shadowDirection},
-                rgba(0, 0, 0, ${this.shadow.opacity}) 5%,
+                rgba(0, 0, 0, ${shadow.opacity}) 5%,
                 rgba(0, 0, 0, 0.05) 15%,
-                rgba(0, 0, 0, ${this.shadow.opacity}) 35%,
+                rgba(0, 0, 0, ${shadow.opacity}) 35%,
                 rgba(0, 0, 0, 0) 100%);
             transform-origin: ${shadowTranslate}px 100px;
             transform: translate3d(${shadowPos.x - shadowTranslate}px, ${
@@ -202,13 +210,13 @@ export class HTMLRender extends Render {
     /**
      * Draw outer shadow to the soft page
      */
-    private drawOuterShadow(): void {
+    private drawOuterShadow(shadow: Shadow): void {
         const rect = this.getRect();
 
-        const shadowPos = this.convertToGlobal({ x: this.shadow.pos.x, y: this.shadow.pos.y });
+        const shadowPos = this.convertPointToGlobal({ x: shadow.pos.x, y: shadow.pos.y });
 
-        const angle = this.shadow.angle + (3 * Math.PI) / 2;
-        const shadowTranslate = this.getDirection() === FlipDirection.BACK ? this.shadow.width : 0;
+        const angle = shadow.angle + (3 * Math.PI) / 2;
+        const shadowTranslate = this.getDirection() === FlipDirection.BACK ? shadow.width : 0;
 
         const shadowDirection =
             this.getDirection() === FlipDirection.FORWARD ? 'to right' : 'to left';
@@ -222,22 +230,20 @@ export class HTMLRender extends Render {
 
         let polygon = 'polygon( ';
         for (const p of clip) {
-            if (p !== null) {
-                let g =
-                    this.getDirection() === FlipDirection.BACK
-                        ? {
-                              x: -p.x + this.shadow.pos.x,
-                              y: p.y - this.shadow.pos.y,
-                          }
-                        : {
-                              x: p.x - this.shadow.pos.x,
-                              y: p.y - this.shadow.pos.y,
-                          };
+            let g =
+                this.getDirection() === FlipDirection.BACK
+                    ? {
+                          x: -p.x + shadow.pos.x,
+                          y: p.y - shadow.pos.y,
+                      }
+                    : {
+                          x: p.x - shadow.pos.x,
+                          y: p.y - shadow.pos.y,
+                      };
 
-                g = Helper.GetRotatedPoint(g, { x: shadowTranslate, y: 100 }, angle);
+            g = Helper.GetRotatedPoint(g, { x: shadowTranslate, y: 100 }, angle);
 
-                polygon += g.x + 'px ' + g.y + 'px, ';
-            }
+            polygon += `${g.x  }px ${  g.y  }px, `;
         }
 
         polygon = polygon.slice(0, -2);
@@ -246,10 +252,10 @@ export class HTMLRender extends Render {
         const newStyle = `
             display: block;
             z-index: ${(this.getSettings().startZIndex + 10).toString(10)};
-            width: ${this.shadow.width}px;
+            width: ${shadow.width}px;
             height: ${rect.height * 2}px;
             background: linear-gradient(${shadowDirection}, rgba(0, 0, 0, ${
-            this.shadow.opacity
+            shadow.opacity
         }), rgba(0, 0, 0, 0));
             transform-origin: ${shadowTranslate}px 100px;
             transform: translate3d(${shadowPos.x - shadowTranslate}px, ${
@@ -312,16 +318,19 @@ export class HTMLRender extends Render {
      * portrait BACK as a direction — that skip is the duplicate-current-page bug.
      */
     public drawBottomPage(): void {
-        if (!shouldDrawBottomPage(this.flippingPage, this.bottomPage)) return;
+        const bottomPage = this.bottomPage;
+
+        if (bottomPage === null) return;
+        if (!shouldDrawBottomPage(this.flippingPage, bottomPage)) return;
 
         const tempDensity =
-            this.flippingPage != null ? this.flippingPage.getDrawingDensity() : undefined;
+            this.flippingPage !== null ? this.flippingPage.getDrawingDensity() : undefined;
 
-        (this.bottomPage as HTMLPage).getElement().style.zIndex = (
+        (bottomPage as HTMLPage).getElement().style.zIndex = (
             this.getSettings().startZIndex + 3
         ).toString(10);
 
-        this.bottomPage!.draw(tempDensity);
+        bottomPage.draw(tempDensity);
     }
 
     protected drawFrame(): void {
@@ -333,21 +342,25 @@ export class HTMLRender extends Render {
 
         this.drawBottomPage();
 
-        if (this.flippingPage != null) {
-            (this.flippingPage as HTMLPage).getElement().style.zIndex = (
+        const flippingPage = this.flippingPage;
+
+        if (flippingPage !== null) {
+            (flippingPage as HTMLPage).getElement().style.zIndex = (
                 this.getSettings().startZIndex + 5
             ).toString(10);
 
-            this.flippingPage.draw();
+            flippingPage.draw();
         }
 
-        if (this.shadow != null && this.flippingPage !== null) {
-            if (this.flippingPage.getDrawingDensity() === PageDensity.SOFT) {
-                this.drawOuterShadow();
-                this.drawInnerShadow();
+        const shadow = this.shadow;
+
+        if (shadow !== null && flippingPage !== null) {
+            if (flippingPage.getDrawingDensity() === PageDensity.SOFT) {
+                this.drawOuterShadow(shadow);
+                this.drawInnerShadow(shadow);
             } else {
-                this.drawHardOuterShadow();
-                this.drawHardInnerShadow();
+                this.drawHardOuterShadow(shadow);
+                this.drawHardInnerShadow(shadow);
             }
         }
     }

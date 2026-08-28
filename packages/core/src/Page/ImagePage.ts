@@ -1,7 +1,8 @@
-import { CanvasRender } from '../Render/CanvasRender';
-import { Page, PageDensity, PageOrientation } from './Page';
-import { Render } from '../Render/Render';
-import { Point } from '../BasicTypes';
+import type { CanvasRender } from '../Render/CanvasRender';
+import type { PageDensity} from './Page';
+import { Page, PageOrientation } from './Page';
+import type { Render } from '../Render/Render';
+import type { Point } from '../BasicTypes';
 
 /**
  * Class representing a book page as an image on Canvas
@@ -19,10 +20,10 @@ export class ImagePage extends Page {
         this.image.src = href;
     }
 
-    public draw(tempDensity?: PageDensity): void {
+    public draw(_tempDensity?: PageDensity): void {
         const ctx = (this.render as CanvasRender).getContext();
 
-        const pagePos = this.render.convertToGlobal(this.state.position);
+        const pagePos = this.render.convertPointToGlobal(this.state.position);
         const pageWidth = this.render.getRect().pageWidth;
         const pageHeight = this.render.getRect().height;
 
@@ -30,10 +31,10 @@ export class ImagePage extends Page {
         ctx.translate(pagePos.x, pagePos.y);
         ctx.beginPath();
 
-        for (let p of this.state.area) {
+        for (const p of this.state.area) {
             if (p !== null) {
-                p = this.render.convertToGlobal(p);
-                ctx.lineTo(p.x - pagePos.x, p.y - pagePos.y);
+                const globalPoint = this.render.convertPointToGlobal(p);
+                ctx.lineTo(globalPoint.x - pagePos.x, globalPoint.y - pagePos.y);
             }
         }
 
@@ -72,7 +73,7 @@ export class ImagePage extends Page {
         ctx: CanvasRenderingContext2D,
         shiftPos: Point,
         pageWidth: number,
-        pageHeight: number
+        pageHeight: number,
     ): void {
         ctx.beginPath();
         ctx.strokeStyle = 'rgb(200, 200, 200)';
@@ -94,7 +95,7 @@ export class ImagePage extends Page {
             middlePoint.y,
             20,
             this.loadingAngle,
-            (3 * Math.PI) / 2 + this.loadingAngle
+            (3 * Math.PI) / 2 + this.loadingAngle,
         );
         ctx.stroke();
         ctx.closePath();

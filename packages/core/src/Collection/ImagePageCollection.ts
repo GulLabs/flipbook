@@ -1,7 +1,7 @@
 import { ImagePage } from '../Page/ImagePage';
-import { Render } from '../Render/Render';
+import type { Render } from '../Render/Render';
 import { PageCollection } from './PageCollection';
-import { PageFlip } from '../PageFlip';
+import type { PageFlip } from '../PageFlip';
 import { PageDensity } from '../Page/Page';
 
 /**

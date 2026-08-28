@@ -14,6 +14,8 @@ export function getPortraitFlippingPage<T extends { newTemporaryCopy(): T }>(
   direction: FlipDirection,
 ): T {
   const current = pages[currentSpreadIndex];
+  // Runtime guard: index may be OOB even if TS array access is typed as T.
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- OOB defense
   if (current === undefined) {
     throw new Error('Invalid current spread index');
   }
@@ -25,6 +27,7 @@ export function getPortraitFlippingPage<T extends { newTemporaryCopy(): T }>(
   const copy = current.newTemporaryCopy();
   if (copy === current) {
     const previous = pages[currentSpreadIndex - 1];
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- OOB defense
     if (previous === undefined) {
       throw new Error('Invalid previous page for portrait BACK');
     }

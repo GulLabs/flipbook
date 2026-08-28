@@ -1,8 +1,8 @@
 import { Page, PageDensity, PageOrientation } from './Page';
-import { Render } from '../Render/Render';
+import type { Render } from '../Render/Render';
 import { Helper } from '../Helper';
 import { FlipDirection } from '../Flip/Flip';
-import { Point } from '../BasicTypes';
+import type { Point } from '../BasicTypes';
 import { foldFill, foldFillCss } from '../Render/pageBackground';
 
 /**
@@ -21,7 +21,7 @@ export class HTMLPage extends Page {
 
         this.element = element;
         this.element.classList.add('stf__item');
-        this.element.classList.add('--' + density);
+        this.element.classList.add(`--${  density}`);
     }
 
     public newTemporaryCopy(): Page {
@@ -43,10 +43,10 @@ export class HTMLPage extends Page {
             );
         }
 
-        return this.getTemporaryCopy();
+        return this.temporaryCopy;
     }
 
-    public getTemporaryCopy(): Page {
+    public getTemporaryCopy(): Page | null {
         return this.temporaryCopy;
     }
 
@@ -59,7 +59,7 @@ export class HTMLPage extends Page {
     }
 
     public draw(tempDensity?: PageDensity): void {
-        const density = tempDensity ? tempDensity : this.nowDrawingDensity;
+        const density = tempDensity ?? this.nowDrawingDensity;
 
         const pagePos = this.render.convertToGlobal(this.state.position) ?? { x: 0, y: 0 };
         const pageWidth = this.render.getRect().pageWidth;
@@ -77,9 +77,11 @@ export class HTMLPage extends Page {
             ${foldFillCss(this.render.getSettings().pageBackground)}
         `;
 
-        density === PageDensity.HARD
-            ? this.drawHard(commonStyle)
-            : this.drawSoft(pagePos, commonStyle);
+        if (density === PageDensity.HARD) {
+            this.drawHard(commonStyle);
+        } else {
+            this.drawSoft(pagePos, commonStyle);
+        }
     }
 
     private drawHard(commonStyle = ''): void {
@@ -88,18 +90,18 @@ export class HTMLPage extends Page {
         const angle = this.state.hardDrawingAngle;
 
         const newStyle =
-            commonStyle +
-            `
+            `${commonStyle 
+            }
                 backface-visibility: hidden;
                 -webkit-backface-visibility: hidden;
                 clip-path: none;
                 -webkit-clip-path: none;
-            ` +
-            (this.orientation === PageOrientation.LEFT
+            ${ 
+            this.orientation === PageOrientation.LEFT
                 ? `transform-origin: ${this.render.getRect().pageWidth}px 0; 
                    transform: translate3d(0, 0, 0) rotateY(${angle}deg);`
                 : `transform-origin: 0 0; 
-                   transform: translate3d(${pos}px, 0, 0) rotateY(${angle}deg);`);
+                   transform: translate3d(${pos}px, 0, 0) rotateY(${angle}deg);`}`;
 
         this.element.style.cssText = newStyle;
     }
@@ -120,18 +122,18 @@ export class HTMLPage extends Page {
                           };
 
                 g = Helper.GetRotatedPoint(g, { x: 0, y: 0 }, this.state.angle);
-                polygon += g.x + 'px ' + g.y + 'px, ';
+                polygon += `${g.x  }px ${  g.y  }px, `;
             }
         }
         polygon = polygon.slice(0, -2);
         polygon += ')';
 
         const newStyle =
-            commonStyle +
-            `transform-origin: 0 0; clip-path: ${polygon}; -webkit-clip-path: ${polygon};` +
-            (this.render.isSafari() && this.state.angle === 0
+            `${commonStyle 
+            }transform-origin: 0 0; clip-path: ${polygon}; -webkit-clip-path: ${polygon};${ 
+            this.render.isSafari() && this.state.angle === 0
                 ? `transform: translate(${position.x}px, ${position.y}px);`
-                : `transform: translate3d(${position.x}px, ${position.y}px, 0) rotate(${this.state.angle}rad);`);
+                : `transform: translate3d(${position.x}px, ${position.y}px, 0) rotate(${this.state.angle}rad);`}`;
 
         this.element.style.cssText = newStyle;
     }
@@ -147,13 +149,16 @@ export class HTMLPage extends Page {
         const y = rect.top;
 
         this.element.classList.add('--simple');
+        // Static pages are opaque too: a transparent leaf lets the page under
+        // the fold read through at the start / end of a turn.
         this.element.style.cssText = `
-            position: absolute; 
-            display: block; 
-            height: ${pageHeight}px; 
-            left: ${x}px; 
-            top: ${y}px; 
-            width: ${pageWidth}px; 
+            position: absolute;
+            display: block;
+            height: ${pageHeight}px;
+            left: ${x}px;
+            top: ${y}px;
+            width: ${pageWidth}px;
+            ${foldFillCss(this.render.getSettings().pageBackground)}
             z-index: ${this.render.getSettings().startZIndex + 1};`;
     }
 
@@ -174,7 +179,7 @@ export class HTMLPage extends Page {
 
     public setDrawingDensity(density: PageDensity): void {
         this.element.classList.remove('--soft', '--hard');
-        this.element.classList.add('--' + density);
+        this.element.classList.add(`--${  density}`);
 
         super.setDrawingDensity(density);
     }

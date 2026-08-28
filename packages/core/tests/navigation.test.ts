@@ -4,7 +4,9 @@ import type { Render } from '@gullabs/flipbook-core';
 
 type CollectionStub = {
   spread: number;
+  spreadCount: number;
   getCurrentSpreadIndex: () => number;
+  getSpreadCount: () => number;
   getSpreadIndexByPage: (page: number) => number | null;
   setCurrentSpreadIndex: (index: number) => void;
   getFlippingPage: () => { id: string };
@@ -14,8 +16,13 @@ type CollectionStub = {
 function makeFlip(options?: { pageCount?: number; currentPage?: number }) {
   const collection: CollectionStub = {
     spread: 1,
+    // Portrait stub: one spread per page.
+    spreadCount: options?.pageCount ?? 0,
     getCurrentSpreadIndex() {
       return this.spread;
+    },
+    getSpreadCount() {
+      return this.spreadCount;
     },
     getSpreadIndexByPage(page: number) {
       if (page < 0) return null;

@@ -1,4 +1,4 @@
-import { Point, Rect, Segment } from './BasicTypes';
+import type { Point, Rect, Segment } from './BasicTypes';
 
 /**
  * A class containing helping mathematical methods
@@ -10,7 +10,7 @@ export class Helper {
      * @param {Point} point1
      * @param {Point} point2
      */
-    public static GetDistanceBetweenTwoPoint(point1: Point, point2: Point): number {
+    public static GetDistanceBetweenTwoPoint(point1: Point | null, point2: Point | null): number {
         if (point1 === null || point2 === null) {
             return Infinity;
         }
@@ -40,7 +40,9 @@ export class Helper {
         const B1 = line1[1].x - line1[0].x;
         const B2 = line2[1].x - line2[0].x;
 
-        return Math.acos((A1 * A2 + B1 * B2) / (Math.sqrt(A1 * A1 + B1 * B1) * Math.sqrt(A2 * A2 + B2 * B2)));
+        return Math.acos(
+            (A1 * A2 + B1 * B2) / (Math.sqrt(A1 * A1 + B1 * B1) * Math.sqrt(A2 * A2 + B2 * B2)),
+        );
     }
 
     /**
@@ -76,10 +78,20 @@ export class Helper {
      *
      * @returns {Point} Point coordinates after rotation
      */
-    public static GetRotatedPoint(transformedPoint: Point, startPoint: Point, angle: number): Point {
+    public static GetRotatedPoint(
+        transformedPoint: Point,
+        startPoint: Point,
+        angle: number,
+    ): Point {
         return {
-            x: transformedPoint.x * Math.cos(angle) + transformedPoint.y * Math.sin(angle) + startPoint.x,
-            y: transformedPoint.y * Math.cos(angle) - transformedPoint.x * Math.sin(angle) + startPoint.y,
+            x:
+                transformedPoint.x * Math.cos(angle) +
+                transformedPoint.y * Math.sin(angle) +
+                startPoint.x,
+            y:
+                transformedPoint.y * Math.cos(angle) -
+                transformedPoint.x * Math.sin(angle) +
+                startPoint.y,
         };
     }
 
@@ -93,7 +105,11 @@ export class Helper {
      * @returns {Point} If "linePoint" enters the circle, then its coordinates are returned.
      * Else will be returned the intersection point between the line ([startPoint, linePoint]) and the circle
      */
-    public static LimitPointToCircle(startPoint: Point, radius: number, limitedPoint: Point): Point {
+    public static LimitPointToCircle(
+        startPoint: Point,
+        radius: number,
+        limitedPoint: Point,
+    ): Point {
         // If "linePoint" enters the circle, do nothing
         if (Helper.GetDistanceBetweenTwoPoint(startPoint, limitedPoint) <= radius) {
             return limitedPoint;
@@ -105,7 +121,11 @@ export class Helper {
         const m = limitedPoint.y;
 
         // Find the intersection between the line at two points: (startPoint and limitedPoint) and the circle.
-        let x = Math.sqrt((Math.pow(radius, 2) * Math.pow(a - n, 2)) / (Math.pow(a - n, 2) + Math.pow(b - m, 2))) + a;
+        let x =
+            Math.sqrt(
+                (Math.pow(radius, 2) * Math.pow(a - n, 2)) /
+                    (Math.pow(a - n, 2) + Math.pow(b - m, 2)),
+            ) + a;
         if (limitedPoint.x < 0) {
             x *= -1;
         }
@@ -127,7 +147,11 @@ export class Helper {
      *
      * @returns {Point} The intersection point, or "null" if it does not exist, or it lies outside the rectangle "rectBorder"
      */
-    public static GetIntersectBetweenTwoSegment(rectBorder: Rect, one: Segment, two: Segment): Point {
+    public static GetIntersectBetweenTwoSegment(
+        rectBorder: Rect,
+        one: Segment,
+        two: Segment,
+    ): Point | null {
         return Helper.PointInRect(rectBorder, Helper.GetIntersectBeetwenTwoLine(one, two));
     }
 
@@ -181,7 +205,13 @@ export class Helper {
 
         const result: Point[] = [pointOne];
 
-        function getCord(c1: number, c2: number, size: number, length: number, index: number): number {
+        function getCord(
+            c1: number,
+            c2: number,
+            size: number,
+            length: number,
+            index: number,
+        ): number {
             if (c2 > c1) {
                 return c1 + index * (size / length);
             } else if (c2 < c1) {

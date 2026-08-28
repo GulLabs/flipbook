@@ -1,6 +1,6 @@
 import { UI } from './UI';
-import { PageFlip } from '../PageFlip';
-import { FlipSetting } from '../Settings';
+import type { PageFlip } from '../PageFlip';
+import type { FlipSetting } from '../Settings';
 
 /**
  * UI for HTML mode

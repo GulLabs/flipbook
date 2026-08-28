@@ -78,7 +78,7 @@ export interface FlipSetting {
   respectReducedMotion: boolean;
 
   /**
-   * Reading direction. `rtl` inverts swipe next/prev (Arabic, Hebrew, manga).
+   * Reading direction. `rtl` mirrors pointer coordinates in the UI (click, fold, swipe).
    * Programmatic `flipNext`/`flipPrev` still advance by page index.
    */
   direction: FlipDirectionSetting;
@@ -118,7 +118,8 @@ export class Settings {
   public getSettings(userSetting: Partial<FlipSetting>): FlipSetting {
     const result: FlipSetting = { ...this._default, ...userSetting };
 
-    if (result.size !== SizeType.STRETCH && result.size !== SizeType.FIXED) {
+    const size = result.size as string;
+    if (size !== SizeType.STRETCH && size !== SizeType.FIXED) {
       throw new PageFlipError(
         'Invalid size type. Available only "fixed" and "stretch" value',
         'INVALID_SIZE',
@@ -133,8 +134,12 @@ export class Settings {
       throw new PageFlipError('Invalid flipping time', 'INVALID_FLIPPING_TIME');
     }
 
-    if (result.direction !== 'ltr' && result.direction !== 'rtl') {
-      throw new PageFlipError('Invalid direction. Available only "ltr" and "rtl"', 'INVALID_DIRECTION');
+    const direction = result.direction as string;
+    if (direction !== 'ltr' && direction !== 'rtl') {
+      throw new PageFlipError(
+        'Invalid direction. Available only "ltr" and "rtl"',
+        'INVALID_DIRECTION',
+      );
     }
 
     if (!result.pageBackground) {
