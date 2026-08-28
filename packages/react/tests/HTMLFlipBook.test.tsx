@@ -519,10 +519,11 @@ describe('usePageFlip actions + keyboard / error paths', () => {
       expect(handleRef.current?.pageFlip()).toBeTruthy();
     });
 
-    const before = handleRef.current!.pageFlip()!.getCurrentPageIndex();
     expect(() => fireEvent.click(screen.getByText('bad'))).not.toThrow();
-    // Engine rejects out-of-range turnToPage; index stays put.
-    expect(handleRef.current!.pageFlip()!.getCurrentPageIndex()).toBe(before);
+    // Binding clamps OOB `page` to the last leaf and reports onNavigationError.
+    await waitFor(() => {
+      expect(handleRef.current!.pageFlip()!.getCurrentPageIndex()).toBe(1);
+    });
   });
 
   test('imperative handle exposes pageFlip after mount', async () => {
