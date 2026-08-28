@@ -23,8 +23,7 @@
     "./style.css": "./dist/style.css"
   },
   "files": [
-    "dist",
-    "src"
+    "dist"
   ],
   "scripts": {
     "build": "tsup && node ../../scripts/copy-css.mjs && node ../../scripts/pack-html-engine.mjs",

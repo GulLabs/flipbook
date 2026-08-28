@@ -1,4 +1,4 @@
-import { DEFAULT_PAGE_BACKGROUND } from './Render/pageBackground';
+import { DEFAULT_PAGE_BACKGROUND, safePageBackground } from './Render/pageBackground';
 import { PageFlipError } from './errors';
 
 /**
@@ -144,9 +144,7 @@ export class Settings {
       );
     }
 
-    if (!result.pageBackground) {
-      result.pageBackground = DEFAULT_PAGE_BACKGROUND;
-    }
+    result.pageBackground = safePageBackground(result.pageBackground);
 
     if (result.size === SizeType.STRETCH) {
       if (result.minWidth <= 0) result.minWidth = 100;

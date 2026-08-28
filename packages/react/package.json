@@ -28,7 +28,9 @@
       "require": "./dist/index.cjs"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup && node ../../scripts/banner-use-client.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -49,5 +51,11 @@
     "tsup": "^8.5.0",
     "typescript": "^5.9.2"
   },
-  "keywords": ["react", "page", "flip", "book", "flipbook"]
+  "keywords": [
+    "react",
+    "page",
+    "flip",
+    "book",
+    "flipbook"
+  ]
 }

@@ -62,9 +62,9 @@ assignment / call / member / return / argument.
 
 ---
 
-## Phase B — `noUncheckedIndexedAccess` + lifecycle types
+## Phase B — `noUncheckedIndexedAccess` (lifecycle nullability rejected)
 
-**Status:** `in_progress`  
+**Status:** `codex_review`  
 **Depends on:** Phase A signed off  
 **Estimate:** one focused sitting
 
@@ -75,22 +75,53 @@ indexed access is loose. Fix the type model first, then the ESLint rule.
 
 ### Work
 
-- [ ] `tsconfig.base.json`: `"noUncheckedIndexedAccess": true`
-- [ ] Fix ~45 `tsc` errors (majority `PageCollection.ts`)
+- [x] `tsconfig.base.json`: `"noUncheckedIndexedAccess": true`
+- [x] Fix ~45 `tsc` errors (majority `PageCollection.ts`)
   - Prefer small helpers (`at(arr, i, label)`) over mass non-null assertions
   - Touch: `PageCollection`, `FlipCalculation`, `Render`, `CanvasUI` as needed
-- [ ] Lifecycle types (stop definite-assignment `!` for pre-init):
-  - [ ] `PageFlip`: `render` / `ui` as `T | null` until `create()`
-  - [ ] `UI`: `distElement` as `HTMLElement | null` until load
-- [ ] `pnpm typecheck` + `pnpm quality:ci` green
+- [x] ~~Lifecycle types (nullable fields)~~ **rejected** — keep definite assignment; see Decision below
+- [x] `pnpm typecheck` + `pnpm quality:ci` green
 - [ ] Commit
 - [ ] Codex signoff
+
+### Decision (2026-08-28) — **no nullable PageFlip lifecycle fields**
+
+Do **not** convert `pages` / `render` / `ui` (or `UI.distElement`) from
+definite-assignment (`!`) to `T | null` + `require*()` accessors.
+
+**Why that pattern is risky here:**
+
+1. **Runtime throws replace compile-time structure.** After `attachMode` /
+   `loadFromHTML`, the engine is always ready; making every method call
+   `requireRender()` turns a construction invariant into a latent
+   `NOT_READY` footgun at every call site.
+2. **Public API behavior change.** `getRender()` / `getUI()` throwing is a
+   new failure mode for consumers (React effects, examples) that previously
+   only saw fields after load.
+3. **TypeScript cannot prove “post-attach” across methods** without a
+   full state-machine / branded type. Nullable fields look safer but do not
+   actually encode the phase machine; they only add noise.
+4. **Pre-init is a tiny surface.** Only `destroy()` / `update()` /
+   `updateSettings()` can run before attach. Those already use optional
+   chaining (`this.render?.stop()`). Keep that local; do not infect the
+   whole class.
+5. **Phase C does not need this.** `no-unnecessary-condition` false
+   positives on those few pre-init guards get targeted
+   `eslint-disable-next-line` with a one-line reason, or a tiny
+   `isAttached` boolean — not field nullability.
+
+**Phase B keeps:**
+
+- `noUncheckedIndexedAccess: true`
+- `at()` helper for array/spread access
+- Hardening in `PageCollection` / `FlipCalculation` / `Render` / `CanvasUI`
+- Definite-assignment `pages!` / `render!` / `ui!` / `distElement!`
 
 ### Exit criteria
 
 - `noUncheckedIndexedAccess: true` monorepo-wide
 - No `// @ts-expect-error` papering over array access
-- Pre-init guards type-check as necessary (not dead)
+- Pre-init remains a small optional-chain surface (`destroy` / `updateSettings`); fields stay `!`
 
 ### Codex signoff
 
