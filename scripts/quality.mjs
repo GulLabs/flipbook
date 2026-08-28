@@ -286,10 +286,21 @@ const EXHIBIT_A = `/* This Source Code Form is subject to the terms of the Mozil
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */`;
 const coreSrc = join(root, 'packages/core/src');
+// Every TypeScript extension the build can pick up, not just `.ts` — a new
+// `foo.mts` would otherwise ship without the notice. Symlinks are refused
+// rather than followed: traversing them is how a directory of unheadered
+// sources gets in without the walk ever seeing it.
+const TS_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts'];
 const walk = (dir) =>
-  readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? walk(join(dir, e.name)) : e.name.endsWith('.ts') ? [join(dir, e.name)] : [],
-  );
+  readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const path = join(dir, e.name);
+    if (e.isSymbolicLink()) {
+      console.error(`packages/core/src: symlink not allowed (${path.slice(root.length + 1)}).`);
+      process.exit(1);
+    }
+    if (e.isDirectory()) return walk(path);
+    return TS_EXTENSIONS.some((ext) => e.name.endsWith(ext)) ? [path] : [];
+  });
 const missingHeaders = walk(coreSrc).filter((f) => !readFileSync(f, 'utf8').startsWith(EXHIBIT_A));
 if (missingHeaders.length > 0) {
   const list = missingHeaders.map((f) => `  ${f.slice(root.length + 1)}`).join('\n');

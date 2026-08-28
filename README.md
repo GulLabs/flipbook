@@ -162,10 +162,12 @@ nothing. Private and internal use carries no obligation of any kind.
 **When you do distribute, two duties attach**, and only ever to the Covered
 Software — the engine's own files — never to the rest of your application:
 
-- **Modified engine files must be offered under MPL-2.0** (§3.1). This applies
-  to the engine's files as you changed them. A file of your own is Covered only
-  if you put Covered Software into it; wrapping, configuring or calling the
-  public API does not make your file a Modification.
+- **Distributing the engine's source** (§3.1) — modified or not — must be
+  under MPL-2.0, carrying the license notice and without restricting
+  recipients' rights in that source. Modification is not what triggers this;
+  distribution is. A file of your own is Covered only if you put Covered
+  Software into it; wrapping, configuring or calling the public API does not
+  make your file a Modification.
 - **Distributing the engine in built form** (§3.2) requires that the
   corresponding Source Code Form be available _and_ that recipients be informed
   how to obtain it. Both, for each distribution — not a one-off. Note this
@@ -182,12 +184,12 @@ automatically. Note the notice accompanies each distribution, and it depends on
 that source staying reachable — if this repository ever disappeared you would
 need to make the corresponding source available yourself.
 
-If you modified the engine, §3.1 additionally governs how you distribute the
-Source Code Form: it must be under MPL-2.0, carry the license notice, and not
-restrict recipients' rights in it. Publish the modified files and point your
-notice at them.
+If you modified the engine, the source you point at must be _your_ version:
+publish those files under MPL-2.0, per §3.1, and point your notice at them
+rather than at this repository.
 
-The practical test for the first duty is whether you edit files under
+The practical test for whether you have modifications to publish is whether you
+edit files under
 `packages/core/src`.
 
 ## Trademark
