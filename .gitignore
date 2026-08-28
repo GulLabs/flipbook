@@ -16,7 +16,7 @@ coverage/
 package-lock.json
 yarn.lock
 .pnpm-store/
-packages/core/size-check/
+packages/*/size-check/
 .next/
 playwright-report/
 test-results/

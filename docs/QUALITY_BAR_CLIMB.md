@@ -28,7 +28,7 @@ Baseline measured on `feat/gullabs-flipbook-3.0` (2026-08-28):
 
 ## Phase A — Promote `no-unsafe-*` to error
 
-**Status:** `codex_review`  
+**Status:** `done`  
 **Depends on:** nothing  
 **Estimate:** same day
 
@@ -41,11 +41,11 @@ assignment / call / member / return / argument.
 ### Work
 
 - [x] `eslint.config.mjs`: all five `@typescript-eslint/no-unsafe-*` → `'error'`
-- [x] Ignore generated `packages/**/size-check/**` in ESLint (+ gitignore)
+- [x] Ignore generated `packages/*/size-check/**` in ESLint + `.gitignore`
 - [x] `pnpm lint` green
 - [x] `pnpm quality:ci` green
 - [x] Commit on climb branch (`b7c9749`)
-- [ ] Codex signoff
+- [x] Codex signoff
 
 ### Exit criteria
 
@@ -54,16 +54,17 @@ assignment / call / member / return / argument.
 
 ### Codex signoff
 
-- Commit: `b7c9749` (and follow-up doc/status if any)
-- Job / thread: _pending launch_
-- Verdict: _pending_
-- Date: _pending_
+- Commits: `b7c9749`, `0b52e39` (+ nit follow-up)
+- Job / thread: `task-mtcx6ei4-6po5r6` (session `01a04850-528e-7810-a5d6-74bd6a0d7ef4`)
+- Verdict: **APPROVE_WITH_NITS** — Phase A signoff: **YES**
+- Date: 2026-08-28
+- Nits addressed: generic `packages/*/size-check/` gitignore; doc status closed
 
 ---
 
 ## Phase B — `noUncheckedIndexedAccess` + lifecycle types
 
-**Status:** `todo`  
+**Status:** `in_progress`  
 **Depends on:** Phase A signed off  
 **Estimate:** one focused sitting
 
