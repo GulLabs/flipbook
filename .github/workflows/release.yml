@@ -49,8 +49,11 @@ jobs:
       - name: Install workspace
         run: pnpm install --frozen-lockfile
 
-      - name: Audit dependencies
-        run: pnpm audit --audit-level=high
+      # Production deps only: the core ships zero runtime dependencies, so this
+      # stays meaningful and cannot be turned red by an advisory in a dev tool
+      # that never reaches a consumer. `pnpm quality:full` audits everything.
+      - name: Audit production dependencies
+        run: pnpm audit --prod --audit-level=high
 
       - name: Quality gate
         run: pnpm quality:ci
