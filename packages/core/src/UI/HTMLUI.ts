@@ -21,7 +21,7 @@ export class HTMLUI extends UI {
 
     const block = inBlock.querySelector('.stf__block');
     if (!block) {
-      throw new Error('Failed to create flipbook HTML block');
+      throw new Error('HTML block missing');
     }
     const dist = block as HTMLElement;
     this.distElement = dist;

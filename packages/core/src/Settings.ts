@@ -122,10 +122,7 @@ export class Settings {
 
     const size = result.size as string;
     if (size !== SizeType.STRETCH && size !== SizeType.FIXED) {
-      throw new PageFlipError(
-        'Invalid size type. Available only "fixed" and "stretch" value',
-        'INVALID_SIZE',
-      );
+      throw new PageFlipError('Invalid size (fixed|stretch)', 'INVALID_SIZE');
     }
 
     if (result.width <= 0 || result.height <= 0) {
@@ -138,10 +135,7 @@ export class Settings {
 
     const direction = result.direction as string;
     if (direction !== 'ltr' && direction !== 'rtl') {
-      throw new PageFlipError(
-        'Invalid direction. Available only "ltr" and "rtl"',
-        'INVALID_DIRECTION',
-      );
+      throw new PageFlipError('Invalid direction (ltr|rtl)', 'INVALID_DIRECTION');
     }
 
     result.pageBackground = safePageBackground(result.pageBackground);

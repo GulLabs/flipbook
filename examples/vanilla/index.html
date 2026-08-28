@@ -5,17 +5,60 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@gullabs/flipbook-core vanilla</title>
     <style>
+      /* Fixed metrics so golden screenshots stay stable across platforms. */
+      html,
       body {
-        font-family: sans-serif;
+        margin: 0;
+        padding: 0;
+        background: #f0f0f0;
+        font-family: Arial, Helvetica, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      body {
         margin: 24px;
+      }
+      body.golden {
+        /* Room around the book so portrait BACK curl (which paints outside
+           the leaf box) is still inside the screenshot clip. */
+        margin: 0;
+        padding: 96px;
+        overflow: hidden;
+      }
+      body.golden h1 {
+        display: none;
       }
       #book {
         width: 100%;
         max-width: 800px;
       }
+      body.golden #book {
+        max-width: none;
+        width: 100%;
+        /* Keep engine overflow visible for the fold that leaves the leaf box. */
+        overflow: visible;
+      }
       .page {
+        box-sizing: border-box;
         padding: 24px;
         background: #fff;
+        color: #111;
+        font-size: 28px;
+        font-weight: 700;
+        line-height: 1.2;
+      }
+      /* Distinct solid fills make §4.2 fold opacity (and bleed) obvious. */
+      .page:nth-child(1) {
+        background: #ffe4e1;
+      }
+      .page:nth-child(2) {
+        background: #e0f0ff;
+      }
+      .page:nth-child(3) {
+        background: #e6ffe6;
+      }
+      .page:nth-child(4) {
+        background: #fff5cc;
       }
     </style>
   </head>

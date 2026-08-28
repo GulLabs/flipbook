@@ -39,7 +39,10 @@
     "lint:fix": "eslint . --fix --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "audit": "pnpm audit --audit-level=high"
+    "audit": "pnpm audit --audit-level=high",
+    "test:e2e:golden": "playwright test e2e/golden-flip.spec.ts",
+    "test:e2e:golden:update": "playwright test e2e/golden-flip.spec.ts --update-snapshots",
+    "test:coverage-areas": "node ./scripts/check-coverage-areas.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.1",

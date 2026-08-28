@@ -345,3 +345,236 @@ test('nested interactive keeps Arrow keys (does not turn the book)', async () =>
   fireEvent.keyDown(combo, { key: 'ArrowRight', bubbles: true });
   expect(onPageChange).not.toHaveBeenCalled();
 });
+describe('usePageFlip actions + keyboard / error paths', () => {
+  test('flipPrev, turnToPage, and flipToPage all move the engine', async () => {
+    function Harness() {
+      const book = usePageFlip();
+      return (
+        <>
+          <button type="button" onClick={() => book.flipNext()}>
+            next
+          </button>
+          <button type="button" onClick={() => book.flipPrev()}>
+            prev
+          </button>
+          <button type="button" onClick={() => book.turnToPage(2)}>
+            turn2
+          </button>
+          <button type="button" onClick={() => book.flipToPage(1)}>
+            flip1
+          </button>
+          <span data-testid="page-state">{book.page}</span>
+          <HTMLFlipBook
+            ref={book.ref}
+            width={200}
+            height={300}
+            flippingTime={0}
+            onPageChange={book.setPage}
+            onInit={() => book.setPageCount(3)}
+          >
+            {pages('a', 'b', 'c')}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('next'));
+    await waitFor(() => {
+      expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 2 of 3/);
+    });
+
+    fireEvent.click(screen.getByText('prev'));
+    await waitFor(() => {
+      expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 1 of 3/);
+    });
+
+    fireEvent.click(screen.getByText('turn2'));
+    await waitFor(() => {
+      expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 3 of 3/);
+    });
+
+    fireEvent.click(screen.getByText('flip1'));
+    await waitFor(() => {
+      expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 2 of 3/);
+    });
+  });
+
+  test('keyboard arrows and Home/End drive turns (ltr)', async () => {
+    const handleRef: { current: import('@gullabs/react-flipbook').FlipBookHandle | null } = {
+      current: null,
+    };
+    const { container } = render(
+      <HTMLFlipBook
+        ref={(h) => {
+          handleRef.current = h;
+        }}
+        width={200}
+        height={300}
+        flippingTime={0}
+        useKeyboard
+      >
+        {pages('a', 'b', 'c', 'd')}
+      </HTMLFlipBook>,
+    );
+
+    const root = await waitFor(() => {
+      const el = container.querySelector<HTMLElement>('[aria-label="Flipbook"]');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+
+    root.focus();
+    fireEvent.keyDown(root, { key: 'ArrowRight' });
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(1);
+    });
+
+    fireEvent.keyDown(root, { key: 'End' });
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(3);
+    });
+
+    fireEvent.keyDown(root, { key: 'Home' });
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(0);
+    });
+
+    fireEvent.keyDown(root, { key: 'ArrowLeft' });
+    // already at 0 — stays put
+    expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(0);
+  });
+
+  test('rtl keyboard mirrors arrow directions', async () => {
+    const handleRef: { current: import('@gullabs/react-flipbook').FlipBookHandle | null } = {
+      current: null,
+    };
+    const { container } = render(
+      <HTMLFlipBook
+        ref={(h) => {
+          handleRef.current = h;
+        }}
+        width={200}
+        height={300}
+        flippingTime={0}
+        direction="rtl"
+        useKeyboard
+      >
+        {pages('a', 'b', 'c')}
+      </HTMLFlipBook>,
+    );
+
+    const root = await waitFor(() => {
+      const el = container.querySelector<HTMLElement>('[aria-label="Flipbook"]');
+      expect(el).toBeTruthy();
+      return el!;
+    });
+
+    root.focus();
+    // rtl: ArrowLeft = next
+    fireEvent.keyDown(root, { key: 'ArrowLeft' });
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(1);
+    });
+
+    fireEvent.keyDown(root, { key: 'ArrowRight' });
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(0);
+    });
+  });
+
+  test('controlled page out of range is ignored without throwing', async () => {
+    const handleRef: { current: import('@gullabs/react-flipbook').FlipBookHandle | null } = {
+      current: null,
+    };
+    function Harness() {
+      const [page, setPage] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setPage(99)}>
+            bad
+          </button>
+          <HTMLFlipBook
+            ref={(h) => {
+              handleRef.current = h;
+            }}
+            width={200}
+            height={300}
+            flippingTime={0}
+            page={page}
+            onPageChange={setPage}
+          >
+            {pages('a', 'b')}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    render(<Harness />);
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()).toBeTruthy();
+    });
+
+    const before = handleRef.current!.pageFlip()!.getCurrentPageIndex();
+    expect(() => fireEvent.click(screen.getByText('bad'))).not.toThrow();
+    // Engine rejects out-of-range turnToPage; index stays put.
+    expect(handleRef.current!.pageFlip()!.getCurrentPageIndex()).toBe(before);
+  });
+
+  test('imperative handle exposes pageFlip after mount', async () => {
+    const handleRef: { current: import('@gullabs/react-flipbook').FlipBookHandle | null } = {
+      current: null,
+    };
+
+    render(
+      <HTMLFlipBook
+        ref={(h) => {
+          handleRef.current = h;
+        }}
+        width={200}
+        height={300}
+        flippingTime={0}
+      >
+        {pages('a', 'b')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()?.getPageCount()).toBe(2);
+    });
+  });
+
+  test('onChangeState fires across a programmatic flip', async () => {
+    const onChangeState = vi.fn();
+    const handleRef: { current: import('@gullabs/react-flipbook').FlipBookHandle | null } = {
+      current: null,
+    };
+
+    render(
+      <HTMLFlipBook
+        ref={(h) => {
+          handleRef.current = h;
+        }}
+        width={200}
+        height={300}
+        flippingTime={0}
+        onChangeState={onChangeState}
+      >
+        {pages('a', 'b', 'c')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()).toBeTruthy();
+    });
+
+    handleRef.current?.flipNext();
+    await waitFor(() => {
+      expect(onChangeState.mock.calls.length).toBeGreaterThan(0);
+    });
+  });
+});

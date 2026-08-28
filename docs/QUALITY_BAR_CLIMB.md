@@ -242,6 +242,7 @@ not a product decision (AGENTS.md §2: **do not raise again**).
 
 ## Climb log
 
+
 | Date       | Phase | Event                                           |
 | ---------- | ----- | ----------------------------------------------- |
 | 2026-08-28 | —     | TODO written; baseline measured                 |
@@ -254,6 +255,8 @@ not a product decision (AGENTS.md §2: **do not raise again**).
 | 2026-08-28 | D3    | Done — strict-boolean-expressions               |
 | 2026-08-28 | D4    | Done — coverage floors ratchet                  |
 | 2026-08-28 | D5    | Done — typecheck includes tests                 |
+| 2026-08-28 | size  | Merged quality-guards: extra engine tests + size pass |
+
 
 ---
 

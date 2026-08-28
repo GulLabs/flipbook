@@ -33,13 +33,14 @@ export default defineConfig({
         '**/types.ts',
         '**/html-flip-book/settings.ts',
       ],
-      // Floor for CI — Phase D4 ratchet from 40/40/35/40. Do not lower.
-      // Latest measured ~58% lines / ~66% functions / ~43% branches / ~57% statements.
+      // Floor for CI. Only move UP (AGENTS.md §2). Incoming engine tests should
+      // lift coverage; if quality:ci fails, keep the higher of the two floors
+      // that actually pass.
       thresholds: {
-        lines: 58,
-        functions: 66,
-        branches: 42,
-        statements: 57,
+        lines: 75,
+        functions: 75,
+        branches: 60,
+        statements: 75,
       },
     },
     projects: [

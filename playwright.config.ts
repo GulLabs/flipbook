@@ -4,7 +4,20 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
   retries: 0,
-  use: { trace: 'on-first-retry' },
+  expect: {
+    toHaveScreenshot: {
+      // Per-project baselines already absorb Chromium vs WebKit. This budget
+      // is for subpixel / antialias / shadow-gradient drift across OS and GPU;
+      // a slide-in or translucent fold moves far more than 5% of the book pixels.
+      maxDiffPixelRatio: 0.05,
+    },
+  },
+  use: {
+    baseURL: 'http://127.0.0.1:4173',
+    trace: 'on-first-retry',
+    // Do not globally disable animations: golden mid-flip frames need the
+    // engine's rAF turn. Individual toHaveScreenshot calls freeze the loop.
+  },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },

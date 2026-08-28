@@ -1,6 +1,6 @@
 import { Page, PageDensity, PageOrientation } from './Page';
 import type { Render } from '../Render/Render';
-import { Helper } from '../Helper';
+import { rot } from '../Helper';
 import { FlipDirection } from '../Flip/Flip';
 import type { Point } from '../BasicTypes';
 import { foldFill, foldFillCss } from '../Render/pageBackground';
@@ -61,15 +61,7 @@ export class HTMLPage extends Page {
 
     this.element.classList.remove('--simple');
 
-    const commonStyle = `
-            display: block;
-            z-index: ${this.element.style.zIndex};
-            left: 0;
-            top: 0;
-            width: ${pageWidth}px;
-            height: ${pageHeight}px;
-            ${foldFillCss(this.render.getSettings().pageBackground)}
-        `;
+    const commonStyle = `display:block;z-index:${this.element.style.zIndex};left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;${foldFillCss(this.render.getSettings().pageBackground)}`;
 
     if (density === PageDensity.HARD) {
       this.drawHard(commonStyle);
@@ -85,17 +77,12 @@ export class HTMLPage extends Page {
 
     const transform =
       this.orientation === PageOrientation.LEFT
-        ? `transform-origin: ${this.render.getRect().pageWidth}px 0;
-                   transform: translate3d(0, 0, 0) rotateY(${angle}deg);`
-        : `transform-origin: 0 0;
-                   transform: translate3d(${pos}px, 0, 0) rotateY(${angle}deg);`;
+        ? `transform-origin:${this.render.getRect().pageWidth}px 0;transform:translate3d(0,0,0) rotateY(${angle}deg);`
+        : `transform-origin:0 0;transform:translate3d(${pos}px,0,0) rotateY(${angle}deg);`;
 
-    this.element.style.cssText = `${commonStyle}
-            backface-visibility: hidden;
-            -webkit-backface-visibility: hidden;
-            clip-path: none;
-            -webkit-clip-path: none;
-            ${transform}`;
+    this.element.style.cssText =
+      `${commonStyle}backface-visibility:hidden;-webkit-backface-visibility:hidden;` +
+      `clip-path:none;-webkit-clip-path:none;${transform}`;
   }
 
   private drawSoft(position: Point, commonStyle = ''): void {
@@ -113,7 +100,7 @@ export class HTMLPage extends Page {
                 y: p.y - this.state.position.y,
               };
 
-        g = Helper.GetRotatedPoint(g, { x: 0, y: 0 }, this.state.angle);
+        g = rot(g, { x: 0, y: 0 }, this.state.angle);
         polygon += `${g.x}px ${g.y}px, `;
       }
     }
@@ -122,38 +109,29 @@ export class HTMLPage extends Page {
 
     // Safari drops the clip-path on a 3d-transformed element at angle 0.
     // https://bugs.webkit.org/show_bug.cgi?id=126207
+    // Safari drops clip-path on a 3d-transformed element at angle 0 (webkit#126207).
     const transform =
       this.render.isSafari() && this.state.angle === 0
-        ? `transform: translate(${position.x}px, ${position.y}px);`
-        : `transform: translate3d(${position.x}px, ${position.y}px, 0) rotate(${this.state.angle}rad);`;
+        ? `transform:translate(${position.x}px,${position.y}px);`
+        : `transform:translate3d(${position.x}px,${position.y}px,0) rotate(${this.state.angle}rad);`;
 
-    this.element.style.cssText =
-      `${commonStyle}transform-origin: 0 0; ` +
-      `clip-path: ${polygon}; -webkit-clip-path: ${polygon};${transform}`;
+    this.element.style.cssText = `${commonStyle}transform-origin:0 0;clip-path:${polygon};-webkit-clip-path:${polygon};${transform}`;
   }
 
   public simpleDraw(orient: PageOrientation): void {
     const rect = this.render.getRect();
-
     const pageWidth = rect.pageWidth;
     const pageHeight = rect.height;
-
     const x = orient === PageOrientation.RIGHT ? rect.left + rect.pageWidth : rect.left;
-
     const y = rect.top;
 
     this.element.classList.add('--simple');
     // Static pages are opaque too: a transparent leaf lets the page under
     // the fold read through at the start / end of a turn.
-    this.element.style.cssText = `
-            position: absolute;
-            display: block;
-            height: ${pageHeight}px;
-            left: ${x}px;
-            top: ${y}px;
-            width: ${pageWidth}px;
-            ${foldFillCss(this.render.getSettings().pageBackground)}
-            z-index: ${this.render.getSettings().startZIndex + 1};`;
+    this.element.style.cssText =
+      `position:absolute;display:block;height:${pageHeight}px;left:${x}px;top:${y}px;` +
+      `width:${pageWidth}px;${foldFillCss(this.render.getSettings().pageBackground)}` +
+      `z-index:${this.render.getSettings().startZIndex + 1};`;
   }
 
   public getElement(): HTMLElement {

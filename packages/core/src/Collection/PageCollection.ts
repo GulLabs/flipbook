@@ -65,7 +65,7 @@ export abstract class PageCollection {
 
     let start = 0;
     if (this.isShowCover) {
-      at(this.pages, 0, 'page').setDensity(PageDensity.HARD);
+      at(this.pages, 0).setDensity(PageDensity.HARD);
       this.landscapeSpread.push([start]);
       start++;
     }
@@ -74,7 +74,7 @@ export abstract class PageCollection {
       if (i < this.pages.length - 1) this.landscapeSpread.push([i, i + 1]);
       else {
         this.landscapeSpread.push([i]);
-        at(this.pages, i, 'page').setDensity(PageDensity.HARD);
+        at(this.pages, i).setDensity(PageDensity.HARD);
       }
     }
   }
@@ -105,7 +105,7 @@ export abstract class PageCollection {
     const spread = this.getSpread();
 
     for (let i = 0; i < spread.length; i++) {
-      const entry = at(spread, i, 'spread');
+      const entry = at(spread, i);
       if (pageNum === entry[0] || pageNum === entry[1]) return i;
     }
 
@@ -133,7 +133,7 @@ export abstract class PageCollection {
    */
   public getPage(pageIndex: number): Page {
     if (pageIndex >= 0 && pageIndex < this.pages.length) {
-      return at(this.pages, pageIndex, 'page');
+      return at(this.pages, pageIndex);
     }
 
     throw new PageFlipError('Invalid page', 'INVALID_PAGE');
@@ -147,7 +147,7 @@ export abstract class PageCollection {
   public nextBy(current: Page): Page | null {
     const idx = this.pages.indexOf(current);
 
-    if (idx < this.pages.length - 1) return at(this.pages, idx + 1, 'page');
+    if (idx < this.pages.length - 1) return at(this.pages, idx + 1);
 
     return null;
   }
@@ -160,7 +160,7 @@ export abstract class PageCollection {
   public prevBy(current: Page): Page | null {
     const idx = this.pages.indexOf(current);
 
-    if (idx > 0) return at(this.pages, idx - 1, 'page');
+    if (idx > 0) return at(this.pages, idx - 1);
 
     return null;
   }
@@ -178,15 +178,13 @@ export abstract class PageCollection {
     } else {
       const spreads = this.getSpread();
       const spread =
-        direction === FlipDirection.FORWARD
-          ? at(spreads, current + 1, 'spread')
-          : at(spreads, current - 1, 'spread');
+        direction === FlipDirection.FORWARD ? at(spreads, current + 1) : at(spreads, current - 1);
 
-      if (spread.length === 1) return at(this.pages, at(spread, 0, 'spread page'), 'page');
+      if (spread.length === 1) return at(this.pages, at(spread, 0));
 
       return direction === FlipDirection.FORWARD
-        ? at(this.pages, at(spread, 0, 'spread page'), 'page')
-        : at(this.pages, at(spread, 1, 'spread page'), 'page');
+        ? at(this.pages, at(spread, 0))
+        : at(this.pages, at(spread, 1));
     }
   }
 
@@ -200,20 +198,18 @@ export abstract class PageCollection {
 
     if (this.render.getOrientation() === Orientation.PORTRAIT) {
       return direction === FlipDirection.FORWARD
-        ? at(this.pages, current + 1, 'page')
-        : at(this.pages, current - 1, 'page');
+        ? at(this.pages, current + 1)
+        : at(this.pages, current - 1);
     } else {
       const spreads = this.getSpread();
       const spread =
-        direction === FlipDirection.FORWARD
-          ? at(spreads, current + 1, 'spread')
-          : at(spreads, current - 1, 'spread');
+        direction === FlipDirection.FORWARD ? at(spreads, current + 1) : at(spreads, current - 1);
 
-      if (spread.length === 1) return at(this.pages, at(spread, 0, 'spread page'), 'page');
+      if (spread.length === 1) return at(this.pages, at(spread, 0));
 
       return direction === FlipDirection.FORWARD
-        ? at(this.pages, at(spread, 1, 'spread page'), 'page')
-        : at(this.pages, at(spread, 0, 'spread page'), 'page');
+        ? at(this.pages, at(spread, 1))
+        : at(this.pages, at(spread, 0));
     }
   }
 
@@ -286,24 +282,24 @@ export abstract class PageCollection {
    * Show current spread
    */
   private showSpread(): void {
-    const spread = at(this.getSpread(), this.currentSpreadIndex, 'spread');
-    const leftIdx = at(spread, 0, 'spread page');
+    const spread = at(this.getSpread(), this.currentSpreadIndex);
+    const leftIdx = at(spread, 0);
 
     if (spread.length === 2) {
-      const rightIdx = at(spread, 1, 'spread page');
-      this.render.setLeftPage(at(this.pages, leftIdx, 'page'));
-      this.render.setRightPage(at(this.pages, rightIdx, 'page'));
+      const rightIdx = at(spread, 1);
+      this.render.setLeftPage(at(this.pages, leftIdx));
+      this.render.setRightPage(at(this.pages, rightIdx));
     } else if (this.render.getOrientation() === Orientation.LANDSCAPE) {
       if (leftIdx === this.pages.length - 1) {
-        this.render.setLeftPage(at(this.pages, leftIdx, 'page'));
+        this.render.setLeftPage(at(this.pages, leftIdx));
         this.render.setRightPage(null);
       } else {
         this.render.setLeftPage(null);
-        this.render.setRightPage(at(this.pages, leftIdx, 'page'));
+        this.render.setRightPage(at(this.pages, leftIdx));
       }
     } else {
       this.render.setLeftPage(null);
-      this.render.setRightPage(at(this.pages, leftIdx, 'page'));
+      this.render.setRightPage(at(this.pages, leftIdx));
     }
 
     this.currentPageIndex = leftIdx;
