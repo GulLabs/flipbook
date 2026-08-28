@@ -1,7 +1,2 @@
 [extend]
 useDefault = true
-
-[allowlist]
-description = "Repo-specific false positives"
-paths = []
-regexes = []
