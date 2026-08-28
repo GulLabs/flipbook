@@ -26,11 +26,17 @@ export class PageFlip extends EventObject {
   private readonly setting: FlipSetting;
   private readonly block: HTMLElement; // Root HTML Element
 
-  private pages!: PageCollection;
+  // Nullable, not `!`: these only exist after `loadFromHTML` / `loadFromImages`.
+  // The public getters below keep their non-null signatures and throw a typed
+  // error instead — a definite-assignment `!` here would hand callers
+  // `undefined` and fail as "cannot read properties of undefined" deep in the
+  // engine, and widening every getter to `| null` would break every consumer
+  // for a state they cannot observe anyway.
+  private pages: PageCollection | null = null;
   private flipController: Flip | null = null;
-  private render!: Render;
+  private render: Render | null = null;
 
-  private ui!: UI;
+  private ui: UI | null = null;
   private initTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
@@ -75,51 +81,95 @@ export class PageFlip extends EventObject {
     this.pages?.show();
   }
 
+  /**
+   * Host element the engine was constructed with.
+   *
+   * @internal Wiring seam for the lazily-loaded canvas mode. Not part of the
+   * supported API; it may change in a minor release.
+   */
   public getBlock(): HTMLElement {
     return this.block;
   }
 
+  /** Loaded engine state, or a typed error naming what the caller must do first. */
+  private requireLoaded<T>(value: T | null, what: string): T {
+    if (value === null) {
+      throw new PageFlipError(
+        `${what} is not available: call loadFromHTML() or loadFromImages() first`,
+        'NOT_LOADED',
+      );
+    }
+    return value;
+  }
+
+  private get renderOrThrow(): Render {
+    return this.requireLoaded(this.render, 'render');
+  }
+
+  private get pagesOrThrow(): PageCollection {
+    return this.requireLoaded(this.pages, 'page collection');
+  }
+
+  private get uiOrThrow(): UI {
+    return this.requireLoaded(this.ui, 'UI');
+  }
+
   /**
-   * Wire UI + render + pages after construction. Used by HTML load and the
-   * lazily-loaded canvas path so CanvasRender stays out of the HTML bundle.
+   * Swap the page collection in place, keeping the current UI and render.
+   *
+   * @internal Wiring seam for the lazily-loaded canvas mode. Not part of the
+   * supported API; it may change in a minor release.
    */
   public replacePages(pages: PageCollection, current: number): void {
     if (this.destroyed) return;
-    this.pages.destroy();
+    this.pagesOrThrow.destroy();
     this.pages = pages;
     this.pages.load();
     this.pages.show(current);
     this.trigger('update', this, {
       page: current,
-      mode: this.render.getOrientation(),
+      mode: this.renderOrThrow.getOrientation(),
     });
     this.trigger('collectionRebuild', this, {
       page: current,
-      pageCount: this.pages.getPageCount(),
+      pageCount: pages.getPageCount(),
     });
   }
 
+  /**
+   * Wire UI + render + pages after construction. Used by HTML load and by the
+   * lazily-loaded canvas chunk, so `CanvasRender` stays out of the HTML bundle.
+   *
+   * @internal Wiring seam. Not part of the supported API; it may change in a
+   * minor release. Use `loadFromHTML` / `loadFromImages`.
+   */
   public attachMode(ui: UI, render: Render, pages: PageCollection): void {
     if (this.destroyed) {
       ui.destroy();
       render.stop();
       return;
     }
+    // Replace any previous mode wholesale so a second load cannot leave the
+    // old UI listening on the host element.
+    this.ui?.destroy();
+    this.render?.stop();
+
     this.ui = ui;
     this.render = render;
     this.flipController = new Flip(render, this);
     this.pages = pages;
-    this.pages.load();
-    this.render.start();
-    this.pages.show(this.setting.startPage);
+    pages.load();
+    render.start();
+    pages.show(this.setting.startPage);
 
     if (this.initTimer !== null) clearTimeout(this.initTimer);
     this.initTimer = setTimeout(() => {
       this.initTimer = null;
-      this.ui.update();
+      if (this.destroyed) return;
+      ui.update();
       this.trigger('init', this, {
         page: this.setting.startPage,
-        mode: this.render.getOrientation(),
+        mode: render.getOrientation(),
       });
     }, 1);
   }
@@ -180,22 +230,27 @@ export class PageFlip extends EventObject {
    * @param {(NodeListOf<HTMLElement>|HTMLElement[])} items - List of pages as HTML Element
    */
   public updateFromHtml(items: NodeListOf<HTMLElement> | HTMLElement[]): void {
-    const current = this.pages.getCurrentPageIndex();
+    const render = this.renderOrThrow;
+    const ui = this.uiOrThrow;
+    const previous = this.pagesOrThrow;
+    const current = previous.getCurrentPageIndex();
 
-    this.pages.destroy();
-    this.pages = new HTMLPageCollection(this, this.render, this.ui.getDistElement(), items);
-    this.pages.load();
-    (this.ui as HTMLUI).updateItems(items);
-    this.render.reload();
+    previous.destroy();
 
-    this.pages.show(current);
+    const pages = new HTMLPageCollection(this, render, ui.getDistElement(), items);
+    this.pages = pages;
+    pages.load();
+    (ui as HTMLUI).updateItems(items);
+    render.reload();
+
+    pages.show(current);
     this.trigger('update', this, {
       page: current,
-      mode: this.render.getOrientation(),
+      mode: render.getOrientation(),
     });
     this.trigger('collectionRebuild', this, {
       page: current,
-      pageCount: this.pages.getPageCount(),
+      pageCount: pages.getPageCount(),
     });
   }
 
@@ -224,22 +279,22 @@ export class PageFlip extends EventObject {
    * Clear pages from HTML (remove to initinalState)
    */
   public clear(): void {
-    this.pages.destroy();
-    (this.ui as HTMLUI).clear();
+    this.pagesOrThrow.destroy();
+    (this.uiOrThrow as HTMLUI).clear();
   }
 
   /**
    * Turn to the previous page (without animation)
    */
   public turnToPrevPage(): void {
-    this.pages.showPrev();
+    this.pagesOrThrow.showPrev();
   }
 
   /**
    * Turn to the next page (without animation)
    */
   public turnToNextPage(): void {
-    this.pages.showNext();
+    this.pagesOrThrow.showNext();
   }
 
   /**
@@ -248,14 +303,16 @@ export class PageFlip extends EventObject {
    * @param {number} page - New page number
    */
   public turnToPage(page: number): void {
-    if (page < 0 || page >= this.pages.getPageCount()) {
+    const pages = this.pagesOrThrow;
+
+    if (page < 0 || page >= pages.getPageCount()) {
       throw new PageFlipError(`Invalid page: ${page}`, 'INVALID_PAGE');
     }
-    const spreadIndex = this.pages.getSpreadIndexByPage(page);
-    if (spreadIndex === null) {
+    if (pages.getSpreadIndexByPage(page) === null) {
       throw new PageFlipError(`Cannot turn to page ${page}: not in any spread`, 'INVALID_PAGE');
     }
-    this.pages.show(page);
+
+    pages.show(page);
   }
 
   /**
@@ -310,7 +367,7 @@ export class PageFlip extends EventObject {
    * @param {Orientation} newOrientation - New page orientation (portrait, landscape)
    */
   public updateOrientation(newOrientation: Orientation): void {
-    this.ui.setOrientationStyle(newOrientation);
+    this.uiOrThrow.setOrientationStyle(newOrientation);
     this.update();
     this.trigger('changeOrientation', this, newOrientation);
   }
@@ -321,7 +378,7 @@ export class PageFlip extends EventObject {
    * @returns {number}
    */
   public getPageCount(): number {
-    return this.pages.getPageCount();
+    return this.pagesOrThrow.getPageCount();
   }
 
   /**
@@ -330,7 +387,7 @@ export class PageFlip extends EventObject {
    * @returns {number}
    */
   public getCurrentPageIndex(): number {
-    return this.pages.getCurrentPageIndex();
+    return this.pagesOrThrow.getCurrentPageIndex();
   }
 
   /**
@@ -340,16 +397,17 @@ export class PageFlip extends EventObject {
    * @returns {Page}
    */
   public getPage(pageIndex: number): Page {
-    return this.pages.getPage(pageIndex);
+    return this.pagesOrThrow.getPage(pageIndex);
   }
 
   /**
-   * Get the current rendering object
+   * Get the current rendering object.
    *
+   * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML` / `loadFromImages`.
    * @returns {Render}
    */
   public getRender(): Render {
-    return this.render;
+    return this.renderOrThrow;
   }
 
   /**
@@ -367,7 +425,7 @@ export class PageFlip extends EventObject {
    * @returns {Orientation} Сurrent orientation: portrait or landscape
    */
   public getOrientation(): Orientation {
-    return this.render.getOrientation();
+    return this.renderOrThrow.getOrientation();
   }
 
   /**
@@ -376,7 +434,7 @@ export class PageFlip extends EventObject {
    * @returns {PageRect}
    */
   public getBoundsRect(): PageRect {
-    return this.render.getRect();
+    return this.renderOrThrow.getRect();
   }
 
   /**
@@ -389,12 +447,13 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Get UI object
+   * Get UI object.
    *
+   * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML` / `loadFromImages`.
    * @returns {UI}
    */
   public getUI(): UI {
-    return this.ui;
+    return this.uiOrThrow;
   }
 
   /**
@@ -407,12 +466,13 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Get page collection
+   * Get page collection.
    *
+   * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML` / `loadFromImages`.
    * @returns {PageCollection}
    */
   public getPageCollection(): PageCollection {
-    return this.pages;
+    return this.pagesOrThrow;
   }
 
   /**
