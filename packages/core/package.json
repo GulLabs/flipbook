@@ -27,7 +27,7 @@
     "ts-loader": "^7.0.4",
     "typedoc": "^0.17.8",
     "typescript": "latest",
-    "webpack": "^4.43.0",
+    "webpack": "^5.109.2",
     "webpack-cli": "^3.3.11"
   },
   "scripts": {
