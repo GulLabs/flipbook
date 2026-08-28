@@ -224,15 +224,26 @@ describe('HTMLFlipBook (shipped binding)', () => {
           <button type="button" onClick={() => book.flipNext()}>
             next
           </button>
+          <button type="button" onClick={() => book.flipPrev()}>
+            prev
+          </button>
+          <button type="button" onClick={() => book.turnToPage(2)}>
+            turn-end
+          </button>
+          <button type="button" onClick={() => book.flipToPage(0)}>
+            flip-start
+          </button>
           <HTMLFlipBook
             ref={book.ref}
             width={200}
             height={300}
             flippingTime={0}
-            onPageChange={book.setPage}
+            {...book.bookProps}
           >
             {pages('a', 'b', 'c')}
           </HTMLFlipBook>
+          <span data-testid="page-state">{book.page}</span>
+          <span data-testid="page-count">{book.pageCount}</span>
         </>
       );
     }
@@ -240,6 +251,21 @@ describe('HTMLFlipBook (shipped binding)', () => {
     fireEvent.click(screen.getByText('next'));
     await waitFor(() => {
       expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 2 of 3/);
+    });
+    fireEvent.click(screen.getByText('prev'));
+    await waitFor(() => {
+      expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 1 of 3/);
+    });
+    fireEvent.click(screen.getByText('turn-end'));
+    await waitFor(() => {
+      expect(screen.getByTestId('page-state').textContent).toBe('2');
+    });
+    fireEvent.click(screen.getByText('flip-start'));
+    await waitFor(() => {
+      expect(screen.getByTestId('page-state').textContent).toBe('0');
+    });
+    await waitFor(() => {
+      expect(Number(screen.getByTestId('page-count').textContent)).toBeGreaterThan(0);
     });
   });
 });

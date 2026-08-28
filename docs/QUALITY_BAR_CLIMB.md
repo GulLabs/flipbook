@@ -187,7 +187,7 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ### D4 — Coverage floors ratchet
 
-**Status:** `done`
+**Status:** `codex_review`
 
 - [x] Raise thresholds toward measured suite (not above flaky headroom)
 - [x] `pnpm test:coverage` green
