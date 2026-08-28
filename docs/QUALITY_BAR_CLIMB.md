@@ -133,7 +133,7 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ## Phase D — Optional ratchets (post C)
 
-**Status:** `in_progress` (D1)  
+**Status:** `in_progress` (D1 done; D2 in review)  
 **Depends on:** Phase C signed off  
 **Estimate:** one sub-item per commit + Codex signoff
 
@@ -147,10 +147,25 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ### D1 — `useUnknownInCatchVariables: true`
 
-**Status:** `codex_review`
+**Status:** `done`
 
 - [x] `tsconfig.base.json`: `"useUnknownInCatchVariables": true`
 - [x] `pnpm typecheck` / `pnpm quality:ci` green
+- [x] Commit
+- [x] Codex signoff
+
+#### Codex signoff
+
+- Job: `task-mtd24vll-ks0412` (session `01a048cf-6273-7023-b0db-ec206c12ba3e`)
+- Verdict: **APPROVE_WITH_NITS** — Phase D1 signoff: **YES**
+- Date: 2026-08-28
+
+### D2 — `verbatimModuleSyntax: true`
+
+**Status:** `codex_review`
+
+- [x] `tsconfig.base.json`: `"verbatimModuleSyntax": true`
+- [x] `pnpm typecheck` green (0 residual debt)
 - [x] Commit
 - [ ] Codex signoff
 
