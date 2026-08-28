@@ -51,7 +51,7 @@ Baseline measured on `feat/gullabs-flipbook-3.0` (2026-08-28):
 
 ## Phase B — `noUncheckedIndexedAccess` + lifecycle boundary
 
-**Status:** `codex_review`  
+**Status:** `done`  
 **Depends on:** Phase A signed off
 
 ### Why
@@ -93,17 +93,16 @@ Per `AGENTS.md`:
 
 ### Codex signoff
 
-- Job: `task-mtd1ib9r-d60hct` (session `01a048bf-52cd-7c50-8f73-882b7740562e`)
-- Verdict: **REQUEST_CHANGES** (size ceiling raised during Phase B commits)
-- Follow-up: size debt remains tracked below; no further raises (AGENTS.md §2).
-  Shrink-to-spec is a separate phase. DistElement restored to `!` per AGENTS.md.
+- Jobs: `task-mtd1ib9r-d60hct` (REQUEST_CHANGES), then `task-mtd1t60z-35bpcf` after fixes
+- Verdict: **APPROVE** — Phase B signoff: **YES**
 - Date: 2026-08-28
+- Size ceiling history remains tracked debt (no further raises)
 
 ---
 
 ## Phase C — `no-unnecessary-condition` → error
 
-**Status:** `codex_review`  
+**Status:** `done`  
 **Depends on:** Phase B implementation (NUIA + lifecycle)
 
 ### Why
@@ -126,10 +125,8 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ### Codex signoff
 
-- Job: `task-mtd1ib9r-d60hct`
-- Initial verdict: **REQUEST_CHANGES** (Flip.start throw vs soft false)
-- Fix applied: non-`PageFlipError` setup failures return `false` again; catch is `unknown`
-- Re-signoff: _pending_
+- Job: `task-mtd1t60z-35bpcf` (session `01a048c7-0cee-7bb0-82ae-54a70666605f`)
+- Verdict: **APPROVE** — Phase C signoff: **YES**
 - Date: 2026-08-28
 
 ---
