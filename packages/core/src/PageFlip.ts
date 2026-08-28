@@ -359,13 +359,13 @@ export class PageFlip extends EventObject {
       this.trigger('turnRejected', this, { reason: 'boundary', code: 'REJECTED' });
       return false;
     } catch (err: unknown) {
-      // Engine-internal setup failure (a corrupt spread, an index guard).
-      // Surface it as a rejection with its code rather than throwing out of a
-      // gesture handler.
-      this.trigger('turnRejected', this, {
-        reason: 'setup',
-        code: err instanceof PageFlipError ? err.code : 'FLIP_SETUP',
-      });
+      // Only the engine's own typed failures (a corrupt spread, an index
+      // guard) become a rejection. Anything else — a TypeError from a
+      // listener or the renderer — is a real defect, and swallowing it into a
+      // silent `false` would hide it from the consumer and from us.
+      if (!(err instanceof PageFlipError)) throw err;
+
+      this.trigger('turnRejected', this, { reason: 'setup', code: err.code });
       return false;
     }
   }

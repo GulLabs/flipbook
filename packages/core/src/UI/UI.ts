@@ -80,6 +80,9 @@ export abstract class UI {
    * restyle rather than a teardown. Without this the React binding had to
    * treat size as constructor-only and rebuild the whole engine on every
    * resize step — losing the current page and any in-flight turn.
+   *
+   * @internal Wiring seam for `PageFlip.updateSettings`. Not part of the
+   * supported API; it may change in a minor release.
    */
   public applyHostSize(setting: FlipSetting = this.app.getSettings()): void {
     const host = this.parentElement;
@@ -96,9 +99,50 @@ export abstract class UI {
     if (setting.autoSize) {
       host.style.width = '100%';
       host.style.maxWidth = `${setting.maxWidth * 2}px`;
+    } else {
+      // Hand back what `autoSize` had taken over, or turning it off would
+      // leave the host stretched to 100% with a stale max-width.
+      host.style.width = this.hostStyles.width;
+      host.style.maxWidth = this.hostStyles.maxWidth;
     }
 
     host.style.display = 'block';
+
+    this.applyWrapperRatio();
+  }
+
+  /**
+   * The wrapper reserves the book's aspect ratio with bottom padding while
+   * `autoSize` is on. It is derived from width/height, so a live size change
+   * has to recompute it — otherwise a 300×400 book resized to 320×400 keeps
+   * 133.33% and renders at the old proportions.
+   */
+  private applyWrapperRatio(orientation?: Orientation): void {
+    const setting = this.app.getSettings();
+
+    if (!setting.autoSize) {
+      this.wrapper.style.paddingBottom = '';
+      return;
+    }
+
+    // The constructor runs before the render exists. Skipping is safe there:
+    // `render.start()` calls `update()`, which reports the orientation back
+    // through `setOrientationStyle` and lands here with a real value.
+    const resolved = orientation ?? this.currentOrientation();
+    if (resolved === null) return;
+
+    const spreadWidth = resolved === Orientation.PORTRAIT ? setting.width : setting.width * 2;
+
+    this.wrapper.style.paddingBottom = `${(setting.height / spreadWidth) * 100}%`;
+  }
+
+  /** Book orientation, or `null` before a render exists. */
+  private currentOrientation(): Orientation | null {
+    try {
+      return this.app.getRender().getOrientation();
+    } catch {
+      return null;
+    }
   }
 
   public destroy(): void {
@@ -137,19 +181,9 @@ export abstract class UI {
 
   public setOrientationStyle(orientation: Orientation): void {
     this.wrapper.classList.remove('--portrait', '--landscape');
+    this.wrapper.classList.add(orientation === Orientation.PORTRAIT ? '--portrait' : '--landscape');
 
-    if (orientation === Orientation.PORTRAIT) {
-      if (this.app.getSettings().autoSize)
-        this.wrapper.style.paddingBottom = `${(this.app.getSettings().height / this.app.getSettings().width) * 100}%`;
-
-      this.wrapper.classList.add('--portrait');
-    } else {
-      if (this.app.getSettings().autoSize)
-        this.wrapper.style.paddingBottom = `${(this.app.getSettings().height / (this.app.getSettings().width * 2)) * 100}%`;
-
-      this.wrapper.classList.add('--landscape');
-    }
-
+    this.applyWrapperRatio(orientation);
     this.update();
   }
 

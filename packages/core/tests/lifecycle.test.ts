@@ -95,6 +95,26 @@ describe('relative turns never throw', () => {
     book.destroy();
   });
 
+  test('a non-engine error is NOT swallowed into a rejection', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(4));
+
+    const rejected: unknown[] = [];
+    book.on('turnRejected', (e) => rejected.push(e.data));
+
+    const collection = book.getPageCollection() as unknown as Record<string, unknown>;
+    collection['getFlippingPage'] = () => {
+      throw new TypeError('renderer blew up');
+    };
+
+    // A real defect must reach the consumer. Converting it to `false` would
+    // hide a broken renderer behind "the book just would not turn".
+    expect(() => book.flipNext()).toThrow(TypeError);
+    expect(rejected).toEqual([]);
+
+    book.destroy();
+  });
+
   test('turnToPage still throws for an unreachable page', () => {
     const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
     book.loadFromHTML(makePages(4));

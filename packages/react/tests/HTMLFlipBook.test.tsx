@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { StrictMode, useState } from 'react';
+import { createRef, StrictMode, useState } from 'react';
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HTMLFlipBook, usePageFlip } from '@gullabs/react-flipbook';
+import type { FlipBookHandle } from '@gullabs/react-flipbook';
 
 afterEach(() => {
   cleanup();
@@ -623,9 +624,13 @@ describe('responsive size', () => {
    * every resize step. Keying the engine's identity on width meant each of
    * those destroyed and rebuilt the engine — losing the current page, the rAF
    * loop and any in-flight turn. Size is a restyle, not a remount.
+   *
+   * The assertion is engine *identity*, not host styles: a replacement engine
+   * stamps the new width onto the host too, so a style check alone passes with
+   * the bug still present.
    */
-  test('changing width restyles the host instead of rebuilding the engine', async () => {
-    let inits = 0;
+  test('changing width restyles in place and keeps the same engine', async () => {
+    const handleRef = createRef<FlipBookHandle | null>();
 
     function Harness() {
       const [width, setWidth] = useState(300);
@@ -634,14 +639,7 @@ describe('responsive size', () => {
           <button type="button" onClick={() => setWidth(320)}>
             resize
           </button>
-          <HTMLFlipBook
-            width={width}
-            height={400}
-            flippingTime={0}
-            onInit={() => {
-              inits += 1;
-            }}
-          >
+          <HTMLFlipBook ref={handleRef} width={width} height={400} flippingTime={0}>
             {pages('a', 'b', 'c', 'd')}
           </HTMLFlipBook>
         </>
@@ -653,21 +651,35 @@ describe('responsive size', () => {
       expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
     });
 
-    const host = container.querySelector('.stf__parent');
-    expect(host).toBeInstanceOf(HTMLElement);
+    const engineBefore = handleRef.current?.pageFlip();
+    expect(engineBefore).toBeTruthy();
+
+    // Move off page 0 so a rebuild would be visible as lost position.
+    handleRef.current?.flipNext();
     await waitFor(() => {
-      expect(inits).toBe(1);
+      expect(engineBefore?.getCurrentPageIndex()).toBe(1);
     });
+
+    const host = container.querySelector('.stf__parent') as HTMLElement;
+    const wrapper = container.querySelector('.stf__wrapper') as HTMLElement;
 
     fireEvent.click(screen.getByText('resize'));
 
-    // The new width reaches the host element…
     await waitFor(() => {
-      expect((host as HTMLElement).style.minWidth).toBe('320px');
+      expect(host.style.minWidth).toBe('320px');
     });
 
-    // …without a second `init`, which would mean a fresh engine.
-    expect(inits).toBe(1);
+    // Long enough for a replacement engine's deferred `init` to have fired.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    // Same object, not merely an engine with the same settings.
+    expect(handleRef.current?.pageFlip()).toBe(engineBefore);
+    expect(engineBefore?.isDestroyed()).toBe(false);
+    expect(engineBefore?.getCurrentPageIndex()).toBe(1);
+
+    // The aspect-ratio padding is derived from width, so it has to move too:
+    // 400 / 320 = 125%. Leaving 133.33% renders the book at the old shape.
+    expect(wrapper.style.paddingBottom).toBe('125%');
   });
 });
 

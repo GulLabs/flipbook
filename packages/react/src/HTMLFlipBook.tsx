@@ -433,10 +433,14 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         const resolved = engine.getCurrentPageIndex();
         setEnginePage(resolved);
 
-        // An out-of-range `startPage` is reported the same way an out-of-range
-        // controlled `page` is. Silently opening at page 0 looks like the book
-        // simply has no such page, which is the failure this event exists for.
-        if (start !== resolved) {
+        // Report only a start page the book cannot show. Index equality is the
+        // wrong test: in landscape `startPage: 1` validly opens the spread
+        // [0, 1], whose canonical index is 0, so comparing indices would flag
+        // a perfectly good page. Silently opening at page 0 for a genuinely
+        // out-of-range value is the failure this event exists for.
+        const reachable = start >= 0 && start < count;
+
+        if (!reachable) {
           eventHandlersRef.current.onNavigationError?.({
             code: 'INVALID_PAGE',
             requested: start,

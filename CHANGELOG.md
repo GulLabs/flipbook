@@ -11,11 +11,18 @@ All notable changes to this monorepo will be documented in this file.
   Turning a page moves the lazy window without changing the page count, so the
   length short-circuit skipped the re-render that would have mounted the next
   page — the reader turned the page and saw blank paper.
-- `flipNext` / `flipPrev` no longer throw. They are what a swipe and an arrow
+- Flip setup no longer swallows genuine defects. `Flip.start` caught every
+  error and returned `false`, so a vanished DOM node or a broken renderer made
+  the book simply refuse to turn with nothing in the console — the
+  silent-failure class §4.6 exists to remove. Only `PageFlipError` is soft now;
+  anything else surfaces.
+- `flipNext` / `flipPrev` no longer throw for a rejected turn. They are what a swipe and an arrow
   key call, and are documented to return a boolean plus a `turnRejected`
   event, but an engine-internal `PageFlipError` escaped them and surfaced as an
-  unhandled exception from a gesture handler. It is now reported as
-  `turnRejected` carrying the original error code. `turnToPage` / `flip` still
+  unhandled exception from a gesture handler. An engine-typed failure is now
+  reported as `turnRejected` carrying its error code; a non-engine error still
+  propagates, because hiding a real defect behind "the page would not turn" is
+  the same bug in a different place. `turnToPage` / `flip` still
   throw, which is the §4.6 contract.
 - An out-of-range `startPage` reports `onNavigationError` instead of quietly
   opening at page 0, matching what an out-of-range controlled `page` already

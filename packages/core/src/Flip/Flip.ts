@@ -106,45 +106,32 @@ export class Flip {
 
     if (!this.checkDirection(direction)) return false;
 
-    try {
-      this.flippingPage = this.app.getPageCollection().getFlippingPage(direction);
-      this.bottomPage = this.app.getPageCollection().getBottomPage(direction);
+    // Setup failures are not caught here. The engine's own typed failures
+    // (`PageFlipError` — a boundary, a bad spread) are reported by
+    // `PageFlip.requestTurn` as `turnRejected`; anything else is a genuine
+    // defect and must surface. Upstream swallowed both, so a broken book just
+    // refused to turn with nothing in the console — the silent-failure class
+    // §4.6 exists to remove.
+    this.flippingPage = this.app.getPageCollection().getFlippingPage(direction);
+    this.bottomPage = this.app.getPageCollection().getBottomPage(direction);
 
-      // In landscape mode, needed to set the density  of the next page to the same as that of the flipped
-      if (this.render.getOrientation() === Orientation.LANDSCAPE) {
-        if (direction === FlipDirection.BACK) {
-          const nextPage = this.app.getPageCollection().nextBy(this.flippingPage);
+    // In landscape, the neighbouring page must take the flipped page's density.
+    if (this.render.getOrientation() === Orientation.LANDSCAPE) {
+      const neighbour =
+        direction === FlipDirection.BACK
+          ? this.app.getPageCollection().nextBy(this.flippingPage)
+          : this.app.getPageCollection().prevBy(this.flippingPage);
 
-          if (nextPage !== null) {
-            if (this.flippingPage.getDensity() !== nextPage.getDensity()) {
-              this.flippingPage.setDrawingDensity(PageDensity.HARD);
-              nextPage.setDrawingDensity(PageDensity.HARD);
-            }
-          }
-        } else {
-          const prevPage = this.app.getPageCollection().prevBy(this.flippingPage);
-
-          if (prevPage !== null) {
-            if (this.flippingPage.getDensity() !== prevPage.getDensity()) {
-              this.flippingPage.setDrawingDensity(PageDensity.HARD);
-              prevPage.setDrawingDensity(PageDensity.HARD);
-            }
-          }
-        }
+      if (neighbour !== null && this.flippingPage.getDensity() !== neighbour.getDensity()) {
+        this.flippingPage.setDrawingDensity(PageDensity.HARD);
+        neighbour.setDrawingDensity(PageDensity.HARD);
       }
-
-      this.render.setDirection(direction);
-      this.calc = new FlipCalculation(direction, flipCorner, rect.pageWidth, rect.height);
-
-      return true;
-    } catch (err: unknown) {
-      // PageFlipError is intentional (caller may surface via turnRejected).
-      // Other setup failures stay soft: flipNext/flipPrev return false.
-      if (err instanceof PageFlipError) {
-        throw err;
-      }
-      return false;
     }
+
+    this.render.setDirection(direction);
+    this.calc = new FlipCalculation(direction, flipCorner, rect.pageWidth, rect.height);
+
+    return true;
   }
 
   /**
