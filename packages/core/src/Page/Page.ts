@@ -21,18 +21,17 @@ export interface PageState {
   hardDrawingAngle: number;
 }
 
-export enum PageOrientation {
-  /** Left side page */
-  LEFT = 0,
+export const PageOrientation = {
+  LEFT: 0,
+  RIGHT: 1,
+} as const;
+export type PageOrientation = (typeof PageOrientation)[keyof typeof PageOrientation];
 
-  /** Right side page */
-  RIGHT = 1,
-}
-
-export enum PageDensity {
-  SOFT = 'soft',
-  HARD = 'hard',
-}
+export const PageDensity = {
+  SOFT: 'soft',
+  HARD: 'hard',
+} as const;
+export type PageDensity = (typeof PageDensity)[keyof typeof PageDensity];
 
 /**
  * Class representing a book page

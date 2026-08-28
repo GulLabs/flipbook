@@ -50,10 +50,11 @@ type AnimationProcess = {
 /**
  * Book orientation
  */
-export enum Orientation {
-  PORTRAIT = 'portrait',
-  LANDSCAPE = 'landscape',
-}
+export const Orientation = {
+  PORTRAIT: 'portrait',
+  LANDSCAPE: 'landscape',
+} as const;
+export type Orientation = (typeof Orientation)[keyof typeof Orientation];
 
 /**
  * Class responsible for rendering the book
@@ -129,7 +130,7 @@ export abstract class Render {
       );
 
       if (frameIndex < this.animation.frames.length) {
-        at(this.animation.frames, frameIndex, 'animation frame')();
+        at(this.animation.frames, frameIndex)();
       } else {
         this.animation.onAnimateEnd();
         this.animation = null;
@@ -182,7 +183,7 @@ export abstract class Render {
 
     if (duration <= 0 || frames.length === 0) {
       if (frames.length > 0) {
-        at(frames, frames.length - 1, 'animation frame')();
+        at(frames, frames.length - 1)();
       }
       onAnimateEnd();
       this.animation = null;
@@ -203,7 +204,7 @@ export abstract class Render {
    */
   public finishAnimation(): void {
     if (this.animation !== null) {
-      at(this.animation.frames, this.animation.frames.length - 1, 'animation frame')();
+      at(this.animation.frames, this.animation.frames.length - 1)();
 
       this.animation.onAnimateEnd();
     }
@@ -228,7 +229,7 @@ export abstract class Render {
    * Calculate the size and position of the book depending on the parent element and configuration parameters
    */
   private calculateBoundsRect(): Orientation {
-    let orientation = Orientation.LANDSCAPE;
+    let orientation: Orientation = Orientation.LANDSCAPE;
 
     const blockWidth = this.getBlockWidth();
     const middlePoint: Point = {
@@ -345,7 +346,7 @@ export abstract class Render {
     if (this.boundsRect === null) this.calculateBoundsRect();
 
     if (this.boundsRect === null) {
-      throw new PageFlipError('Book bounds are not available yet', 'RENDER_NOT_READY');
+      throw new PageFlipError('Bounds not ready', 'RENDER_NOT_READY');
     }
 
     return this.boundsRect;

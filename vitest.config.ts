@@ -31,12 +31,15 @@ export default defineConfig({
         '**/dist/**',
         '**/node_modules/**',
       ],
-      // Floor for CI. Raise as the suite grows (any-llm sits ~90+%).
+      // Floor for CI. Thresholds only move UP (AGENTS.md §2) — never lower to
+      // green a gate. Achieved ~92% lines / ~75% branches with real engine tests;
+      // keep headroom under the measured floor so parallel size work cannot
+      // silently regress coverage.
       thresholds: {
-        lines: 40,
-        functions: 40,
-        branches: 35,
-        statements: 40,
+        lines: 75,
+        functions: 75,
+        branches: 60,
+        statements: 75,
       },
     },
     projects: [

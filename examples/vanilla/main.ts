@@ -10,6 +10,14 @@ if (!(root instanceof HTMLElement)) {
 // back-curl this fork exists to fix actually happens.
 const params = new URLSearchParams(window.location.search);
 
+if (params.get('golden') === '1') {
+  document.body.classList.add('golden');
+}
+
+const swipeDistanceParam = params.get('swipeDistance');
+const swipeDistance =
+  swipeDistanceParam !== null && swipeDistanceParam !== '' ? Number(swipeDistanceParam) : undefined;
+
 const book = new PageFlip(root, {
   width: 400,
   height: 300,
@@ -22,9 +30,15 @@ const book = new PageFlip(root, {
   showCover: params.get('cover') === '1',
   direction: params.get('rtl') === '1' ? 'rtl' : 'ltr',
   flippingTime: Number(params.get('flippingTime') ?? 600),
+  // Opaque default; goldens assert the fold does not show the leaf below.
+  pageBackground: '#ffffff',
   // Deterministic gestures in the e2e run: the animation must not race the
-  // assertions that read the fold mid-drag.
+  // assertions that read the fold mid-drag. Goldens force motion on so the
+  // mid-flip frames actually exist (`reducedMotion=0`).
   respectReducedMotion: params.get('reducedMotion') !== '0',
+  // Gesture e2e knobs — omitted params keep Settings defaults.
+  ...(swipeDistance !== undefined && !Number.isNaN(swipeDistance) ? { swipeDistance } : {}),
+  disableFlipByClick: params.get('disableFlipByClick') === '1',
 });
 
 book.loadFromHTML([...root.querySelectorAll<HTMLElement>('.page')]);

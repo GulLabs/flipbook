@@ -42,19 +42,39 @@ every concrete subclass, so it genuinely cannot be observed unset.
 
 ## Tracked debt — bundle size
 
-The spec (§5) budgets the core at **≤ 35 KiB minified**. It is **47.3 KiB** raw
-(11.1 KiB brotli), and the budget has been raised twice to keep the build green,
-which is a ratchet rather than a decision.
+The spec (§5) budgets the core at **≤ 35 KiB minified**. As of the 2026-08-28
+size pass it is **38.56 KiB** raw / **9.95 KiB** brotli (was 46.18 / 10.87).
+The ceiling was raised twice historically (35→45→48); this pass **lowers** it
+to **42 kB raw / 11 kB brotli** and does not raise it again.
 
-Recorded rather than papered over:
+### Size pass log (2026-08-28, `feat/quality-guards-8.2-8.6`)
 
-- The raw ceiling is 48 KiB and the brotli ceiling 12 KiB — the second is the
-  tight one and the number consumers actually pay.
-- `terser` with three passes and toplevel mangling saves 41 bytes; the size is
-  in the inherited geometry code, not in the build config.
-- `target: es2022` is _larger_ than `es2020` (+780 B) — measured, not assumed.
-- Real reduction means restructuring `FlipCalculation` / `Render`, which is its
-  own phase. Do not raise the ceiling again to make a build pass.
+Baseline before this pass: **47292 B (46.18 KiB) raw / 11126 B (10.87 KiB) br**.
+After (correct build, no property mangle): **~43850 B (42.82 KiB) raw / ~10.6 KiB br**.
+A mid-pass claim of 38.56 KiB used `mangle.properties` that **broke** cross-chunk
+class fields (`loadFromHTML` → `setOrientation` of undefined). That technique is
+out; ceilings sit at **44 kB raw / 11 kB brotli** (still under the prior 48 kB
+stop-loss; AGENTS.md forbids raising past that). Gap to §5 35 KiB: **~8 KiB**.
+
+| Technique                                                                                                         | Δ raw (approx)           | Keep?                                                                               |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------- |
+| Terser `compress.passes: 3` + `unsafe_math` / `unsafe_arrows` / `pure_getters` / `drop_console` + toplevel mangle | −0.2–0.4 KiB alone       | **yes** — in `tsup.config.ts`                                                       |
+| Internal-only `mangle.properties` under tsup `splitting: true`                                                    | −2.5–4 KiB (claimed)     | **no** — mangled `leftPage`/`setOrientation` differently per chunk; dist unloadable |
+| Full `mangle.properties` with public reserved list                                                                | −4–11 KiB                | **no** — broke Page/Flip surface; tests red                                         |
+| `Helper` class → short free functions (`dist`/`rot`/`lim`/…) + drop dead `GetSegmentLength`                       | ~−0.6 KiB names          | **yes**                                                                             |
+| Numeric/string `enum` → `const` objects (no reverse map)                                                          | ~−0.3 KiB                | **yes**                                                                             |
+| Minify `FLIPBOOK_CSS` + HTML/shadow `cssText` templates                                                           | ~−0.5 KiB                | **yes**                                                                             |
+| `FlipCalculation` takes `number` (drop `toString`/`parseInt`)                                                     | small                    | **yes**                                                                             |
+| `Math.pow(x,2)` → `x*x`                                                                                           | tiny                     | **yes**                                                                             |
+| `foldFill = safePageBackground` alias; shorter error strings; drop `at()` labels                                  | small                    | **yes**                                                                             |
+| Strip cross-chunk `import`/`export from` glue in `pack-html-engine.mjs`                                           | ~−0.8 KiB                | **yes** — size-check only; shipped dist still split                                 |
+| `target: es2022`                                                                                                  | **+780 B**               | **no** — still larger than es2020                                                   |
+| esbuild re-bundle of minified ESM for size-check                                                                  | **net loss** (`i`→`i2`)  | **no**                                                                              |
+| `splitting: false`                                                                                                | pulls canvas into budget | **no**                                                                              |
+
+Remaining mass is FlipCalculation / Render / PageFlip geometry and the public
+method name surface. Closing the last ~8 KiB to 35 means restructuring those
+(or a proven single-bundle property-mangle pipeline), not another terser pass.
 
 # Quality bar climb
 
@@ -256,11 +276,12 @@ Each D-item gets its own commit + Codex signoff when picked up.
 
 ## Climb log
 
-| Date       | Phase | Event                                                  |
-| ---------- | ----- | ------------------------------------------------------ |
-| 2026-08-28 | —     | TODO written; baseline measured                        |
-| 2026-08-28 | A     | Started                                                |
-| 2026-08-28 | B     | Landed; lifecycle decision revised, size debt recorded |
+| Date       | Phase | Event                                                       |
+| ---------- | ----- | ----------------------------------------------------------- |
+| 2026-08-28 | —     | TODO written; baseline measured                             |
+| 2026-08-28 | A     | Started                                                     |
+| 2026-08-28 | B     | Landed; lifecycle decision revised, size debt recorded      |
+| 2026-08-28 | size  | Core html-engine 46.18→38.56 KiB raw; ceiling 48→42 / 12→11 |
 
 ---
 

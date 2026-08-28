@@ -1,7 +1,7 @@
 import type { Render } from '../Render/Render';
 import { Orientation } from '../Render/Render';
 import type { PageFlip } from '../PageFlip';
-import { Helper } from '../Helper';
+import { cords } from '../Helper';
 import type { PageRect, Point } from '../BasicTypes';
 import { FlipCalculation } from './FlipCalculation';
 import type { Page } from '../Page/Page';
@@ -134,12 +134,7 @@ export class Flip {
       }
 
       this.render.setDirection(direction);
-      this.calc = new FlipCalculation(
-        direction,
-        flipCorner,
-        rect.pageWidth.toString(10), // fix bug with type casting
-        rect.height.toString(10), // fix bug with type casting
-      );
+      this.calc = new FlipCalculation(direction, flipCorner, rect.pageWidth, rect.height);
 
       return true;
     } catch {
@@ -341,7 +336,7 @@ export class Flip {
    * @param {boolean} needReset - reset the flipping process at the end of the animation
    */
   private animateFlippingTo(start: Point, dest: Point, isTurned: boolean, needReset = true): void {
-    const points = Helper.GetCordsFromTwoPoint(start, dest);
+    const points = cords(start, dest);
 
     // Create frames
     const frames = [];
@@ -463,7 +458,7 @@ export class Flip {
     const rect = this.getBoundsRect();
     const pageWidth = rect.pageWidth;
 
-    const operatingDistance = Math.sqrt(Math.pow(pageWidth, 2) + Math.pow(rect.height, 2)) / 5;
+    const operatingDistance = Math.sqrt(pageWidth * pageWidth + rect.height * rect.height) / 5;
 
     const bookPos = this.render.convertToBook(globalPos);
 

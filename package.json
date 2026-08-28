@@ -2,7 +2,7 @@
   "name": "flipbook",
   "private": true,
   "type": "module",
-  "description": "Realistic page-flip libraries for the web \u2014 vanilla TypeScript core and React wrapper.",
+  "description": "Realistic page-flip libraries for the web — vanilla TypeScript core and React wrapper.",
   "license": "MIT",
   "packageManager": "pnpm@10.34.5",
   "engines": {
@@ -39,7 +39,10 @@
     "lint:fix": "eslint . --fix --max-warnings=0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "audit": "pnpm audit --audit-level=high"
+    "audit": "pnpm audit --audit-level=high",
+    "test:e2e:golden": "playwright test e2e/golden-flip.spec.ts",
+    "test:e2e:golden:update": "playwright test e2e/golden-flip.spec.ts --update-snapshots",
+    "test:coverage-areas": "node ./scripts/check-coverage-areas.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.1",

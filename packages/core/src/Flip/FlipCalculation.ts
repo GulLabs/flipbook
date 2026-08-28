@@ -1,4 +1,4 @@
-import { Helper } from '../Helper';
+import { ang, dist, iseg, lim } from '../Helper';
 import type { Point, Rect, RectPoints, Segment } from '../BasicTypes';
 import { FlipCorner, FlipDirection } from './enums';
 import { at } from '../arrayAccess';
@@ -38,12 +38,11 @@ export class FlipCalculation {
   constructor(
     private direction: FlipDirection,
     private corner: FlipCorner,
-
-    pageWidth: string,
-    pageHeight: string,
+    pageWidth: number,
+    pageHeight: number,
   ) {
-    this.pageWidth = parseInt(pageWidth, 10);
-    this.pageHeight = parseInt(pageHeight, 10);
+    this.pageWidth = pageWidth;
+    this.pageHeight = pageHeight;
   }
 
   /**
@@ -115,9 +114,7 @@ export class FlipCalculation {
     }
 
     if (this.sideIntersectPoint !== null && this.topIntersectPoint !== null) {
-      if (
-        Helper.GetDistanceBetweenTwoPoint(this.sideIntersectPoint, this.topIntersectPoint) >= 10
-      ) {
+      if (dist(this.sideIntersectPoint, this.topIntersectPoint) >= 10) {
         result.push(this.sideIntersectPoint);
       }
     } else {
@@ -217,7 +214,7 @@ export class FlipCalculation {
    * Get the rotate angle of the shadow
    */
   public getShadowAngle(): number {
-    const angle = Helper.GetAngleBetweenTwoLine(this.getSegmentToShadowLine(), [
+    const angle = ang(this.getSegmentToShadowLine(), [
       { x: 0, y: 0 },
       { x: this.pageWidth, y: 0 },
     ]);
@@ -261,7 +258,7 @@ export class FlipCalculation {
     if (top < 0) angle = -angle;
 
     const da = Math.PI - angle;
-    if (!isFinite(angle) || (da >= 0 && da < 0.003)) throw new Error('The G point is too small');
+    if (!isFinite(angle) || (da >= 0 && da < 0.003)) throw new Error('G too small');
 
     if (this.corner === FlipCorner.BOTTOM) angle = -angle;
 
@@ -294,10 +291,10 @@ export class FlipCalculation {
 
   private getRectFromBasePoint(points: Point[], localPos: Point): RectPoints {
     return {
-      topLeft: this.getRotatedPoint(at(points, 0, 'rect point'), localPos),
-      topRight: this.getRotatedPoint(at(points, 1, 'rect point'), localPos),
-      bottomLeft: this.getRotatedPoint(at(points, 2, 'rect point'), localPos),
-      bottomRight: this.getRotatedPoint(at(points, 3, 'rect point'), localPos),
+      topLeft: this.getRotatedPoint(at(points, 0), localPos),
+      topRight: this.getRotatedPoint(at(points, 1), localPos),
+      bottomLeft: this.getRotatedPoint(at(points, 2), localPos),
+      bottomRight: this.getRotatedPoint(at(points, 3), localPos),
     };
   }
 
@@ -323,7 +320,7 @@ export class FlipCalculation {
     };
 
     if (this.corner === FlipCorner.TOP) {
-      this.topIntersectPoint = Helper.GetIntersectBetweenTwoSegment(
+      this.topIntersectPoint = iseg(
         boundRect,
         [pos, this.rect.topRight],
         [
@@ -332,7 +329,7 @@ export class FlipCalculation {
         ],
       );
 
-      this.sideIntersectPoint = Helper.GetIntersectBetweenTwoSegment(
+      this.sideIntersectPoint = iseg(
         boundRect,
         [pos, this.rect.bottomLeft],
         [
@@ -341,7 +338,7 @@ export class FlipCalculation {
         ],
       );
 
-      this.bottomIntersectPoint = Helper.GetIntersectBetweenTwoSegment(
+      this.bottomIntersectPoint = iseg(
         boundRect,
         [this.rect.bottomLeft, this.rect.bottomRight],
         [
@@ -350,7 +347,7 @@ export class FlipCalculation {
         ],
       );
     } else {
-      this.topIntersectPoint = Helper.GetIntersectBetweenTwoSegment(
+      this.topIntersectPoint = iseg(
         boundRect,
         [this.rect.topLeft, this.rect.topRight],
         [
@@ -359,7 +356,7 @@ export class FlipCalculation {
         ],
       );
 
-      this.sideIntersectPoint = Helper.GetIntersectBetweenTwoSegment(
+      this.sideIntersectPoint = iseg(
         boundRect,
         [pos, this.rect.topLeft],
         [
@@ -368,7 +365,7 @@ export class FlipCalculation {
         ],
       );
 
-      this.bottomIntersectPoint = Helper.GetIntersectBetweenTwoSegment(
+      this.bottomIntersectPoint = iseg(
         boundRect,
         [this.rect.bottomLeft, this.rect.bottomRight],
         [
@@ -382,13 +379,13 @@ export class FlipCalculation {
   private checkPositionAtCenterLine(checkedPos: Point, centerOne: Point, centerTwo: Point): Point {
     let result = checkedPos;
 
-    const tmp = Helper.LimitPointToCircle(centerOne, this.pageWidth, result);
+    const tmp = lim(centerOne, this.pageWidth, result);
     if (result !== tmp) {
       result = tmp;
       this.updateAngleAndGeometry(result);
     }
 
-    const rad = Math.sqrt(Math.pow(this.pageWidth, 2) + Math.pow(this.pageHeight, 2));
+    const rad = Math.sqrt(this.pageWidth * this.pageWidth + this.pageHeight * this.pageHeight);
 
     let checkPointOne = this.rect.bottomRight;
     let checkPointTwo = this.rect.topLeft;
@@ -399,7 +396,7 @@ export class FlipCalculation {
     }
 
     if (checkPointOne.x <= 0) {
-      const bottomPoint = Helper.LimitPointToCircle(centerTwo, rad, checkPointTwo);
+      const bottomPoint = lim(centerTwo, rad, checkPointTwo);
 
       if (bottomPoint !== result) {
         result = bottomPoint;

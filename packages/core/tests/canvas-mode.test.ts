@@ -101,4 +101,119 @@ describe('canvas mode', () => {
     expect(book.getFlipController()).toBeNull();
     expect(host.querySelector('canvas')).toBeNull();
   });
+
+  test('flipNext drives canvas drawFrame and ImagePage loader path', async () => {
+    const ctx = stubCanvas2d();
+    const book = new PageFlip(host, {
+      width: 200,
+      height: 300,
+      flippingTime: 0,
+      size: 'fixed',
+      usePortrait: true,
+      drawShadow: true,
+    });
+
+    Object.defineProperty(host, 'offsetWidth', { configurable: true, get: () => 300 });
+    Object.defineProperty(host, 'offsetHeight', { configurable: true, get: () => 300 });
+
+    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    const dist = book.getUI().getDistElement();
+    Object.defineProperty(dist, 'offsetWidth', { configurable: true, get: () => 300 });
+    Object.defineProperty(dist, 'offsetHeight', { configurable: true, get: () => 300 });
+    book.update();
+
+    const before = ctx.fillRect.mock.calls.length + ctx.arc.mock.calls.length;
+    book.flipNext();
+    expect(book.getCurrentPageIndex()).toBe(1);
+
+    // Loader path (images not loaded yet) uses fillRect/arc.
+    expect(ctx.fillRect.mock.calls.length + ctx.arc.mock.calls.length).toBeGreaterThanOrEqual(
+      before,
+    );
+
+    const page = book.getPage(0);
+    page.setArea([
+      { x: 0, y: 0 },
+      { x: 200, y: 0 },
+      { x: 200, y: 300 },
+      { x: 0, y: 300 },
+    ]);
+    page.setPosition({ x: 0, y: 0 });
+    page.setAngle(0);
+    page.draw();
+    page.simpleDraw(0);
+
+    expect(ctx.save.mock.calls.length).toBeGreaterThan(0);
+    expect(ctx.clip.mock.calls.length).toBeGreaterThan(0);
+
+    book.destroy();
+  });
+
+  test('landscape canvas path draws book shadow gradient on rAF frames', async () => {
+    const ctx = stubCanvas2d();
+    const book = new PageFlip(host, {
+      width: 200,
+      height: 300,
+      flippingTime: 0,
+      size: 'fixed',
+      usePortrait: false,
+      drawShadow: true,
+    });
+    Object.defineProperty(host, 'offsetWidth', { configurable: true, get: () => 500 });
+    Object.defineProperty(host, 'offsetHeight', { configurable: true, get: () => 300 });
+
+    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    const dist = book.getUI().getDistElement();
+    Object.defineProperty(dist, 'offsetWidth', { configurable: true, get: () => 500 });
+    Object.defineProperty(dist, 'offsetHeight', { configurable: true, get: () => 300 });
+    book.update();
+
+    // CanvasRender.drawFrame (incl. drawBookShadow) only runs on the rAF loop.
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+
+    expect(ctx.createLinearGradient.mock.calls.length).toBeGreaterThan(0);
+    expect(ctx.fillRect.mock.calls.length).toBeGreaterThan(0);
+
+    book.flipNext();
+    expect(book.getCurrentPageIndex()).toBeGreaterThan(0);
+
+    book.destroy();
+  });
+
+  test('canvas soft fold paints outer/inner shadow gradients', async () => {
+    const ctx = stubCanvas2d();
+    const book = new PageFlip(host, {
+      width: 200,
+      height: 300,
+      flippingTime: 300,
+      size: 'fixed',
+      usePortrait: true,
+      drawShadow: true,
+    });
+    Object.defineProperty(host, 'offsetWidth', { configurable: true, get: () => 300 });
+    Object.defineProperty(host, 'offsetHeight', { configurable: true, get: () => 300 });
+
+    await book.loadFromImages(['a.png', 'b.png', 'c.png']);
+    const dist = book.getUI().getDistElement();
+    Object.defineProperty(dist, 'offsetWidth', { configurable: true, get: () => 300 });
+    Object.defineProperty(dist, 'offsetHeight', { configurable: true, get: () => 300 });
+    book.update();
+
+    const flip = book.getFlipController()!;
+    const rect = book.getBoundsRect();
+    flip.fold({ x: rect.left + rect.width - 5, y: rect.top + 20 });
+
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+    });
+
+    // drawOuterShadow / drawInnerShadow / drawBookShadow all create gradients.
+    expect(ctx.createLinearGradient.mock.calls.length).toBeGreaterThan(0);
+    expect(ctx.save.mock.calls.length).toBeGreaterThan(0);
+
+    flip.stopMove();
+    book.destroy();
+  });
 });

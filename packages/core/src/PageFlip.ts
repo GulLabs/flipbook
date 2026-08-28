@@ -4,7 +4,7 @@ import type { PageRect, Point } from './BasicTypes';
 import { Flip, FlipCorner, FlippingState } from './Flip/Flip';
 import type { Orientation, Render } from './Render/Render';
 import { HTMLUI } from './UI/HTMLUI';
-import { Helper } from './Helper';
+import { dist } from './Helper';
 import type { Page } from './Page/Page';
 import { EventObject } from './Event/EventObject';
 import { HTMLRender } from './Render/HTMLRender';
@@ -95,7 +95,7 @@ export class PageFlip extends EventObject {
   private requireLoaded<T>(value: T | null, what: string): T {
     if (value === null) {
       throw new PageFlipError(
-        `${what} is not available: call loadFromHTML() or loadFromImages() first`,
+        `${what} not available (loadFromHTML/loadFromImages first)`,
         'NOT_LOADED',
       );
     }
@@ -309,7 +309,7 @@ export class PageFlip extends EventObject {
       throw new PageFlipError(`Invalid page: ${page}`, 'INVALID_PAGE');
     }
     if (pages.getSpreadIndexByPage(page) === null) {
-      throw new PageFlipError(`Cannot turn to page ${page}: not in any spread`, 'INVALID_PAGE');
+      throw new PageFlipError(`Page ${page} not in spread`, 'INVALID_PAGE');
     }
 
     pages.show(page);
@@ -496,7 +496,7 @@ export class PageFlip extends EventObject {
     if (!this.isUserTouch && !isTouch && this.setting.showPageCorners) {
       this.flipController?.showCorner(pos); // fold Page Corner
     } else if (this.isUserTouch) {
-      if (Helper.GetDistanceBetweenTwoPoint(this.mousePosition, pos) > 5) {
+      if (dist(this.mousePosition, pos) > 5) {
         this.isUserMove = true;
         this.flipController?.fold(pos);
       }

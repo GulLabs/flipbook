@@ -117,7 +117,7 @@ export abstract class UI {
 
   public getDistElement(): HTMLElement {
     if (this.distElement === null) {
-      throw new Error('Flipbook UI dist element is not ready');
+      throw new Error('UI not ready');
     }
     return this.distElement;
   }

@@ -1,18 +1,8 @@
 export const DEFAULT_PAGE_BACKGROUND = '#fff';
 
-/**
- * Keywords that resolve to something the fold can be seen through.
- */
-const SEE_THROUGH_KEYWORDS = new Set([
-  'transparent',
-  'inherit',
-  'initial',
-  'unset',
-  'revert',
-  'revert-layer',
-  'none',
-  'currentcolor',
-]);
+/** Keywords that resolve to something the fold can be seen through. */
+const SEE_THROUGH_RE =
+  /^(?:transparent|inherit|initial|unset|revert(?:-layer)?|none|currentcolor)$/;
 
 /**
  * Safe CSS color subset for `pageBackground`.
@@ -64,7 +54,7 @@ export function isOpaquePageBackground(pageBackground?: string): boolean {
   const value = (pageBackground ?? '').trim().toLowerCase();
 
   if (value.length === 0) return true;
-  if (SEE_THROUGH_KEYWORDS.has(value)) return false;
+  if (SEE_THROUGH_RE.test(value)) return false;
 
   const alpha = functionalAlpha(value) ?? hexAlpha(value);
 
@@ -89,13 +79,8 @@ export function safePageBackground(pageBackground?: string): string {
   return value;
 }
 
-/**
- * Opaque fill for the turning leaf and its temporary copy so underlying
- * content cannot bleed through the fold.
- */
-export function foldFill(pageBackground?: string): string {
-  return safePageBackground(pageBackground);
-}
+/** Opaque fill for the turning leaf / temporary copy (alias of safePageBackground). */
+export const foldFill = safePageBackground;
 
 export function foldFillCss(pageBackground?: string): string {
   return `background-color: ${foldFill(pageBackground)};`;
