@@ -18,6 +18,7 @@ import {
 } from 'react';
 import {
   FlipCorner,
+  FLIPBOOK_INTERACTIVE_SELECTOR,
   PageFlip,
   type FlipSetting,
   type WidgetEvent,
@@ -444,9 +445,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       if (
         target instanceof Element &&
         target !== event.currentTarget &&
-        target.closest(
-          'input,textarea,select,button,a[href],[contenteditable],[role=textbox],[role=combobox]',
-        )
+        target.closest(FLIPBOOK_INTERACTIVE_SELECTOR)
       ) {
         return;
       }

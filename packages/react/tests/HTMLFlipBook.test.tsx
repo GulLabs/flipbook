@@ -296,3 +296,21 @@ test('keyboard ArrowRight turns with userEvent', async () => {
     expect(onPageChange.mock.calls.length).toBeGreaterThan(0);
   });
 });
+
+test('nested interactive keeps Arrow keys (does not turn the book)', async () => {
+  const user = userEvent.setup();
+  const onPageChange = vi.fn();
+  render(
+    <HTMLFlipBook width={200} height={300} flippingTime={0} onPageChange={onPageChange}>
+      <div key="a">
+        <button type="button">Inside</button>
+      </div>
+      <div key="b">b</div>
+      <div key="c">c</div>
+    </HTMLFlipBook>,
+  );
+  const btn = await screen.findByRole('button', { name: 'Inside' });
+  btn.focus();
+  await user.keyboard('{ArrowRight}');
+  expect(onPageChange).not.toHaveBeenCalled();
+});
