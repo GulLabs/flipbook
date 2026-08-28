@@ -133,17 +133,17 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ## Phase D — Optional ratchets (post C)
 
-**Status:** `in_progress` (D1 done; D2 in review)  
+**Status:** `in_progress` (D1 done; D2 awaiting re-signoff)  
 **Depends on:** Phase C signed off  
 **Estimate:** one sub-item per commit + Codex signoff
 
-| Item                                  | Status         | Notes                         |
-| ------------------------------------- | -------------- | ----------------------------- |
-| D1 `useUnknownInCatchVariables: true` | `codex_review` | 0 residual typecheck debt     |
-| D2 `verbatimModuleSyntax: true`       | `todo`         | Already lean on `import type` |
-| D3 `strict-boolean-expressions`       | `todo`         | Own PR                        |
-| D4 Coverage floors ratchet            | `todo`         | Only when suite grows         |
-| D5 Package `typecheck` includes tests | `todo`         | Veloir pattern                |
+| Item                                  | Status         | Notes                                              |
+| ------------------------------------- | -------------- | -------------------------------------------------- |
+| D1 `useUnknownInCatchVariables: true` | `done`         | Codex APPROVE_WITH_NITS                            |
+| D2 `verbatimModuleSyntax: true`       | `codex_review` | 0 residual debt; table fixed after REQUEST_CHANGES |
+| D3 `strict-boolean-expressions`       | `todo`         | Own PR                                             |
+| D4 Coverage floors ratchet            | `todo`         | Only when suite grows                              |
+| D5 Package `typecheck` includes tests | `todo`         | Veloir pattern                                     |
 
 ### D1 — `useUnknownInCatchVariables: true`
 
@@ -171,9 +171,9 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 #### Codex signoff
 
-- Job / thread: _pending launch_
-- Verdict: _pending_
-- Date: _pending_
+- Job: `task-mtd28yf0-cbi00t` (REQUEST_CHANGES — doc table/log drift)
+- Re-signoff after doc fix: _pending this commit_
+- Date: 2026-08-28
 
 ---
 
@@ -207,7 +207,8 @@ not a product decision (AGENTS.md §2: **do not raise again**).
 | 2026-08-28 | A     | Done — Codex APPROVE_WITH_NITS                  |
 | 2026-08-28 | B     | Done — Codex APPROVE (NUIA + lifecycle)         |
 | 2026-08-28 | C     | Done — Codex APPROVE (no-unnecessary-condition) |
-| 2026-08-28 | D1    | useUnknownInCatchVariables on; awaiting Codex   |
+| 2026-08-28 | D1    | Done — Codex APPROVE_WITH_NITS                  |
+| 2026-08-28 | D2    | verbatimModuleSyntax on; doc drift fixed        |
 
 ---
 
