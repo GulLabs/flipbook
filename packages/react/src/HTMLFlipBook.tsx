@@ -419,28 +419,28 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       if (controlledPage === undefined && !startPageAppliedRef.current) {
         startPageAppliedRef.current = true;
         const start = props.startPage ?? 0;
-        const count = engine.getPageCount();
 
-        if (start > 0 && start < count) {
+        // Ask the engine rather than re-deriving its rules here. A numeric
+        // range check is not reachability: `startPage: 0.5` is inside the page
+        // count but belongs to no spread, and in landscape `startPage: 1`
+        // validly opens the spread [0, 1] whose canonical index is 0 — so
+        // comparing indices afterwards would flag a perfectly good page.
+        let honored = true;
+
+        if (start !== 0) {
           try {
             engine.turnToPage(start);
           } catch {
-            // The collection has the index but no spread for it; fall through
-            // to the report below rather than pretending it landed.
+            honored = false;
           }
         }
 
         const resolved = engine.getCurrentPageIndex();
         setEnginePage(resolved);
 
-        // Report only a start page the book cannot show. Index equality is the
-        // wrong test: in landscape `startPage: 1` validly opens the spread
-        // [0, 1], whose canonical index is 0, so comparing indices would flag
-        // a perfectly good page. Silently opening at page 0 for a genuinely
-        // out-of-range value is the failure this event exists for.
-        const reachable = start >= 0 && start < count;
-
-        if (!reachable) {
+        // Opening at page 0 without a word is the failure this event exists
+        // for: it reads as "the book has no such page".
+        if (!honored) {
           eventHandlersRef.current.onNavigationError?.({
             code: 'INVALID_PAGE',
             requested: start,

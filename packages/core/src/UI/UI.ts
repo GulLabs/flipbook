@@ -29,6 +29,8 @@ export abstract class UI {
   private handlersBound = false;
   /** Active pointer id, so `pointerleave` after `pointerup` is ignored. */
   private activePointerId: number | null = null;
+  /** Whether `autoSize` currently owns the host's width / max-width. */
+  private autoSizeOwnsHost = false;
   /** Host inline styles captured at construction so `destroy()` can restore them. */
   private readonly hostStyles: {
     minWidth: string;
@@ -99,12 +101,15 @@ export abstract class UI {
     if (setting.autoSize) {
       host.style.width = '100%';
       host.style.maxWidth = `${setting.maxWidth * 2}px`;
-    } else {
-      // Hand back what `autoSize` had taken over, or turning it off would
-      // leave the host stretched to 100% with a stale max-width.
+    } else if (this.autoSizeOwnsHost) {
+      // Only on the transition out of autoSize: hand back what it took over.
+      // Doing this on every settings update would clobber a width the caller
+      // set themselves after construction.
       host.style.width = this.hostStyles.width;
       host.style.maxWidth = this.hostStyles.maxWidth;
     }
+
+    this.autoSizeOwnsHost = setting.autoSize;
 
     host.style.display = 'block';
 

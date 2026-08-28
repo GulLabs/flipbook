@@ -756,6 +756,31 @@ describe('startPage out of range', () => {
     });
   });
 
+  test('a fractional startPage is in range but belongs to no spread', async () => {
+    const onNavigationError = vi.fn();
+
+    render(
+      <HTMLFlipBook
+        width={200}
+        height={300}
+        flippingTime={0}
+        startPage={0.5}
+        onNavigationError={onNavigationError}
+      >
+        {pages('a', 'b', 'c')}
+      </HTMLFlipBook>,
+    );
+
+    // 0.5 < pageCount, so a numeric range check would call this reachable.
+    await waitFor(() => {
+      expect(onNavigationError).toHaveBeenCalledWith({
+        code: 'INVALID_PAGE',
+        requested: 0.5,
+        actual: 0,
+      });
+    });
+  });
+
   test('a valid startPage does not report an error', async () => {
     const onNavigationError = vi.fn();
     const { container } = render(

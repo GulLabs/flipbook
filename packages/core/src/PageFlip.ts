@@ -354,20 +354,28 @@ export class PageFlip extends EventObject {
       return false;
     }
 
+    let started: boolean;
+
+    // Only the turn is guarded. Emitting `turnRejected` must stay outside, or a
+    // listener that throws `PageFlipError` would be misread as an engine setup
+    // failure and re-emitted — a listener recursing into its own event.
     try {
-      if (run(flip)) return true;
-      this.trigger('turnRejected', this, { reason: 'boundary', code: 'REJECTED' });
-      return false;
+      started = run(flip);
     } catch (err: unknown) {
       // Only the engine's own typed failures (a corrupt spread, an index
-      // guard) become a rejection. Anything else — a TypeError from a
-      // listener or the renderer — is a real defect, and swallowing it into a
-      // silent `false` would hide it from the consumer and from us.
+      // guard) become a rejection. Anything else — a TypeError from the
+      // renderer — is a real defect, and swallowing it into a silent `false`
+      // would hide it from the consumer and from us.
       if (!(err instanceof PageFlipError)) throw err;
 
       this.trigger('turnRejected', this, { reason: 'setup', code: err.code });
       return false;
     }
+
+    if (started) return true;
+
+    this.trigger('turnRejected', this, { reason: 'boundary', code: 'REJECTED' });
+    return false;
   }
 
   /**
