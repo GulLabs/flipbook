@@ -1,5 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { Flip, FlipCorner, FlipDirection, FlippingState, PageFlipError } from '@gullabs/flipbook-core';
+import {
+  Flip,
+  FlipCorner,
+  FlipDirection,
+  FlippingState,
+  PageFlipError,
+} from '@gullabs/flipbook-core';
 import type { Render } from '@gullabs/flipbook-core';
 
 type CollectionStub = {

@@ -13,7 +13,7 @@ Upstream import points are tagged: `upstream-page-flip-2.0.7`, `upstream-react-p
 ## Commands
 
 ```bash
-pnpm install            # pnpm 9.12.0, Node >=20.9.0
+pnpm install            # pnpm 10.34.5, Node >=22.18.0 (.nvmrc pins 24)
 pnpm test               # vitest run, both projects
 pnpm build              # tsup per package (see caveat below)
 pnpm typecheck          # tsc --noEmit per package
@@ -78,6 +78,14 @@ These encode the flagship fixes; there are unit tests for each, but the tests pa
 - **`flippingTime: 0` is instant, not an error**; `respectReducedMotion` (default true) makes turns instant under `prefers-reduced-motion`. Instant turns run `onAnimateEnd` synchronously inside `startAnimation` — anything that inspects `calc`/state after calling `flip()` must not treat that as failure. `Flip.flip/flipNext/flipPrev` return a boolean for exactly this reason.
 - **`turnToPage` / `flipToPage` throw `PageFlipError`** instead of silently landing one page forward.
 - **No `window`/`document` at module scope** (SSR); guard with `typeof … === 'undefined'`. `packages/core/tests/ssr-import.test.ts` runs in the node environment to enforce this.
+- **Engine state is nullable inside, non-null at the boundary.** `pages`,
+  `render` and `ui` only exist after a load, so they are typed `| null`; the
+  public getters keep non-null signatures and throw `PageFlipError('NOT_LOADED')`.
+  Do not "simplify" either half — `!` hands callers `undefined`, and `| null`
+  getters break every consumer for a state they cannot observe.
+- **`pageBackground` must end up opaque.** Sanitising it for CSS safety and
+  checking it for opacity are different jobs; collapsing them is how a
+  translucent fold shipped once already.
 - **`react` stays a peer dependency (`>=18`)** and the shipped types must survive pnpm's isolated `node_modules` — that is what `fixtures/isolated-consumer` guards.
 - **Turns are bounded by spreads, not page indices.** `getCurrentPageIndex()` is `spread[0]`, so in landscape it is below `pageCount - 1` even on the last spread; checking pages there let a turn start and read past the end of the spread list.
 - **`direction: 'rtl'` mirrors the turn direction, never the pointer coordinates.** Mirroring coordinates makes the fold run away from the finger; the inversion belongs in `Flip.getDirectionByPoint` (user input) and `UI.swipeDirection`, and programmatic turns pass an explicit direction so they stay index-ordered.
@@ -105,15 +113,18 @@ tears the book down mid-animation.
 
 ## Known gaps in the current state
 
-- `pnpm build` at the root fails locally because `examples/nextjs` fails
-  `next build` while prerendering Next's own `/404`, `/500` and `/_global-error`
-  pages. It is not the library: an empty page with no flipbook import and no
-  `transpilePackages` fails identically, on both Next 15 and 16. The local Node
-  is 24.x while `.nvmrc` (and CI) pin 20.19, which is the likeliest difference —
-  verify on Node 20 before spending time on it.
-- `e2e/swipe-goldens.spec.ts` takes screenshots but asserts nothing, has no
-  committed baselines, and covers portrait only — despite §8.2 calling golden
-  comparison the only reliable guard for the two flagship fixes.
+- **Bundle size.** The engine is 47.3 KiB raw / 11.1 KiB brotli against a §5
+  budget of 35 KiB raw. The ceiling has been raised twice to keep builds green;
+  do not raise it a third time. `docs/QUALITY_BAR_CLIMB.md` records what has
+  already been measured and ruled out (terser passes, `es2022`).
+- **TypeScript is pinned below latest.** 6.0.3, not 7.0.2, because
+  typescript-eslint 8.68 declares `typescript: <6.1.0` and TS 7 would install
+  cleanly and then silently disable every type-aware rule. `ignoreDeprecations`
+  in `tsconfig.base.json` is a shim for tsup hard-coding `baseUrl` into its dts
+  build; drop it when tsup stops.
+- **OIDC publishing is unverified.** `release.yml` publishes with no npm token,
+  which needs the workflow registered as a trusted publisher on npm first (see
+  `RELEASING.md`). It fails loudly if that has not been done.
 
 ## Releasing and licensing
 

@@ -1,3 +1,61 @@
+- [x] Lifecycle types: nullable private fields + guarded accessors — see Decision below
+- [x] `pnpm typecheck` + `pnpm quality:ci` green
+- [x] Commit
+
+### Decision (2026-08-28, revised) — **nullable fields, non-null accessors**
+
+An earlier revision of this doc rejected touching the lifecycle fields and kept
+`pages!` / `render!` / `ui!`. That was reconsidered, and the objection it raised
+was half right.
+
+**What it got right:** do not infect the class. Turning every method into
+`requireRender()` noise, or widening every public getter to `| null`, would push
+a check into call sites that are always past load and break every consumer for a
+state they cannot observe.
+
+**What it got wrong:** `!` is not compile-time structure, it is an assertion
+that something is true when it is not. Before load, `getRender()` returned
+`undefined` while claiming to return `Render`, so the consumer still crashed —
+one frame later, inside the engine, as `cannot read properties of undefined`,
+with nothing naming the actual mistake. That is not a safer failure mode than a
+throw; it is the same failure with worse diagnostics. And "the engine is always
+ready after `attachMode`" is exactly the kind of invariant a type should carry
+rather than a comment.
+
+**Shipped:**
+
+- `pages` / `render` / `ui` are `T | null`, which is what they are.
+- Public getters keep their non-null signatures and throw
+  `PageFlipError('NOT_LOADED')` naming the call to make first. No consumer
+  signature changes; the undefined dereference becomes a described error.
+- Three private accessors (`pagesOrThrow`, `renderOrThrow`, `uiOrThrow`) are the
+  only choke point. Nothing else in the class changes shape.
+- `update` / `updateSettings` / `getSettings` / `getState` / `destroy` stay safe
+  no-ops before load — the React binding calls them from effects that run before
+  `loadFromHTML`, and that contract is now pinned by
+  `packages/core/tests/lifecycle.test.ts`.
+
+`UI.distElement` keeps definite assignment: it is assigned in the constructor of
+every concrete subclass, so it genuinely cannot be observed unset.
+
+---
+
+## Tracked debt — bundle size
+
+The spec (§5) budgets the core at **≤ 35 KiB minified**. It is **47.3 KiB** raw
+(11.1 KiB brotli), and the budget has been raised twice to keep the build green,
+which is a ratchet rather than a decision.
+
+Recorded rather than papered over:
+
+- The raw ceiling is 48 KiB and the brotli ceiling 12 KiB — the second is the
+  tight one and the number consumers actually pay.
+- `terser` with three passes and toplevel mangling saves 41 bytes; the size is
+  in the inherited geometry code, not in the build config.
+- `target: es2022` is _larger_ than `es2020` (+780 B) — measured, not assumed.
+- Real reduction means restructuring `FlipCalculation` / `Render`, which is its
+  own phase. Do not raise the ceiling again to make a build pass.
+
 # Quality bar climb
 
 Tracked work to raise TypeScript / ESLint strictness to the Veloir / ai-studio /
@@ -198,10 +256,11 @@ Each D-item gets its own commit + Codex signoff when picked up.
 
 ## Climb log
 
-| Date       | Phase | Event                           |
-| ---------- | ----- | ------------------------------- |
-| 2026-08-28 | —     | TODO written; baseline measured |
-| 2026-08-28 | A     | Started                         |
+| Date       | Phase | Event                                                  |
+| ---------- | ----- | ------------------------------------------------------ |
+| 2026-08-28 | —     | TODO written; baseline measured                        |
+| 2026-08-28 | A     | Started                                                |
+| 2026-08-28 | B     | Landed; lifecycle decision revised, size debt recorded |
 
 ---
 

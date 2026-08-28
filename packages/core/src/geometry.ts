@@ -57,11 +57,7 @@ export function curlGoesLeft(curl: Curl): boolean {
  * BACK mirrors x; that mirror is what makes a leftward local path read as a
  * rightward on-screen curl.
  */
-export function convertPageToGlobal(
-  pos: Point,
-  direction: FlipDirection,
-  rect: PageRect,
-): Point {
+export function convertPageToGlobal(pos: Point, direction: FlipDirection, rect: PageRect): Point {
   const x =
     direction === FlipDirection.FORWARD
       ? pos.x + rect.left + rect.width / 2

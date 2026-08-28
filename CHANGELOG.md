@@ -6,6 +6,22 @@ All notable changes to this monorepo will be documented in this file.
 
 ### Engine
 
+- `pageBackground` opacity is checked for real. Sanitising the value for CSS
+  safety had made `isOpaquePageBackground` unable to return `false`, and let
+  translucent values (`rgba(…, 0.4)`, `#ffffff00`, `hsla(…, 0.2)`, `#fff8`,
+  `currentColor`) through to the fold — a turning leaf you can read through,
+  which is the §4.2 bug the setting exists to prevent.
+- Engine state is nullable internally and guarded at the accessors: calling
+  `getRender()` / `getPageCollection()` / `getPageCount()` and friends before
+  `loadFromHTML` / `loadFromImages` now throws `PageFlipError` with code
+  `NOT_LOADED` instead of dereferencing `undefined` deeper in. Public
+  signatures are unchanged. See MIGRATION.md.
+- `attachMode` disposes the previous mode before replacing it, so loading twice
+  cannot leave an old UI listening on the host element, and the deferred `init`
+  no longer fires after `destroy()`.
+- `attachMode`, `replacePages` and `getBlock` are marked `@internal` — they are
+  wiring seams for the lazily-loaded canvas chunk, not supported API.
+
 - Core compiles under `strictNullChecks`, so the published types no longer hide
   nullability: `getFlipController()`, `getCalculation()` and `getTemporaryCopy()`
   are declared `| null`, and `Page.setArea` accepts the sparse clip areas the
@@ -24,6 +40,19 @@ All notable changes to this monorepo will be documented in this file.
 - `UI.destroy()` restores the host element's class and inline styles, and
   `updateItems` no longer wipes `.stf__block` wholesale (it kept deleting the
   render's shadow elements, and nodes a framework still owned).
+
+### Tooling
+
+- One TypeScript across the workspace (6.0.3); the lockfile and manifests had
+  diverged, so `pnpm install --frozen-lockfile` — what CI runs — failed.
+- Node 24 (`.nvmrc`), `engines: >=22.18.0`. Node 20 is end-of-life and
+  size-limit 13 refuses to run on it.
+- The release workflow builds before publishing. With `files: ["dist"]` and no
+  build step, it would have published empty tarballs; `prepack` covers manual
+  publishes too.
+- Canvas mode has tests (it was 0% covered), and the browser suite asserts the
+  §4.1/§4.2 invariants on Chromium and WebKit in CI instead of writing
+  screenshots nothing compared.
 
 ### React
 

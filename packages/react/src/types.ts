@@ -21,16 +21,12 @@ export type IBookState = {
 
 export type IEventProps = {
   onFlip?: (flipEvent: WidgetEvent<FlipbookEventMap['flip']>) => void;
-  onChangeOrientation?: (
-    flipEvent: WidgetEvent<FlipbookEventMap['changeOrientation']>,
-  ) => void;
+  onChangeOrientation?: (flipEvent: WidgetEvent<FlipbookEventMap['changeOrientation']>) => void;
   onChangeState?: (flipEvent: WidgetEvent<FlipbookEventMap['changeState']>) => void;
   onInit?: (flipEvent: WidgetEvent<FlipbookEventMap['init']>) => void;
   onUpdate?: (flipEvent: WidgetEvent<FlipbookEventMap['update']>) => void;
   onPageChange?: (page: number) => void;
-  onCollectionRebuild?: (
-    flipEvent: WidgetEvent<FlipbookEventMap['collectionRebuild']>,
-  ) => void;
+  onCollectionRebuild?: (flipEvent: WidgetEvent<FlipbookEventMap['collectionRebuild']>) => void;
 };
 
 export type FlipBookHandle = {

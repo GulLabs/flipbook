@@ -4,7 +4,7 @@ import type { PageFlip } from '../PageFlip';
 import { Helper } from '../Helper';
 import type { PageRect, Point } from '../BasicTypes';
 import { FlipCalculation } from './FlipCalculation';
-import type { Page} from '../Page/Page';
+import type { Page } from '../Page/Page';
 import { PageDensity } from '../Page/Page';
 import { portraitCurlLocal } from '../geometry';
 import { effectiveFlippingTime } from '../reducedMotion';

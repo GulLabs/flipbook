@@ -17,7 +17,12 @@ function leaf(id: string, hard = false): Leaf {
     hard,
     newTemporaryCopy() {
       if (hard) return page;
-      return { id: `copy-${id}`, newTemporaryCopy() { return this; } };
+      return {
+        id: `copy-${id}`,
+        newTemporaryCopy() {
+          return this;
+        },
+      };
     },
   };
   return page;

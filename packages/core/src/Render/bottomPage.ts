@@ -10,10 +10,7 @@
  * Skip only when the mover *is* the bottom page (hard-cover: newTemporaryCopy
  * returns `this`).
  */
-export function shouldDrawBottomPage(
-  flippingPage: unknown,
-  bottomPage: unknown,
-): boolean {
+export function shouldDrawBottomPage(flippingPage: unknown, bottomPage: unknown): boolean {
   if (bottomPage == null) {
     return false;
   }

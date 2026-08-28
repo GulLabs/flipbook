@@ -36,14 +36,14 @@
     {
       "name": "html-engine (raw)",
       "path": "size-check/html-engine.js",
-      "limit": "47 kB",
+      "limit": "48 kB",
       "gzip": false,
       "brotli": false
     },
     {
       "name": "html-engine (brotli)",
       "path": "size-check/html-engine.js",
-      "limit": "15 kB"
+      "limit": "12 kB"
     }
   ],
   "devDependencies": {

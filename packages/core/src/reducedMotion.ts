@@ -5,10 +5,7 @@ export function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-export function effectiveFlippingTime(
-  flippingTime: number,
-  respectReducedMotion: boolean,
-): number {
+export function effectiveFlippingTime(flippingTime: number, respectReducedMotion: boolean): number {
   if (flippingTime <= 0) {
     return 0;
   }
