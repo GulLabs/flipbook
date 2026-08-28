@@ -327,10 +327,9 @@ for (const file of walk(coreSrc)) {
   }
 }
 if (escapees.length > 0) {
+  const list = escapees.join('\n');
   console.error(
-    'packages/core/src: relative imports must stay inside src/ — these escape it,\n' +
-      'so they would be bundled without passing the Exhibit A check:\n' +
-      escapees.join('\n'),
+    `packages/core/src: relative imports must stay inside src/ — these escape it,\nso they would be bundled without passing the Exhibit A check:\n${list}`,
   );
   process.exit(1);
 }
