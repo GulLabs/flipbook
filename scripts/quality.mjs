@@ -342,10 +342,13 @@ try {
   process.exit(1);
 }
 
-const corePrefix = join(root, 'packages/core');
+// Every first-party input, not just the ones under packages/core. Filtering to
+// that directory reintroduced the hole it was meant to close: a relative import
+// to an unheadered file elsewhere in the repo is bundled into dist all the same.
+// Third-party code in node_modules carries its own licence and is excluded.
 const bundledCoreFiles = Object.keys(bundled.metafile.inputs)
   .map((p) => resolve(root, p))
-  .filter((p) => p.startsWith(`${corePrefix}/`) && !p.includes('/node_modules/'));
+  .filter((p) => p.startsWith(`${root}/`) && !p.includes('/node_modules/'));
 
 // JSON cannot carry a comment, so it can never satisfy Exhibit A. Rather than
 // exempt it — which is how an unheadered file gets in — refuse to bundle it.

@@ -150,9 +150,14 @@ notices retained in [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
 | `@gullabs/react-flipbook` | [MIT](./packages/react/LICENSE)    | the React binding |
 
 **What MPL-2.0 means for you.** It is file-level copyleft, not application
-copyleft. Your own code is never subject to it: you may install the engine, ship
-it inside a closed-source product, and sell that product, and MPL-2.0 places no
-license requirement whatsoever on the application around it.
+copyleft. Your application is not subject to it: you may install the engine,
+ship it inside a closed-source product, and sell that product, and MPL-2.0
+places no license requirement on the code you write around it.
+
+The one way a file of yours becomes Covered is if you put Covered Software into
+it — copy engine code into your own module and that module is a Modification.
+Importing, wrapping, configuring or calling the public API does not, so in
+normal use the boundary is exactly the engine's own files.
 
 **Nothing is triggered until you distribute.** MPL-2.0's obligations are
 distribution-triggered, not modification-triggered. Fork the engine, rewrite it,
@@ -165,9 +170,7 @@ Software — the engine's own files — never to the rest of your application:
 - **Distributing the engine's source** (§3.1) — modified or not — must be
   under MPL-2.0, carrying the license notice and without restricting
   recipients' rights in that source. Modification is not what triggers this;
-  distribution is. A file of your own is Covered only if you put Covered
-  Software into it; wrapping, configuring or calling the public API does not
-  make your file a Modification.
+  distribution is.
 - **Distributing the engine in built form** (§3.2) requires that the
   corresponding Source Code Form be available _and_ that recipients be informed
   how to obtain it. Both, for each distribution — not a one-off. Note this
