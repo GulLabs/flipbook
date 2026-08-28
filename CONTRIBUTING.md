@@ -53,6 +53,23 @@ mandatory reading — it encodes the working standards this repo enforces, and
 - Preserve upstream MIT attribution in `LICENSE` / `NOTICE`.
 - Core stays **zero runtime dependencies**.
 
+## Licensing of contributions
+
+This repository is licensed per package: `packages/core` is **MPL-2.0**,
+`packages/react` and everything else is **MIT**.
+
+Contributions are inbound=outbound: by opening a pull request you agree your
+contribution is licensed under the same license as the files it touches —
+MPL-2.0 for `packages/core`, MIT elsewhere. There is no CLA.
+
+New files under `packages/core/src` must carry the MPL Exhibit A header:
+
+```ts
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+```
+
 ## Pull requests
 
 1. Branch from `main` (or fork).

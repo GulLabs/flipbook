@@ -142,3 +142,47 @@ if (supported === null) {
 }
 
 console.log('quality preflight: ok');
+
+// Licensing is an owner decision, not an implementation detail — and not a
+// tool's. The owner relicensed the engine to MPL-2.0 on 2026-08-28 so that
+// forks of the engine cannot be taken closed, while keeping the React binding
+// MIT and leaving consuming applications entirely unencumbered (MPL-2.0 is
+// file-level copyleft: it reaches the engine's own files, nothing else).
+// Upstream Nodlik MIT notices stay preserved in LICENSE and NOTICE.
+// If you are changing this, the repository owner has decided to.
+const EXPECTED_LICENSES = {
+  'package.json': 'MIT AND MPL-2.0',
+  'packages/core/package.json': 'MPL-2.0',
+  'packages/react/package.json': 'MIT',
+};
+
+for (const [manifest, expected] of Object.entries(EXPECTED_LICENSES)) {
+  const pkg = JSON.parse(readFileSync(join(root, manifest), 'utf8'));
+  if (pkg.license !== expected) {
+    console.error(
+      `${manifest}: license is ${JSON.stringify(pkg.license)}, expected ${JSON.stringify(expected)}.\n` +
+        'Relicensing is an owner decision. Revert, or get explicit sign-off first.',
+    );
+    process.exit(1);
+  }
+}
+
+if (
+  !readFileSync(join(root, 'packages/core/LICENSE'), 'utf8').startsWith(
+    'Mozilla Public License Version 2.0',
+  )
+) {
+  console.error('packages/core/LICENSE no longer opens with the MPL-2.0 text.');
+  process.exit(1);
+}
+
+for (const [file, needle] of [
+  ['LICENSE', 'Copyright (c) 2020 Nodlik'],
+  ['NOTICE', 'Copyright (c) 2020 Nodlik'],
+  ['packages/core/LICENSE', 'Copyright (c) 2020 Nodlik'],
+]) {
+  if (!readFileSync(join(root, file), 'utf8').includes(needle)) {
+    console.error(`${file}: upstream Nodlik MIT notice is missing.`);
+    process.exit(1);
+  }
+}

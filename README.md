@@ -10,7 +10,8 @@ Forked from [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) and [Nodli
 
 <p align="center">
   <a href="https://github.com/GulLabs/flipbook/actions/workflows/ci.yml"><img src="https://github.com/GulLabs/flipbook/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
+  <a href="./packages/core/LICENSE"><img src="https://img.shields.io/badge/core-MPL--2.0-blue.svg" alt="core: MPL-2.0"></a>
+  <a href="./packages/react/LICENSE"><img src="https://img.shields.io/badge/react-MIT-blue.svg" alt="react: MIT"></a>
   <img src="https://img.shields.io/badge/core-zero%20runtime%20deps-0f172a.svg" alt="Zero runtime dependencies">
 </p>
 
@@ -140,4 +141,30 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`AGENTS.md`](./AGENTS.md). Other
 
 ## License
 
-[MIT](./LICENSE) — Copyright (c) 2026 GulLabs, with upstream MIT notices retained.
+Licensed per package — Copyright (c) 2026 GulLabs, with upstream Nodlik MIT
+notices retained in [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
+
+| Package                   | License                            |                   |
+| ------------------------- | ---------------------------------- | ----------------- |
+| `@gullabs/flipbook-core`  | [MPL-2.0](./packages/core/LICENSE) | the flip engine   |
+| `@gullabs/react-flipbook` | [MIT](./packages/react/LICENSE)    | the React binding |
+
+**What MPL-2.0 means for you.** It is file-level copyleft, not application
+copyleft. Install it, ship it inside a closed-source product, and sell that
+product — no obligation, and no license requirement on your own code. The only
+condition: if you modify the engine's _own source files_, those modified files
+must be made available under MPL-2.0. Improvements to the engine stay available
+to everyone using it; everything you build on top remains yours.
+
+The practical test is whether you edit files under `packages/core/src`. Using
+the public API is not modification.
+
+## Trademark
+
+"GulLabs", "@gullabs", the GulLabs name and the GulLabs logo are trademarks of
+GulLabs. The licenses above grant rights to the code, not to the marks.
+
+You may state that your project uses or is built on `@gullabs/flipbook-core`.
+You may not use the GulLabs name or marks to name, brand or promote a fork or a
+derived product in a way that suggests it is the official project or endorsed by
+GulLabs. Forks are welcome — please rename them.

@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "description": "Realistic page-flip libraries for the web \u2014 vanilla TypeScript core and React wrapper.",
-  "license": "MIT",
+  "license": "MIT AND MPL-2.0",
   "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": ">=22.18.0"

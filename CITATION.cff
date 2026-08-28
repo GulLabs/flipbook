@@ -9,7 +9,9 @@ authors:
     given-names: Atif
     website: https://github.com/atifgul99
 repository-code: https://github.com/GulLabs/flipbook
-license: MIT
+license:
+  - MPL-2.0
+  - MIT
 abstract: >-
   Realistic page-turning for the web. Vanilla TypeScript core
   and a React wrapper. Maintained fork of StPageFlip / react-pageflip.

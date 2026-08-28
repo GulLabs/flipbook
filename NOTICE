@@ -15,4 +15,20 @@ This repository is a maintained fork of:
   Copyright (c) 2020 oleg.litovski9@gmail.com
   Licensed under the MIT License
 
-See the LICENSE file for the full MIT license text and preserved upstream notices.
+Licensing is per package:
+
+  @gullabs/flipbook-core   Mozilla Public License, v. 2.0 (packages/core/LICENSE)
+  @gullabs/react-flipbook  MIT License                    (packages/react/LICENSE)
+
+  Everything else in this repository is MIT.
+
+MPL-2.0 is file-level copyleft. The engine may be used, embedded and shipped
+inside closed-source and commercial applications with no obligation; only
+modifications to the engine's own source files must be made available under
+MPL-2.0. It places no license requirement on the consuming application.
+
+"GulLabs" and "@gullabs" are trademarks of GulLabs. The licenses in this
+repository grant rights to the code, not to the marks.
+
+See the LICENSE file for the full license texts and the preserved upstream
+MIT notices.

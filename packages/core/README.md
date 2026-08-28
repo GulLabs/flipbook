@@ -12,7 +12,10 @@ pageFlip.loadFromHTML(pages);
 await pageFlip.loadFromImages(['page1.jpg', 'page2.jpg']);
 ```
 
-License: MIT. Copyright (c) 2026 GulLabs, with upstream Nodlik notices in [LICENSE](./LICENSE).
+License: **MPL-2.0** — file-level copyleft. Ship it inside a closed-source or
+commercial product with no obligation; only modifications to this package's own
+source files must be published under MPL-2.0. Copyright (c) 2026 GulLabs, with
+upstream Nodlik MIT notices in [LICENSE](./LICENSE).
 
 ## Error codes
 
