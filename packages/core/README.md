@@ -13,14 +13,20 @@ await pageFlip.loadFromImages(['page1.jpg', 'page2.jpg']);
 ```
 
 License: **MPL-2.0** — file-level copyleft, with no license requirement on the
-application you build around it. Two duties attach to this package's own files:
-modifications to them must be published under MPL-2.0, and distributing the
-engine in built form — including serving bundled JavaScript to a browser —
-carries the MPL-2.0 §3.2 requirement that the corresponding source be available
-and that recipients be told where it is
-(<https://github.com/GulLabs/flipbook>). An attribution line in your
-acknowledgements satisfies it. Copyright (c) 2026 GulLabs, with
-upstream Nodlik MIT notices in [LICENSE](./LICENSE).
+application you build around it.
+
+Obligations are triggered by distribution, not by modification: private and
+internal use carries none. On distribution they reach only this package's own
+files (the Covered Software) — modified files must be offered under MPL-2.0
+(§3.1), and distributing the engine in built form, which includes serving
+bundled JavaScript to a browser, requires both that the corresponding source be
+available and that recipients be informed how to obtain it (§3.2). For the
+common case — unmodified, installed from npm — an acknowledgements line naming
+the package, its license and <https://github.com/GulLabs/flipbook> discharges
+§3.2.
+
+Copyright (c) 2026 GulLabs, with upstream Nodlik MIT notices in
+[LICENSE](./LICENSE).
 
 ## Error codes
 

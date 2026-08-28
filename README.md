@@ -154,21 +154,30 @@ copyleft. Your own code is never subject to it: you may install the engine, ship
 it inside a closed-source product, and sell that product, and MPL-2.0 places no
 license requirement whatsoever on the application around it.
 
-Two duties do attach, and both are to the engine's files — the Covered Software
-— never to the rest of your application:
+**Nothing is triggered until you distribute.** MPL-2.0's obligations are
+distribution-triggered, not modification-triggered. Fork the engine, rewrite it,
+run it on an internal tool forever — if you never distribute it, you owe
+nothing. Private and internal use carries no obligation of any kind.
 
-- **If you modify the engine's files**, those modified files must be made
-  available under MPL-2.0. A separate file of your own is only covered if you
-  put Covered Software into it; wrapping, configuring or calling the public API
-  is not a modification.
-- **If you distribute the engine in built form**, MPL-2.0 §3.2 requires that
-  the corresponding source be available and that recipients be told how to get
-  it. Note that this includes serving the bundled JavaScript from a website —
-  shipping client-side code to a browser is distribution, not private use. In
-  practice it is satisfied by keeping a line such as “includes
-  @gullabs/flipbook-core, MPL-2.0, source at
-  https://github.com/GulLabs/flipbook” in your licenses/acknowledgements. Most
-  bundlers' license plugins emit this for you; if yours does not, add it once.
+**When you do distribute, two duties attach**, and only ever to the Covered
+Software — the engine's own files — never to the rest of your application:
+
+- **Modified engine files must be offered under MPL-2.0** (§3.1). This applies
+  to the engine's files as you changed them. A file of your own is Covered only
+  if you put Covered Software into it; wrapping, configuring or calling the
+  public API does not make your file a Modification.
+- **Distributing the engine in built form** (§3.2) requires that the
+  corresponding Source Code Form be available _and_ that recipients be informed
+  how to obtain it. Both, for each distribution — not a one-off. Note this
+  includes serving bundled JavaScript from a website: shipping client-side code
+  to a browser is distribution.
+
+In practice, for the common case — `npm install`, bundle, deploy, engine
+unmodified — you discharge §3.2 by carrying a line in your
+licenses/acknowledgements such as “includes @gullabs/flipbook-core, MPL-2.0,
+source at https://github.com/GulLabs/flipbook”, and by that source remaining
+reachable. Most bundlers' license plugins emit this automatically. If you
+modified the engine, publish those modified files too and point at them instead.
 
 The practical test for the first duty is whether you edit files under
 `packages/core/src`. The second is a one-time attribution line, not an ongoing

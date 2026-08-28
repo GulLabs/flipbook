@@ -6,7 +6,7 @@
  */
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const root = process.cwd();
@@ -198,26 +198,68 @@ if (mplDigest !== MPL_2_0_SHA256) {
   process.exit(1);
 }
 
-// Both upstream notices, not just one. Checking a single Nodlik substring let a
-// rewrite that drops react-pageflip's notice through.
-// `fullText` marks the files that must reproduce the MIT grant verbatim. NOTICE
-// only summarises and points at LICENSE, so it is attribution-only.
-const UPSTREAM_NOTICES = [
+// The notice block that follows the MPL body in packages/core/LICENSE is pinned
+// too. Hashing only the MPL text left the trailing block free to contradict it
+// — e.g. to assert terms the license does not grant — without tripping anything.
+const CORE_LICENSE_TAIL_SHA256 = 'd1d4a9356f61a74bba805ba29cf99daa9ebe682282c0a44f2b1a2217eaa01170';
+const coreTailDigest = createHash('sha256').update(coreLicense.slice(tailAt)).digest('hex');
+if (coreTailDigest !== CORE_LICENSE_TAIL_SHA256) {
+  console.error(
+    'packages/core/LICENSE: the notice block after the MPL text changed.\n' +
+      `  expected sha256 ${CORE_LICENSE_TAIL_SHA256}\n` +
+      `  actual   sha256 ${coreTailDigest}\n` +
+      'If the change is intended, update CORE_LICENSE_TAIL_SHA256 in this file.',
+  );
+  process.exit(1);
+}
+
+// The MIT grant, verbatim. A substring check on the copyright line or the
+// warranty sentence still passes a file whose *permission* paragraph has been
+// gutted — which is the edit that would actually strip the upstream grant. So
+// the whole body is pinned, and each file must carry it a minimum number of
+// times: once per notice it is supposed to reproduce.
+const MIT_GRANT = `Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.`;
+
+const countOf = (haystack, needle) => haystack.split(needle).length - 1;
+
+// `grants` is the minimum number of verbatim MIT grants the file must contain.
+// NOTICE summarises and points at LICENSE, so it carries attribution only.
+const NOTICE_FILES = [
   {
     file: 'LICENSE',
-    needles: ['Copyright (c) 2020 Nodlik', 'Copyright (c) 2020 oleg.litovski9@gmail.com'],
-    fullText: true,
+    needles: [
+      'Copyright (c) 2026 GulLabs',
+      'Copyright (c) 2020 Nodlik',
+      'Copyright (c) 2020 oleg.litovski9@gmail.com',
+    ],
+    grants: 3,
   },
   {
     file: 'NOTICE',
     needles: ['Copyright (c) 2020 Nodlik', 'Copyright (c) 2020 oleg.litovski9@gmail.com'],
-    fullText: false,
+    grants: 0,
   },
-  { file: 'packages/core/LICENSE', needles: ['Copyright (c) 2020 Nodlik'], fullText: true },
-  { file: 'packages/react/LICENSE', needles: ['Copyright (c) 2026 GulLabs'], fullText: true },
+  { file: 'packages/core/LICENSE', needles: ['Copyright (c) 2020 Nodlik'], grants: 1 },
+  { file: 'packages/react/LICENSE', needles: ['Copyright (c) 2026 GulLabs'], grants: 1 },
 ];
 
-for (const { file, needles, fullText } of UPSTREAM_NOTICES) {
+for (const { file, needles, grants } of NOTICE_FILES) {
   const text = readFileSync(join(root, file), 'utf8');
   for (const needle of needles) {
     if (!text.includes(needle)) {
@@ -225,8 +267,27 @@ for (const { file, needles, fullText } of UPSTREAM_NOTICES) {
       process.exit(1);
     }
   }
-  if (fullText && !text.includes('THE SOFTWARE IS PROVIDED "AS IS"')) {
-    console.error(`${file}: the MIT warranty disclaimer is missing.`);
+  const found = countOf(text, MIT_GRANT);
+  if (found < grants) {
+    console.error(
+      `${file}: expected at least ${grants} verbatim MIT grant(s), found ${found}.\n` +
+        'The upstream MIT permission text must be reproduced exactly.',
+    );
     process.exit(1);
   }
+}
+
+// MPL Exhibit A on every core source. Without this the headers can be stripped
+// file by file and nothing notices until someone reads the tree.
+const EXHIBIT_A = 'https://mozilla.org/MPL/2.0/';
+const coreSrc = join(root, 'packages/core/src');
+const walk = (dir) =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+    e.isDirectory() ? walk(join(dir, e.name)) : e.name.endsWith('.ts') ? [join(dir, e.name)] : [],
+  );
+const missingHeaders = walk(coreSrc).filter((f) => !readFileSync(f, 'utf8').includes(EXHIBIT_A));
+if (missingHeaders.length > 0) {
+  const list = missingHeaders.map((f) => `  ${f.slice(root.length + 1)}`).join('\n');
+  console.error(`packages/core/src: MPL Exhibit A header missing from:\n${list}`);
+  process.exit(1);
 }

@@ -24,12 +24,17 @@ Licensing is per package:
 
 MPL-2.0 is file-level copyleft. It places no license requirement on the
 consuming application: the engine may be used, embedded and shipped inside
-closed-source and commercial products. Its duties reach the engine's own files
-only — modifications to them must be made available under MPL-2.0, and anyone
-distributing the engine in Executable Form -- including serving bundled
-JavaScript to a browser -- must, per MPL-2.0 section 3.2, make the
-corresponding Source Code Form available and inform recipients how to obtain it
-(https://github.com/GulLabs/flipbook).
+closed-source and commercial products.
+
+Its obligations are triggered by distribution, not by modification -- private
+and internal use carries none -- and reach only the Covered Software, meaning
+the engine's own files. On distribution: modified Covered Software files must
+be made available under MPL-2.0 (section 3.1), and distributing the engine in
+Executable Form -- which includes serving bundled JavaScript to a browser --
+requires both that the corresponding Source Code Form be available and that
+recipients be informed how to obtain it (section 3.2).
+
+Source Code Form: https://github.com/GulLabs/flipbook
 
 "GulLabs" and "@gullabs" are trademarks of GulLabs. The licenses in this
 repository grant rights to the code, not to the marks.
