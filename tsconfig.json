@@ -8,7 +8,9 @@
     "packages/*/tests",
     "examples/**/*",
     "vitest.config.ts",
-    "eslint.config.mjs"
+    "eslint.config.mjs",
+    "vitest.setup.ts",
+    "playwright.config.ts"
   ],
   "exclude": ["**/node_modules", "**/dist", "**/.next"]
 }

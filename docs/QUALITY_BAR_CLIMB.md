@@ -200,6 +200,7 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 - [x] `packages/core` typecheck includes `tests/`
 - [x] `packages/react` `tsconfig.tests.json` + dual typecheck script
+- [x] `vitest.setup.ts` included in root + react test typecheck programs
 - [x] `pnpm typecheck` green
 - [x] Commit
 - [x] Codex signoff
