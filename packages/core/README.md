@@ -31,6 +31,6 @@ Public and engine-boundary failures throw `PageFlipError` with a stable `code`:
 | `FLIP_SETUP`            | Could not prepare flipping/bottom pages for a turn          |
 | `RENDER_NOT_READY`      | Bounds requested before layout                              |
 | `RENDER_SETUP`          | Shadow/DOM render setup failed                              |
-| `TURN_REJECTED`         | Programmatic turn did not start (also `turnRejected` event) |
+| `REJECTED`              | Programmatic turn did not start (also `turnRejected` event) |
 
 `PageFlip.flipNext` / `flipPrev` return `boolean` (`false` = did not start) and emit `turnRejected` when refused.

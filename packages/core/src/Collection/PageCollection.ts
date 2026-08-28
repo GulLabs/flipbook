@@ -136,7 +136,7 @@ export abstract class PageCollection {
       return at(this.pages, pageIndex, 'page');
     }
 
-    throw new PageFlipError('Invalid page number', 'INVALID_PAGE');
+    throw new PageFlipError('Invalid page', 'INVALID_PAGE');
   }
 
   /**

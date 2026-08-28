@@ -321,30 +321,20 @@ export class PageFlip extends EventObject {
    * @param {FlipCorner} corner - Active page corner when turning
    */
   public flipNext(corner: FlipCorner = FlipCorner.TOP): boolean {
-    const flip = this.flipController;
-    if (!flip) {
-      this.trigger('turnRejected', this, { reason: 'setup', code: 'NOT_LOADED' });
-      return false;
-    }
-    const started = flip.flipNext(corner);
-    if (!started) this.trigger('turnRejected', this, { reason: 'boundary', code: 'TURN_REJECTED' });
-    return started;
+    return this.finishFlip(this.flipController?.flipNext(corner));
   }
 
-  /**
-   * Turn to the prev page (with animation)
-   *
-   * @param {FlipCorner} corner - Active page corner when turning
-   */
   public flipPrev(corner: FlipCorner = FlipCorner.TOP): boolean {
-    const flip = this.flipController;
-    if (!flip) {
+    return this.finishFlip(this.flipController?.flipPrev(corner));
+  }
+
+  private finishFlip(ok: boolean | undefined): boolean {
+    if (ok == null) {
       this.trigger('turnRejected', this, { reason: 'setup', code: 'NOT_LOADED' });
       return false;
     }
-    const started = flip.flipPrev(corner);
-    if (!started) this.trigger('turnRejected', this, { reason: 'boundary', code: 'TURN_REJECTED' });
-    return started;
+    if (!ok) this.trigger('turnRejected', this, { reason: 'boundary', code: 'REJECTED' });
+    return ok;
   }
 
   /**

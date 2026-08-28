@@ -7,14 +7,6 @@ export const FLIPBOOK_CSS = `.stf__parent {
   touch-action: pan-y;
 }
 
-.stf__parent:focus {
-  outline: none;
-}
-
-.stf__parent:focus-visible {
-  outline: 2px solid #2563eb;
-  outline-offset: 2px;
-}
 
 .stf__wrapper {
   position: relative;

@@ -472,8 +472,12 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         role={useKeyboard ? 'application' : 'group'}
         tabIndex={useKeyboard ? 0 : undefined}
         aria-keyshortcuts={useKeyboard ? 'ArrowLeft ArrowRight Home End' : undefined}
+        data-flipbook-kb={useKeyboard ? '' : undefined}
         onKeyDown={useKeyboard ? onKeyDown : undefined}
       >
+        {useKeyboard ? (
+          <style>{`[data-flipbook-kb]:focus{outline:none}[data-flipbook-kb]:focus-visible{outline:2px solid #2563eb;outline-offset:2px}`}</style>
+        ) : null}
         {pageHost ? createPortal(pages, pageHost) : null}
         {liveRegion ? (
           <div
