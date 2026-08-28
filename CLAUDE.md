@@ -95,6 +95,12 @@ These encode the flagship fixes; there are unit tests for each, but the tests pa
 - **`react` stays a peer dependency (`>=18`)** and the shipped types must survive pnpm's isolated `node_modules` — that is what `fixtures/isolated-consumer` guards.
 - **Turns are bounded by spreads, not page indices.** `getCurrentPageIndex()` is `spread[0]`, so in landscape it is below `pageCount - 1` even on the last spread; checking pages there let a turn start and read past the end of the spread list.
 - **`direction: 'rtl'` mirrors the turn direction, never the pointer coordinates.** Mirroring coordinates makes the fold run away from the finger; the inversion belongs in `Flip.getDirectionByPoint` (user input) and `UI.swipeDirection`, and programmatic turns pass an explicit direction so they stay index-ordered.
+- **A setting must be read where it is used, not cached at construction.**
+  `updateSettings` mutates the shared settings object in place, so `Render` and
+  `UI` see changes for free — unless someone copies a value into a field.
+  `swipeDistance` shipped cached and silently ignored every runtime update.
+  Only `showCover` (baked into `PageCollection`) and `size` are genuinely
+  construction-time, and those are what `remountKeyOf` keys on.
 - **Core compiles under `strictNullChecks`.** The published `.d.ts` is the contract; do not silence a null with a cast that makes a public getter lie.
 
 ## Who owns which DOM node

@@ -4,6 +4,17 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Fixed
+
+- A responsive `width` / `height` no longer rebuilds the engine. The React
+  binding keyed the engine's identity on size, so a book sized from its
+  container was destroyed and recreated on every resize step — losing the
+  current page, the render loop and any in-flight turn. `UI.applyHostSize()`
+  restamps the host element from `updateSettings` instead.
+- `swipeDistance` is read live. It was captured in the `UI` constructor, so
+  `updateSettings({ swipeDistance })` was accepted and echoed by `getSettings()`
+  while gestures kept using the value from construction.
+
 ### API / accessibility (craft-audit climb)
 
 - `PageFlip.flipNext` / `flipPrev` return `boolean` and emit `turnRejected` when a turn does not start.
