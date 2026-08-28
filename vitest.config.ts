@@ -1,8 +1,8 @@
 import path from 'node:path';
 import { defineConfig } from 'vitest/config';
 
-const coreSrc = path.resolve(__dirname, 'packages/core/src/index.ts');
-const reactSrc = path.resolve(__dirname, 'packages/react/src/index.ts');
+const coreSrc = path.resolve(import.meta.dirname, 'packages/core/src/index.ts');
+const reactSrc = path.resolve(import.meta.dirname, 'packages/react/src/index.ts');
 
 /**
  * Vitest workspace projects + v8 coverage.
@@ -10,9 +10,6 @@ const reactSrc = path.resolve(__dirname, 'packages/react/src/index.ts');
  * Thresholds start pragmatic for a fork modernization; ratchet up as tests grow.
  */
 export default defineConfig({
-  esbuild: {
-    jsx: 'automatic',
-  },
   resolve: {
     alias: {
       '@gullabs/flipbook-core': coreSrc,
@@ -56,9 +53,6 @@ export default defineConfig({
         },
       },
       {
-        esbuild: {
-          jsx: 'automatic',
-        },
         resolve: {
           alias: {
             '@gullabs/flipbook-core': coreSrc,

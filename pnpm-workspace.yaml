@@ -2,3 +2,11 @@ packages:
   - 'packages/*'
   - 'examples/*'
   - 'fixtures/*'
+
+# Dependency install scripts are blocked by default (pnpm >= 10); allow only
+# the toolchain packages that genuinely need a native build step.
+onlyBuiltDependencies:
+  - 'esbuild'
+  - 'sharp'
+  - '@swc/core'
+  - 'unrs-resolver'
