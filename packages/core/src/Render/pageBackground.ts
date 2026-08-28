@@ -39,10 +39,15 @@ export function foldFillCss(pageBackground?: string): string {
 }
 
 export function isOpaquePageBackground(pageBackground?: string): boolean {
-  const value = foldFill(pageBackground).trim().toLowerCase();
-  if (value === 'transparent' || value === 'inherit' || value === 'none') {
-    return false;
+  // Inspect the raw request first — foldFill/safePageBackground maps
+  // transparent/inherit/none to #fff for CSS safety, which would hide opacity.
+  if (pageBackground !== undefined && pageBackground !== null) {
+    const raw = String(pageBackground).trim().toLowerCase();
+    if (raw === 'transparent' || raw === 'inherit' || raw === 'none' || raw === 'initial') {
+      return false;
+    }
   }
+  const value = foldFill(pageBackground).trim().toLowerCase();
   if (value.startsWith('rgba')) {
     const parts = value.slice(value.indexOf('(') + 1, value.indexOf(')')).split(',');
     const alpha = Number(parts[3]);

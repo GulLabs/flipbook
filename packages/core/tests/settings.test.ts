@@ -20,9 +20,9 @@ describe('Settings.getSettings (shipped)', () => {
   });
 
   test('negative flippingTime still throws', () => {
-    expect(() =>
-      new Settings().getSettings({ width: 300, height: 400, flippingTime: -1 }),
-    ).toThrow(PageFlipError);
+    expect(() => new Settings().getSettings({ width: 300, height: 400, flippingTime: -1 })).toThrow(
+      PageFlipError,
+    );
   });
 
   test('does not mutate defaults across instances', () => {
@@ -37,6 +37,9 @@ describe('Settings.getSettings (shipped)', () => {
     expect(foldFill(settings.pageBackground)).toBe('#fff');
     expect(isOpaquePageBackground(settings.pageBackground)).toBe(true);
     expect(isOpaquePageBackground('transparent')).toBe(false);
+    // Untrusted/transparent values are sanitized to the default fill.
+    expect(foldFill('transparent')).toBe('#fff');
+    expect(foldFill('url(javascript:alert(1))')).toBe('#fff');
   });
 
   test('direction rtl is accepted', () => {
