@@ -34,3 +34,4 @@ export { effectiveFlippingTime, prefersReducedMotion } from './reducedMotion';
 export { ensureFlipbookStyles, FLIPBOOK_CSS } from './styles';
 export type { WidgetEvent, FlipbookEventMap } from './Event/EventObject';
 export type { Point, PageRect, Rect, RectPoints, Segment } from './BasicTypes';
+export { FLIPBOOK_INTERACTIVE_SELECTOR, isInteractivePointerTarget } from './interactive';

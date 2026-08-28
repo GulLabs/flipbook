@@ -177,8 +177,10 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       onInit,
       onUpdate,
       onCollectionRebuild,
+      onTurnRejected,
+      onNavigationError,
       renderOnlyPageLengthChange,
-      useKeyboard = false,
+      useKeyboard = true,
       lazyRadius,
       liveRegion = true,
       liveRegionText = defaultLiveText,
@@ -208,8 +210,10 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     const handle: FlipBookHandle = useMemo(
       () => ({
         pageFlip: () => engineRef.current,
-        flipNext: (corner?: FlipCorner) => engineRef.current?.flipNext(corner ?? FlipCorner.TOP),
-        flipPrev: (corner?: FlipCorner) => engineRef.current?.flipPrev(corner ?? FlipCorner.TOP),
+        flipNext: (corner?: FlipCorner) =>
+          engineRef.current?.flipNext(corner ?? FlipCorner.TOP) ?? false,
+        flipPrev: (corner?: FlipCorner) =>
+          engineRef.current?.flipPrev(corner ?? FlipCorner.TOP) ?? false,
         turnToPage: (page: number) => engineRef.current?.turnToPage(page),
         flipToPage: (page: number) => engineRef.current?.flip(page),
       }),
@@ -253,6 +257,8 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       onInit,
       onUpdate,
       onCollectionRebuild,
+      onTurnRejected,
+      onNavigationError,
     });
 
     useEffect(() => {
@@ -264,16 +270,15 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         onInit,
         onUpdate,
         onCollectionRebuild,
+        onTurnRejected,
+        onNavigationError,
       };
     });
 
+    const handlersBoundRef = useRef(false);
     const bindHandlers = useCallback((flip: PageFlip) => {
-      flip.off('flip');
-      flip.off('changeOrientation');
-      flip.off('changeState');
-      flip.off('init');
-      flip.off('update');
-      flip.off('collectionRebuild');
+      if (handlersBoundRef.current) return;
+      handlersBoundRef.current = true;
 
       flip.on('flip', (e: WidgetEvent<FlipbookEventMap['flip']>) => {
         const next = typeof e.data === 'number' ? e.data : 0;
@@ -295,7 +300,11 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         eventHandlersRef.current.onUpdate?.(e);
       });
       flip.on('collectionRebuild', (e: WidgetEvent<FlipbookEventMap['collectionRebuild']>) => {
+        setPageCount(e.data.pageCount);
         eventHandlersRef.current.onCollectionRebuild?.(e);
+      });
+      flip.on('turnRejected', (e: WidgetEvent<FlipbookEventMap['turnRejected']>) => {
+        eventHandlersRef.current.onTurnRejected?.(e);
       });
     }, []);
 
@@ -305,6 +314,8 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
 
       const engine = new PageFlip(root, settings);
       engineRef.current = engine;
+      handlersBoundRef.current = false;
+      bindHandlers(engine);
 
       // Build the DOM shell with no leaves, so there is a portal target before
       // any page exists. Pages are handed to the engine by the effect below.
@@ -315,6 +326,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       setHydrated(true);
 
       return () => {
+        handlersBoundRef.current = false;
         engine.destroy();
         setPageHost(null);
         loadedNodes.current = null;
@@ -324,7 +336,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       };
       // Recreate only when constructor-level layout identity changes.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [remountKey]);
+    }, [remountKey, bindHandlers]);
 
     useEffect(() => {
       const engine = engineRef.current;
@@ -377,7 +389,20 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       engine.updateFromHtml(nodes);
       loadedNodes.current = nodes.slice();
       setPageCount(engine.getPageCount());
-    }, [pages, pageHost, bindHandlers, remountKey]);
+
+      // Honor startPage when uncontrolled (FE-001). updateFromHtml shows 0 first.
+      if (controlledPage === undefined) {
+        const start = props.startPage ?? 0;
+        if (start > 0 && start < engine.getPageCount()) {
+          try {
+            engine.turnToPage(start);
+          } catch {
+            /* invalid */
+          }
+        }
+        setEnginePage(engine.getCurrentPageIndex());
+      }
+    }, [pages, pageHost, bindHandlers, remountKey, controlledPage, props.startPage]);
 
     useEffect(() => {
       const engine = engineRef.current;
@@ -387,8 +412,21 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       try {
         engine.turnToPage(controlledPage);
       } catch {
-        // Controlled updates that land out of range are ignored; the engine
-        // still throws on imperative turnToPage/flipToPage.
+        const count = engine.getPageCount();
+        const actual = count <= 0 ? 0 : Math.min(Math.max(0, controlledPage), count - 1);
+        try {
+          if (count > 0 && actual !== engine.getCurrentPageIndex()) engine.turnToPage(actual);
+        } catch {
+          /* empty */
+        }
+        const resolved = engine.getCurrentPageIndex();
+        setEnginePage(resolved);
+        eventHandlersRef.current.onPageChange?.(resolved);
+        eventHandlersRef.current.onNavigationError?.({
+          code: 'INVALID_PAGE',
+          requested: controlledPage,
+          actual: resolved,
+        });
       }
     }, [controlledPage, pages]);
 
@@ -424,7 +462,6 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     };
 
     /* Composite widget: keyboard turns when focused (Arrow/Home/End). */
-    /* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- role=group flipbook root is intentionally focusable */
     return (
       <div
         ref={rootRef}
@@ -432,18 +469,24 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         style={style}
         data-flipbook-placeholder={hydrated ? undefined : ''}
         aria-label={ariaLabel}
-        role="group"
+        role={useKeyboard ? 'application' : 'group'}
         tabIndex={useKeyboard ? 0 : undefined}
-        onKeyDown={onKeyDown}
+        aria-keyshortcuts={useKeyboard ? 'ArrowLeft ArrowRight Home End' : undefined}
+        onKeyDown={useKeyboard ? onKeyDown : undefined}
       >
         {pageHost ? createPortal(pages, pageHost) : null}
         {liveRegion ? (
-          <div aria-live="polite" aria-atomic="true" data-flipbook-live="" style={VISUALLY_HIDDEN}>
+          <div
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            data-flipbook-live=""
+            style={VISUALLY_HIDDEN}
+          >
             {liveRegionText(currentPage, pageCount)}
           </div>
         ) : null}
       </div>
     );
-    /* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */
   },
 );

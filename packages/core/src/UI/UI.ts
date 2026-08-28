@@ -5,6 +5,7 @@ import { SizeType } from '../Settings';
 import { FlipCorner, FlippingState } from '../Flip/Flip';
 import { Orientation } from '../Render/Render';
 import { ensureFlipbookStyles } from '../styles';
+import { FLIPBOOK_INTERACTIVE_SELECTOR } from '../interactive';
 
 type SwipeData = {
   point: Point;
@@ -219,13 +220,8 @@ export abstract class UI {
 
   private checkTarget(targer: EventTarget | null): boolean {
     if (!this.app.getSettings().clickEventForward) return true;
-    if (!targer || !('tagName' in targer)) return true;
-
-    if (['a', 'button'].includes((targer as HTMLElement).tagName.toLowerCase())) {
-      return false;
-    }
-
-    return true;
+    if (!targer || !(targer instanceof Element)) return true;
+    return targer.closest(FLIPBOOK_INTERACTIVE_SELECTOR) === null;
   }
 
   /** Release pointer capture and forget the active pointer. Idempotent. */

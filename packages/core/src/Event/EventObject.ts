@@ -9,6 +9,7 @@ export type FlipbookEventMap = {
   init: { page: number; mode: Orientation };
   update: { page: number; mode: Orientation };
   collectionRebuild: { page: number; pageCount: number };
+  turnRejected: { reason: 'boundary' | 'setup' | 'disabled'; code?: string };
 };
 
 /**

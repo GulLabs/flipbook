@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { StrictMode, useState } from 'react';
 import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { HTMLFlipBook, usePageFlip } from '@gullabs/react-flipbook';
 
 afterEach(() => {
@@ -24,7 +25,7 @@ describe('HTMLFlipBook (shipped binding)', () => {
         </HTMLFlipBook>,
       ),
     ).not.toThrow();
-    expect(screen.getByRole('group', { name: 'Flipbook' })).toBeTruthy();
+    expect(screen.getByLabelText('Flipbook')).toBeTruthy();
   });
 
   test('renders a stable pre-hydration placeholder attribute then hydrates', async () => {
@@ -240,5 +241,58 @@ describe('HTMLFlipBook (shipped binding)', () => {
     await waitFor(() => {
       expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 2 of 3/);
     });
+  });
+});
+
+test('useKeyboard defaults on and live region has role=status', async () => {
+  const { container } = render(
+    <HTMLFlipBook width={200} height={300} flippingTime={0}>
+      {pages('a', 'b', 'c')}
+    </HTMLFlipBook>,
+  );
+  await waitFor(() => {
+    const root = container.querySelector('[aria-label="Flipbook"]');
+    expect(root?.getAttribute('tabindex')).toBe('0');
+    expect(root?.getAttribute('aria-keyshortcuts')).toContain('ArrowLeft');
+    expect(container.querySelector('[data-flipbook-live][role="status"]')).toBeTruthy();
+  });
+});
+
+test('startPage opens on the requested index when uncontrolled', async () => {
+  const handleRef: { current: import('@gullabs/react-flipbook').FlipBookHandle | null } = {
+    current: null,
+  };
+  render(
+    <HTMLFlipBook
+      ref={(h) => {
+        handleRef.current = h;
+      }}
+      width={200}
+      height={300}
+      flippingTime={0}
+      startPage={1}
+      usePortrait
+    >
+      {pages('a', 'b', 'c')}
+    </HTMLFlipBook>,
+  );
+  await waitFor(() => {
+    expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(1);
+  });
+});
+
+test('keyboard ArrowRight turns with userEvent', async () => {
+  const user = userEvent.setup();
+  const onPageChange = vi.fn();
+  render(
+    <HTMLFlipBook width={200} height={300} flippingTime={0} onPageChange={onPageChange}>
+      {pages('a', 'b', 'c')}
+    </HTMLFlipBook>,
+  );
+  const root = await screen.findByLabelText('Flipbook');
+  root.focus();
+  await user.keyboard('{ArrowRight}');
+  await waitFor(() => {
+    expect(onPageChange.mock.calls.length).toBeGreaterThan(0);
   });
 });

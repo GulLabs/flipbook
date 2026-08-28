@@ -1,3 +1,4 @@
+import { PageFlipError } from '../errors';
 import type { Render } from '../Render/Render';
 import { Orientation } from '../Render/Render';
 import type { Page } from '../Page/Page';
@@ -135,7 +136,7 @@ export abstract class PageCollection {
       return at(this.pages, pageIndex, 'page');
     }
 
-    throw new Error('Invalid page number');
+    throw new PageFlipError('Invalid page number', 'INVALID_PAGE');
   }
 
   /**
@@ -277,7 +278,7 @@ export abstract class PageCollection {
     if (newIndex >= 0 && newIndex < this.getSpread().length) {
       this.currentSpreadIndex = newIndex;
     } else {
-      throw new Error('Invalid page');
+      throw new PageFlipError('Invalid page', 'INVALID_PAGE');
     }
   }
 

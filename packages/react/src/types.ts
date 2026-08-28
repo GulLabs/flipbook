@@ -27,12 +27,14 @@ export type IEventProps = {
   onUpdate?: (flipEvent: WidgetEvent<FlipbookEventMap['update']>) => void;
   onPageChange?: (page: number) => void;
   onCollectionRebuild?: (flipEvent: WidgetEvent<FlipbookEventMap['collectionRebuild']>) => void;
+  onTurnRejected?: (flipEvent: WidgetEvent<FlipbookEventMap['turnRejected']>) => void;
+  onNavigationError?: (info: { code: string; requested: number; actual: number }) => void;
 };
 
 export type FlipBookHandle = {
   pageFlip: () => PageFlip | null;
-  flipNext: (corner?: FlipCorner) => void;
-  flipPrev: (corner?: FlipCorner) => void;
+  flipNext: (corner?: FlipCorner) => boolean;
+  flipPrev: (corner?: FlipCorner) => boolean;
   turnToPage: (page: number) => void;
   flipToPage: (page: number) => void;
 };
@@ -48,7 +50,7 @@ export type HTMLFlipBookProps = {
   renderOnlyPageLengthChange?: boolean;
   /** Controlled page index. */
   page?: number;
-  /** Opt-in arrow / Home / End keyboard turning. */
+  /** Keyboard turning (Arrow/Home/End). Default true. */
   useKeyboard?: boolean;
   /** Mount only leaves within this many pages of the current index. */
   lazyRadius?: number;
