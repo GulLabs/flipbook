@@ -329,23 +329,45 @@ export class PageFlip extends EventObject {
    * @param {FlipCorner} corner - Active page corner when turning
    */
   public flipNext(corner: FlipCorner = FlipCorner.TOP): boolean {
-    const ok = this.flipController?.flipNext(corner);
-    if (ok == null) {
-      this.trigger('turnRejected', this, { reason: 'setup', code: 'NOT_LOADED' });
-      return false;
-    }
-    if (!ok) this.trigger('turnRejected', this, { reason: 'boundary', code: 'REJECTED' });
-    return ok;
+    return this.requestTurn((flip) => flip.flipNext(corner));
   }
 
   public flipPrev(corner: FlipCorner = FlipCorner.TOP): boolean {
-    const ok = this.flipController?.flipPrev(corner);
-    if (ok == null) {
+    return this.requestTurn((flip) => flip.flipPrev(corner));
+  }
+
+  /**
+   * Run a relative turn and report it as a boolean, never as a throw.
+   *
+   * `flipNext` / `flipPrev` are the "turn if you can" API — the browser calls
+   * them from a swipe or an arrow key, where there is nobody to catch. A
+   * failed turn is `false` plus a `turnRejected` event. Explicit navigation
+   * (`turnToPage` / `flip`) still throws, because asking for a specific page
+   * and silently landing somewhere else is the §4.6 bug this fork exists to
+   * fix.
+   */
+  private requestTurn(run: (flip: Flip) => boolean): boolean {
+    const flip = this.flipController;
+
+    if (flip === null) {
       this.trigger('turnRejected', this, { reason: 'setup', code: 'NOT_LOADED' });
       return false;
     }
-    if (!ok) this.trigger('turnRejected', this, { reason: 'boundary', code: 'REJECTED' });
-    return ok;
+
+    try {
+      if (run(flip)) return true;
+      this.trigger('turnRejected', this, { reason: 'boundary', code: 'REJECTED' });
+      return false;
+    } catch (err: unknown) {
+      // Engine-internal setup failure (a corrupt spread, an index guard).
+      // Surface it as a rejection with its code rather than throwing out of a
+      // gesture handler.
+      this.trigger('turnRejected', this, {
+        reason: 'setup',
+        code: err instanceof PageFlipError ? err.code : 'FLIP_SETUP',
+      });
+      return false;
+    }
   }
 
   /**

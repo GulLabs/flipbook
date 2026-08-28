@@ -6,6 +6,20 @@ All notable changes to this monorepo will be documented in this file.
 
 ### Fixed
 
+- `lazyRadius` combined with `renderOnlyPageLengthChange` left every page
+  outside the initial window as an empty placeholder for the life of the book.
+  Turning a page moves the lazy window without changing the page count, so the
+  length short-circuit skipped the re-render that would have mounted the next
+  page — the reader turned the page and saw blank paper.
+- `flipNext` / `flipPrev` no longer throw. They are what a swipe and an arrow
+  key call, and are documented to return a boolean plus a `turnRejected`
+  event, but an engine-internal `PageFlipError` escaped them and surfaced as an
+  unhandled exception from a gesture handler. It is now reported as
+  `turnRejected` carrying the original error code. `turnToPage` / `flip` still
+  throw, which is the §4.6 contract.
+- An out-of-range `startPage` reports `onNavigationError` instead of quietly
+  opening at page 0, matching what an out-of-range controlled `page` already
+  did.
 - A responsive `width` / `height` no longer rebuilds the engine. The React
   binding keyed the engine's identity on size, so a book sized from its
   container was destroyed and recreated on every resize step — losing the

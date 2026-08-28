@@ -670,3 +670,97 @@ describe('responsive size', () => {
     expect(inits).toBe(1);
   });
 });
+
+describe('lazy mounting', () => {
+  /**
+   * `renderOnlyPageLengthChange` short-circuits when the page count is
+   * unchanged. Turning a page moves the lazy window without changing the
+   * count, so the two together left every page outside the *initial* window as
+   * an empty placeholder forever — the reader turns the page and sees blank
+   * paper.
+   */
+  test('the lazy window still advances under renderOnlyPageLengthChange', async () => {
+    function Harness() {
+      const book = usePageFlip();
+      return (
+        <>
+          <button type="button" onClick={() => book.flipNext()}>
+            next
+          </button>
+          <HTMLFlipBook
+            ref={book.ref}
+            width={200}
+            height={300}
+            flippingTime={0}
+            lazyRadius={1}
+            renderOnlyPageLengthChange
+            {...book.bookProps}
+          >
+            {pages('a', 'b', 'c', 'd', 'e')}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
+    });
+
+    // Page c starts outside the window (radius 1 around page 0).
+    expect(container.querySelector('[data-testid="page-c"]')).toBeNull();
+
+    fireEvent.click(screen.getByText('next'));
+
+    // After turning to page b, c is inside the window and must be real.
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-c"]')).toBeTruthy();
+    });
+  });
+});
+
+describe('startPage out of range', () => {
+  test('reports onNavigationError instead of quietly opening at page 0', async () => {
+    const onNavigationError = vi.fn();
+
+    render(
+      <HTMLFlipBook
+        width={200}
+        height={300}
+        flippingTime={0}
+        startPage={99}
+        onNavigationError={onNavigationError}
+      >
+        {pages('a', 'b')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(onNavigationError).toHaveBeenCalledWith({
+        code: 'INVALID_PAGE',
+        requested: 99,
+        actual: 0,
+      });
+    });
+  });
+
+  test('a valid startPage does not report an error', async () => {
+    const onNavigationError = vi.fn();
+    const { container } = render(
+      <HTMLFlipBook
+        width={200}
+        height={300}
+        flippingTime={0}
+        startPage={1}
+        onNavigationError={onNavigationError}
+      >
+        {pages('a', 'b', 'c')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-flipbook-live]')?.textContent).toBe('Page 2 of 3');
+    });
+    expect(onNavigationError).not.toHaveBeenCalled();
+  });
+});

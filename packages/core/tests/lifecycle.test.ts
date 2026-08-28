@@ -11,6 +11,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
 import { PageFlip, PageFlipError } from '@gullabs/flipbook-core';
+import { makePages } from './html-book-fixture';
 
 function host(): HTMLElement {
   const el = document.createElement('div');
@@ -61,6 +62,44 @@ describe('PageFlip lifecycle', () => {
     expect(book.flipNext()).toBe(false);
     expect(book.flipPrev()).toBe(false);
     expect(rejected).toEqual(['setup', 'setup']);
+
+    book.destroy();
+  });
+});
+
+describe('relative turns never throw', () => {
+  /**
+   * `flipNext` / `flipPrev` are what a swipe and an arrow key call, where
+   * nothing is there to catch. They are documented to return a boolean and
+   * emit `turnRejected`; an engine-internal `PageFlipError` used to escape
+   * them and reach the consumer as an unhandled exception from a gesture.
+   *
+   * Explicit navigation keeps throwing — that is the §4.6 contract.
+   */
+  test('an engine-internal failure is reported as a rejection, not thrown', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(4));
+
+    const rejected: { reason: string; code?: string }[] = [];
+    book.on('turnRejected', (e) => rejected.push(e.data));
+
+    // Force the engine's own index guard to fire inside the turn.
+    const collection = book.getPageCollection() as unknown as Record<string, unknown>;
+    collection['getFlippingPage'] = () => {
+      throw new PageFlipError('corrupt spread', 'INVALID_SPREAD');
+    };
+
+    expect(book.flipNext()).toBe(false);
+    expect(rejected).toEqual([{ reason: 'setup', code: 'INVALID_SPREAD' }]);
+
+    book.destroy();
+  });
+
+  test('turnToPage still throws for an unreachable page', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(4));
+
+    expect(() => book.turnToPage(99)).toThrow(PageFlipError);
 
     book.destroy();
   });

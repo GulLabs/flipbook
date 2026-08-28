@@ -65,6 +65,7 @@ No consumer monkey-patch is required. Portrait BACK animates a temporary copy of
 ## GulLabs 3.x binding notes (craft-audit climb)
 
 - `HTMLFlipBook` **`useKeyboard` defaults to `true`**. Pass `useKeyboard={false}` to restore pointer-only.
+- `PageFlip.flipNext` / `flipPrev` never throw: a turn that cannot start is `false` plus a `turnRejected` event (engine-internal failures included, with their code). Explicit `turnToPage` / `flip` still throw.
 - `PageFlip.flipNext` / `flipPrev` (and the React handle) return **`boolean`** — `false` means the turn did not start. Subscribe to **`turnRejected`** for the same signal as an event.
 - Controlled `page` out of range calls optional **`onNavigationError`** and clamps via `onPageChange` to the engine index.
 - `usePageFlip()` returns **`bookProps`** — spread onto `<HTMLFlipBook {...bookProps} />` so `pageCount` stays in sync.

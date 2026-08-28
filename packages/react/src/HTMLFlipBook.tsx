@@ -242,7 +242,18 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // Bail out BEFORE clearing `childNodes`: emptying it without re-rendering
       // leaves it empty for good, and the load effect below then skips
       // `loadFromHTML` on the next remount — a blank book.
-      if (renderOnlyPageLengthChange === true && pages.length === next.length) {
+      //
+      // `renderOnlyPageLengthChange` must not apply while lazy mounting is on:
+      // turning a page moves the lazy window without changing the page count,
+      // so short-circuiting on equal length left every page outside the
+      // initial window as an empty placeholder for the life of the book.
+      const lazyWindowActive = lazyRadius !== undefined && Number.isFinite(lazyRadius);
+
+      if (
+        renderOnlyPageLengthChange === true &&
+        !lazyWindowActive &&
+        pages.length === next.length
+      ) {
         return;
       }
 
@@ -408,14 +419,30 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       if (controlledPage === undefined && !startPageAppliedRef.current) {
         startPageAppliedRef.current = true;
         const start = props.startPage ?? 0;
-        if (start > 0 && start < engine.getPageCount()) {
+        const count = engine.getPageCount();
+
+        if (start > 0 && start < count) {
           try {
             engine.turnToPage(start);
           } catch {
-            // invalid startPage for this collection
+            // The collection has the index but no spread for it; fall through
+            // to the report below rather than pretending it landed.
           }
         }
-        setEnginePage(engine.getCurrentPageIndex());
+
+        const resolved = engine.getCurrentPageIndex();
+        setEnginePage(resolved);
+
+        // An out-of-range `startPage` is reported the same way an out-of-range
+        // controlled `page` is. Silently opening at page 0 looks like the book
+        // simply has no such page, which is the failure this event exists for.
+        if (start !== resolved) {
+          eventHandlersRef.current.onNavigationError?.({
+            code: 'INVALID_PAGE',
+            requested: start,
+            actual: resolved,
+          });
+        }
       }
     }, [pages, pageHost, bindHandlers, remountKey, controlledPage, props.startPage]);
 
