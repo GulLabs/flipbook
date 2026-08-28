@@ -24,7 +24,7 @@ pnpm test               # vitest run, both projects
 pnpm build              # tsup per package (see caveat below)
 pnpm typecheck          # tsc --noEmit per package
 pnpm lint               # eslint flat config, repo-wide
-pnpm size               # size-limit on core dist (budget 47 kB raw / 15 kB brotli (packages/core size-limit))
+pnpm size               # size-limit on the packed html engine (45 kB raw drift alarm / 11 kB brotli budget)
 node ./scripts/check-isolated-types.mjs   # pnpm-isolated consumer type fixture
 ```
 
@@ -37,12 +37,17 @@ pnpm vitest run --project react -t 'onUpdate fires'
 
 Vitest uses `projects`: `core` (node env, `packages/core/tests`) and `react` (jsdom, `packages/react/tests`). Both alias `@gullabs/flipbook-core` / `@gullabs/react-flipbook` to **`src/`**, so unit tests never exercise the built `dist`.
 
-Playwright (`e2e/`) is not wired into CI and its `webServer` runs `pnpm --filter example-vanilla preview`, so the vanilla example must be built first:
+Playwright (`e2e/`) runs in CI on Chromium and WebKit. Its `webServer` builds
+the packages and the vanilla example itself, so a bare run works:
 
 ```bash
-npx playwright install --with-deps
-pnpm --filter example-vanilla build && pnpm exec playwright test
+pnpm exec playwright install --with-deps chromium webkit
+pnpm test:e2e
 ```
+
+Golden screenshot baselines are per-platform and both sets are committed;
+CI compares against the `-linux` ones. Regenerate those in CI's own container
+with `pnpm test:e2e:golden:update:linux` (see `e2e/README.md`).
 
 ## Architecture
 
@@ -66,12 +71,12 @@ The fork's fixes are deliberately factored into small, separately exported, unit
 `HTMLFlipBook.tsx` is the whole binding (`forwardRef`, `'use client'`). Its structure is load-bearing and easy to break:
 
 - children are wrapped, each page element collected into a `childNodes` ref;
-- one effect constructs/destroys the engine, keyed on `remountKeyOf(props)` (`showCover`, `size`, `width`, `height` — the constructor-only settings);
+- one effect constructs/destroys the engine, keyed on `remountKeyOf(props)` (`showCover`, `size` — the only genuinely construction-time settings; `width`/`height` are live, see below);
 - one effect binds event handlers **before** calling `loadFromHTML`/`updateFromHtml` — this ordering is the §4.3 `onUpdate` fix, do not reorder;
 - one effect pushes runtime-updatable settings via `engine.updateSettings(partial)`;
 - one effect drives the controlled `page` prop.
 
-React owns the page elements as children of the root div while the engine physically moves them into `.stf__block` and `HTMLUI.updateItems` wipes it with `innerHTML = ''`. Any change to how children are keyed, reordered, or removed risks a React/DOM ownership conflict — verify in a browser, not just jsdom.
+React owns the page elements and **portals** them into the engine's `.stf__block`, so React's recorded parent matches the real one. `HTMLUI.updateItems` adopts and releases individual leaves rather than wiping the block. Any change to how children are keyed, reordered, or removed risks a React/DOM ownership conflict — verify in a browser, not just jsdom. See "Who owns which DOM node".
 
 ## Invariants that must not regress
 
