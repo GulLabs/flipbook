@@ -175,9 +175,11 @@ Software — the engine's own files — never to the rest of your application:
   to a browser is distribution.
 
 In the common case — `npm install`, bundle, deploy, engine unmodified — the
-source-availability half is already met: this repository and the published npm
-package are the Source Code Form, offered under MPL-2.0. What remains yours is
-the notice: carry a line in your licenses/acknowledgements such as “includes
+source-availability half is already met by
+<https://github.com/GulLabs/flipbook>, which is the Source Code Form and is
+offered under MPL-2.0. (The npm package is not: it ships `dist` only, so it is
+Executable Form. Point people at the repository, not at the tarball.) What
+remains yours is the notice: carry a line in your licenses/acknowledgements such as “includes
 @gullabs/flipbook-core, MPL-2.0, source at
 https://github.com/GulLabs/flipbook”. Most bundlers' license plugins emit this
 automatically. Note the notice accompanies each distribution, and it depends on

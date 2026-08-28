@@ -24,10 +24,11 @@ which includes serving bundled JavaScript to a browser, requires both that the
 corresponding source be available on those terms and that recipients be
 informed how to obtain it, for each distribution (§3.2).
 
-For the common case — unmodified, installed from npm — this repository and the
-published package are that source, so what falls to you is the notice: an
-acknowledgements line naming the package, its license and
-<https://github.com/GulLabs/flipbook>. If you modified the engine, publish your
+For the common case — unmodified, installed from npm — the Source Code Form is
+<https://github.com/GulLabs/flipbook>, not this package (which ships `dist`
+only, and so is Executable Form). Availability is therefore already met, and
+what falls to you is the notice: an acknowledgements line naming the package,
+its license and that repository URL. If you modified the engine, publish your
 version and point the notice there instead.
 
 Copyright (c) 2026 GulLabs, with upstream Nodlik MIT notices in

@@ -19,8 +19,10 @@ Private and internal use -- including modifying the engine for an internal tool
 you never distribute -- carries no obligation. When you do distribute, two
 duties attach, and only to the Covered Software (the engine's own files):
 
-  - Section 3.1: modified Covered Software files must be made available under
-    MPL-2.0.
+  - Section 3.1: any distribution of Covered Software in Source Code Form --
+    modified or not -- is under MPL-2.0, must carry the license notice, and
+    must not restrict recipients' rights in that source. Modification is
+    within its scope, not the trigger for it.
   - Section 3.2: distributing the engine in Executable Form -- which includes
     serving bundled JavaScript to a browser -- requires both that the
     corresponding Source Code Form be available and that recipients be informed

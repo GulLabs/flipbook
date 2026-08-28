@@ -290,7 +290,10 @@ const coreSrc = join(root, 'packages/core/src');
 // `foo.mts` would otherwise ship without the notice. Symlinks are refused
 // rather than followed: traversing them is how a directory of unheadered
 // sources gets in without the walk ever seeing it.
-const TS_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts'];
+// Every source extension the bundler can pull in from src/, not only the
+// TypeScript ones — a plain .js imported from index.ts is bundled just the
+// same and would otherwise ship without the notice.
+const SOURCE_EXTENSIONS = ['.ts', '.tsx', '.mts', '.cts', '.js', '.jsx', '.mjs', '.cjs'];
 const walk = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     const path = join(dir, e.name);
@@ -299,7 +302,7 @@ const walk = (dir) =>
       process.exit(1);
     }
     if (e.isDirectory()) return walk(path);
-    return TS_EXTENSIONS.some((ext) => e.name.endsWith(ext)) ? [path] : [];
+    return SOURCE_EXTENSIONS.some((ext) => e.name.endsWith(ext)) ? [path] : [];
   });
 const missingHeaders = walk(coreSrc).filter((f) => !readFileSync(f, 'utf8').startsWith(EXHIBIT_A));
 if (missingHeaders.length > 0) {
