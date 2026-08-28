@@ -21,7 +21,7 @@ export abstract class UI {
 
   protected readonly app: PageFlip;
   protected readonly wrapper: HTMLElement;
-  protected distElement: HTMLElement | null = null;
+  protected distElement!: HTMLElement;
 
   private touchPoint: SwipeData | null = null;
   private readonly swipeTimeout = 250;
@@ -94,7 +94,7 @@ export abstract class UI {
     this.removeHandlers();
     this.unobserveResize();
 
-    this.distElement?.remove();
+    this.distElement.remove();
     this.wrapper.remove();
 
     // Hand the host element back the way we found it.
@@ -117,9 +117,6 @@ export abstract class UI {
   }
 
   public getDistElement(): HTMLElement {
-    if (this.distElement === null) {
-      throw new Error('Flipbook UI dist element is not ready');
-    }
     return this.distElement;
   }
 
@@ -146,9 +143,6 @@ export abstract class UI {
   }
 
   protected removeHandlers(): void {
-    // `destroy()` can run before `loadFromHTML`, so there may be no dist element.
-    if (!this.distElement) return;
-
     this.releaseCapturedPointer();
 
     this.distElement.removeEventListener('pointerdown', this.onPointerDown);
@@ -162,8 +156,6 @@ export abstract class UI {
 
   protected setHandlers(): void {
     if (!this.app.getSettings().useMouseEvents) return;
-
-    if (!this.distElement) return;
 
     this.distElement.addEventListener('pointerdown', this.onPointerDown);
     this.distElement.addEventListener('pointermove', this.onPointerMove);
@@ -207,9 +199,6 @@ export abstract class UI {
    * for swipes.
    */
   private getMousePos(x: number, y: number): Point {
-    if (this.distElement === null) {
-      return { x: 0, y: 0 };
-    }
     const rect = this.distElement.getBoundingClientRect();
 
     return {
@@ -229,8 +218,7 @@ export abstract class UI {
     if (this.activePointerId === null) return;
 
     try {
-      // distElement may be unset when destroy() runs before loadFromHTML.
-      this.distElement?.releasePointerCapture(this.activePointerId);
+      this.distElement.releasePointerCapture(this.activePointerId);
     } catch {
       // already released
     }
@@ -275,7 +263,6 @@ export abstract class UI {
   private onPointerDown = (e: PointerEvent): void => {
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     if (!this.checkTarget(e.target)) return;
-    if (this.distElement === null) return;
 
     const pos = this.getMousePos(e.clientX, e.clientY);
 

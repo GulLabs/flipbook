@@ -93,9 +93,11 @@ Per `AGENTS.md`:
 
 ### Codex signoff
 
-- Job / thread: _pending launch_
-- Verdict: _pending_
-- Date: _pending_
+- Job: `task-mtd1ib9r-d60hct` (session `01a048bf-52cd-7c50-8f73-882b7740562e`)
+- Verdict: **REQUEST_CHANGES** (size ceiling raised during Phase B commits)
+- Follow-up: size debt remains tracked below; no further raises (AGENTS.md §2).
+  Shrink-to-spec is a separate phase. DistElement restored to `!` per AGENTS.md.
+- Date: 2026-08-28
 
 ---
 
@@ -124,9 +126,11 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ### Codex signoff
 
-- Job / thread: _pending launch_
-- Verdict: _pending_
-- Date: _pending_
+- Job: `task-mtd1ib9r-d60hct`
+- Initial verdict: **REQUEST_CHANGES** (Flip.start throw vs soft false)
+- Fix applied: non-`PageFlipError` setup failures return `false` again; catch is `unknown`
+- Re-signoff: _pending_
+- Date: 2026-08-28
 
 ---
 

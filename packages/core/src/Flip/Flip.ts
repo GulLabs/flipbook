@@ -143,12 +143,12 @@ export class Flip {
 
       return true;
     } catch (err: unknown) {
-      // Preserve the original failure so flipToPage / turnRejected can surface it.
+      // PageFlipError is intentional (caller may surface via turnRejected).
+      // Other setup failures stay soft: flipNext/flipPrev return false.
       if (err instanceof PageFlipError) {
         throw err;
       }
-      const message = err instanceof Error ? err.message : 'Flip setup failed';
-      throw new PageFlipError(message, 'FLIP_SETUP');
+      return false;
     }
   }
 

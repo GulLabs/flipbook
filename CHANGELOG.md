@@ -14,6 +14,9 @@ All notable changes to this monorepo will be documented in this file.
 
 ### Engine
 
+- `Flip.start` setup failures other than `PageFlipError` still return `false`
+  (soft); `PageFlipError` still throws so `flipToPage` / callers can surface it.
+  Catch parameter is typed `unknown` for the lint bar.
 - `pageBackground` opacity is checked for real. Sanitising the value for CSS
   safety had made `isOpaquePageBackground` unable to return `false`, and let
   translucent values (`rgba(…, 0.4)`, `#ffffff00`, `hsla(…, 0.2)`, `#fff8`,
