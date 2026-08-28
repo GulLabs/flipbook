@@ -27,6 +27,7 @@ export {
   foldFill,
   foldFillCss,
   isOpaquePageBackground,
+  safePageBackground,
   DEFAULT_PAGE_BACKGROUND,
 } from './Render/pageBackground';
 export { effectiveFlippingTime, prefersReducedMotion } from './reducedMotion';
