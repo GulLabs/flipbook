@@ -5,6 +5,7 @@
  * thin structural preflight (OSS files + package repository URLs + core invariants).
  */
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -167,22 +168,65 @@ for (const [manifest, expected] of Object.entries(EXPECTED_LICENSES)) {
   }
 }
 
-if (
-  !readFileSync(join(root, 'packages/core/LICENSE'), 'utf8').startsWith(
-    'Mozilla Public License Version 2.0',
-  )
-) {
-  console.error('packages/core/LICENSE no longer opens with the MPL-2.0 text.');
+// Byte-exact, not substring. A marker list accepts a file that keeps every
+// heading while §3.2 is quietly rewritten, which is precisely the edit that
+// would matter. The digest below is SHA-256 of the canonical MPL-2.0 text as
+// published at https://www.mozilla.org/media/MPL/2.0/index.txt (16726 bytes).
+// It is a constant of the license, not of this repo: it changes only if Mozilla
+// publishes a new version, in which case that is a deliberate relicense.
+const MPL_2_0_SHA256 = '3f3d9e0024b1921b067d6f7f88deb4a60cbe7a78e76c64e3f1d7fc3b779b9d04';
+const MPL_TAIL_MARKER =
+  '\n-------------------------------------------------------------------------------\n\n@gullabs/flipbook-core is Copyright';
+
+const coreLicense = readFileSync(join(root, 'packages/core/LICENSE'), 'utf8');
+const tailAt = coreLicense.indexOf(MPL_TAIL_MARKER);
+if (tailAt === -1) {
+  console.error(
+    'packages/core/LICENSE: the MPL-2.0 text and the GulLabs/upstream notice block are no longer separated as expected.',
+  );
+  process.exit(1);
+}
+const mplBody = `${coreLicense.slice(0, tailAt).replace(/\n+$/, '')}\n`;
+const mplDigest = createHash('sha256').update(mplBody).digest('hex');
+if (mplDigest !== MPL_2_0_SHA256) {
+  console.error(
+    `packages/core/LICENSE: the MPL-2.0 text is not byte-identical to the canonical license.\n` +
+      `  expected sha256 ${MPL_2_0_SHA256}\n` +
+      `  actual   sha256 ${mplDigest}\n` +
+      'Restore it from https://www.mozilla.org/media/MPL/2.0/index.txt.',
+  );
   process.exit(1);
 }
 
-for (const [file, needle] of [
-  ['LICENSE', 'Copyright (c) 2020 Nodlik'],
-  ['NOTICE', 'Copyright (c) 2020 Nodlik'],
-  ['packages/core/LICENSE', 'Copyright (c) 2020 Nodlik'],
-]) {
-  if (!readFileSync(join(root, file), 'utf8').includes(needle)) {
-    console.error(`${file}: upstream Nodlik MIT notice is missing.`);
+// Both upstream notices, not just one. Checking a single Nodlik substring let a
+// rewrite that drops react-pageflip's notice through.
+// `fullText` marks the files that must reproduce the MIT grant verbatim. NOTICE
+// only summarises and points at LICENSE, so it is attribution-only.
+const UPSTREAM_NOTICES = [
+  {
+    file: 'LICENSE',
+    needles: ['Copyright (c) 2020 Nodlik', 'Copyright (c) 2020 oleg.litovski9@gmail.com'],
+    fullText: true,
+  },
+  {
+    file: 'NOTICE',
+    needles: ['Copyright (c) 2020 Nodlik', 'Copyright (c) 2020 oleg.litovski9@gmail.com'],
+    fullText: false,
+  },
+  { file: 'packages/core/LICENSE', needles: ['Copyright (c) 2020 Nodlik'], fullText: true },
+  { file: 'packages/react/LICENSE', needles: ['Copyright (c) 2026 GulLabs'], fullText: true },
+];
+
+for (const { file, needles, fullText } of UPSTREAM_NOTICES) {
+  const text = readFileSync(join(root, file), 'utf8');
+  for (const needle of needles) {
+    if (!text.includes(needle)) {
+      console.error(`${file}: required notice is missing — ${JSON.stringify(needle)}.`);
+      process.exit(1);
+    }
+  }
+  if (fullText && !text.includes('THE SOFTWARE IS PROVIDED "AS IS"')) {
+    console.error(`${file}: the MIT warranty disclaimer is missing.`);
     process.exit(1);
   }
 }

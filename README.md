@@ -150,14 +150,29 @@ notices retained in [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
 | `@gullabs/react-flipbook` | [MIT](./packages/react/LICENSE)    | the React binding |
 
 **What MPL-2.0 means for you.** It is file-level copyleft, not application
-copyleft. Install it, ship it inside a closed-source product, and sell that
-product — no obligation, and no license requirement on your own code. The only
-condition: if you modify the engine's _own source files_, those modified files
-must be made available under MPL-2.0. Improvements to the engine stay available
-to everyone using it; everything you build on top remains yours.
+copyleft. Your own code is never subject to it: you may install the engine, ship
+it inside a closed-source product, and sell that product, and MPL-2.0 places no
+license requirement whatsoever on the application around it.
 
-The practical test is whether you edit files under `packages/core/src`. Using
-the public API is not modification.
+Two duties do attach, and both are to the engine's files — the Covered Software
+— never to the rest of your application:
+
+- **If you modify the engine's files**, those modified files must be made
+  available under MPL-2.0. A separate file of your own is only covered if you
+  put Covered Software into it; wrapping, configuring or calling the public API
+  is not a modification.
+- **If you distribute the engine in built form**, MPL-2.0 §3.2 requires that
+  the corresponding source be available and that recipients be told how to get
+  it. Note that this includes serving the bundled JavaScript from a website —
+  shipping client-side code to a browser is distribution, not private use. In
+  practice it is satisfied by keeping a line such as “includes
+  @gullabs/flipbook-core, MPL-2.0, source at
+  https://github.com/GulLabs/flipbook” in your licenses/acknowledgements. Most
+  bundlers' license plugins emit this for you; if yours does not, add it once.
+
+The practical test for the first duty is whether you edit files under
+`packages/core/src`. The second is a one-time attribution line, not an ongoing
+obligation.
 
 ## Trademark
 

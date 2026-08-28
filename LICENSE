@@ -11,9 +11,13 @@ This repository is licensed per package. Check the package you are consuming.
 
 Why the split: the flip engine in packages/core is the substance of this fork,
 and MPL-2.0 is file-level copyleft. You may use, embed and ship it inside a
-closed-source or commercial product with no obligation and no license
-requirement on your own code. If you modify the engine's own source files,
-those modified files must be made available under MPL-2.0.
+closed-source or commercial product; MPL-2.0 places no license requirement on
+the consuming application. Two duties attach to the engine's own files: if you
+modify them, the modified files must be made available under MPL-2.0; and if
+you distribute the engine in Executable Form -- which includes serving bundled
+JavaScript to a browser -- MPL-2.0 section 3.2 requires that the corresponding
+Source Code Form be available and that recipients be informed how to obtain it
+(https://github.com/GulLabs/flipbook).
 
 The React binding is a thin wrapper and stays MIT so it can be vendored or
 adapted without friction.
