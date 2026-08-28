@@ -23,6 +23,7 @@ const required = [
   '.github/workflows/ci.yml',
   '.github/workflows/codeql.yml',
   '.github/dependabot.yml',
+  'AGENTS.md',
   'eslint.config.mjs',
   'vitest.config.ts',
   'packages/core/package.json',

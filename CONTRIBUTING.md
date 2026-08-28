@@ -38,6 +38,12 @@ The Next.js example can flake on Node versions other than `.nvmrc`; pin Node 20.
 
 Demo-only Next lint rules (`@next/eslint-plugin-next`) are intentionally **not** in the monorepo ESLint config — examples share the React/TS bar (LINT-007).
 
+## AI agents
+
+If you are (or are directing) an AI coding agent, [`AGENTS.md`](AGENTS.md) is
+mandatory reading — it encodes the working standards this repo enforces, and
+`CLAUDE.md` documents the architecture and invariants.
+
 ## Principles
 
 - Keep the public surface small. Breaking changes follow SemVer.

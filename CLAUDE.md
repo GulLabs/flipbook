@@ -2,6 +2,12 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Before making any change, read [`AGENTS.md`](AGENTS.md)** — working
+> standards for AI agents in this repo, written from the actual mistakes made
+> during the 3.0.0 push (coordination, test honesty, scope discipline,
+> release verification). This file covers what the code is; that one covers
+> how to work on it.
+
 ## What this is
 
 A maintained fork of the abandoned [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) (`page-flip@2.0.7`) and [Nodlik/react-pageflip](https://github.com/Nodlik/react-pageflip) (`2.0.3`), merged into one pnpm monorepo and published by GulLabs as `@gullabs/flipbook-core` + `@gullabs/react-flipbook`, starting at **3.0.0**.
