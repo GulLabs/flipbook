@@ -27,6 +27,7 @@
   ],
   "scripts": {
     "build": "tsup && node ../../scripts/copy-css.mjs && node ../../scripts/pack-html-engine.mjs",
+    "prepack": "pnpm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --project core",
     "size": "size-limit"
@@ -48,8 +49,8 @@
   "devDependencies": {
     "@size-limit/file": "^13.0.3",
     "size-limit": "^13.0.3",
-    "tsup": "^8.5.0",
-    "typescript": "^5.9.2"
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   },
   "bugs": {
     "url": "https://github.com/GulLabs/flipbook/issues"

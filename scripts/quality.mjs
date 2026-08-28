@@ -66,9 +66,11 @@ for (const dir of ['packages/core', 'packages/react']) {
   }
 }
 
-const rootPkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
-if (!rootPkg.pnpm?.onlyBuiltDependencies?.length) {
-  console.error('root package.json must define pnpm.onlyBuiltDependencies allowlist');
+// pnpm >= 10 blocks dependency install scripts unless allowlisted, and reads
+// the allowlist from pnpm-workspace.yaml (not package.json, as in pnpm 9).
+const workspace = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8');
+if (!/^onlyBuiltDependencies:\s*$/m.test(workspace)) {
+  console.error('pnpm-workspace.yaml must define an onlyBuiltDependencies allowlist');
   process.exit(1);
 }
 

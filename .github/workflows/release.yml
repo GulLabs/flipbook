@@ -81,6 +81,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # `files: ["dist"]` means an unbuilt workspace publishes an empty tarball.
+      # `prepack` in each package covers manual publishes; this keeps the CI
+      # path explicit and topologically ordered.
+      - run: pnpm build
+
       # OIDC trusted publishing only (SEC-002) — no classic npm automation token.
       # Register this workflow as a trusted publisher on npm for both packages
       # before the first publish (see RELEASING.md).
