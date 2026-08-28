@@ -26,11 +26,10 @@ export class PageFlip extends EventObject {
   private readonly setting: FlipSetting;
   private readonly block: HTMLElement; // Root HTML Element
 
-  private pages!: PageCollection;
+  private pages: PageCollection | null = null;
   private flipController: Flip | null = null;
-  private render!: Render;
-
-  private ui!: UI;
+  private render: Render | null = null;
+  private ui: UI | null = null;
   private initTimer: ReturnType<typeof setTimeout> | null = null;
   private destroyed = false;
 
@@ -67,6 +66,27 @@ export class PageFlip extends EventObject {
     return this.destroyed;
   }
 
+  private requireRender(): Render {
+    if (this.render === null) {
+      throw new PageFlipError('PageFlip render is not ready', 'NOT_READY');
+    }
+    return this.render;
+  }
+
+  private requireUI(): UI {
+    if (this.ui === null) {
+      throw new PageFlipError('PageFlip UI is not ready', 'NOT_READY');
+    }
+    return this.ui;
+  }
+
+  private requirePages(): PageCollection {
+    if (this.pages === null) {
+      throw new PageFlipError('PageFlip pages are not ready', 'NOT_READY');
+    }
+    return this.pages;
+  }
+
   /**
    * Update the render area. Re-show current page.
    */
@@ -85,17 +105,17 @@ export class PageFlip extends EventObject {
    */
   public replacePages(pages: PageCollection, current: number): void {
     if (this.destroyed) return;
-    this.pages.destroy();
+    this.requirePages().destroy();
     this.pages = pages;
-    this.pages.load();
-    this.pages.show(current);
+    pages.load();
+    pages.show(current);
     this.trigger('update', this, {
       page: current,
-      mode: this.render.getOrientation(),
+      mode: this.requireRender().getOrientation(),
     });
     this.trigger('collectionRebuild', this, {
       page: current,
-      pageCount: this.pages.getPageCount(),
+      pageCount: pages.getPageCount(),
     });
   }
 
@@ -116,10 +136,10 @@ export class PageFlip extends EventObject {
     if (this.initTimer !== null) clearTimeout(this.initTimer);
     this.initTimer = setTimeout(() => {
       this.initTimer = null;
-      this.ui.update();
+      this.requireUI().update();
       this.trigger('init', this, {
         page: this.setting.startPage,
-        mode: this.render.getOrientation(),
+        mode: this.requireRender().getOrientation(),
       });
     }, 1);
   }
@@ -130,15 +150,15 @@ export class PageFlip extends EventObject {
    */
   public loadFromImages(imagesHref: string[]): Promise<void> {
     return import('./canvas-loader')
-      .then((m) => {
-        if (this.destroyed) return;
-        m.loadFromImages(this, imagesHref);
-      })
       .catch((err: unknown) => {
         throw new PageFlipError(
           `Failed to load canvas renderer: ${err instanceof Error ? err.message : String(err)}`,
           'CANVAS_LOAD',
         );
+      })
+      .then((m) => {
+        if (this.destroyed) return;
+        m.loadFromImages(this, imagesHref);
       });
   }
 
@@ -161,15 +181,15 @@ export class PageFlip extends EventObject {
    */
   public updateFromImages(imagesHref: string[]): Promise<void> {
     return import('./canvas-loader')
-      .then((m) => {
-        if (this.destroyed) return;
-        m.updateFromImages(this, imagesHref);
-      })
       .catch((err: unknown) => {
         throw new PageFlipError(
           `Failed to load canvas renderer: ${err instanceof Error ? err.message : String(err)}`,
           'CANVAS_LOAD',
         );
+      })
+      .then((m) => {
+        if (this.destroyed) return;
+        m.updateFromImages(this, imagesHref);
       });
   }
 
@@ -179,22 +199,29 @@ export class PageFlip extends EventObject {
    * @param {(NodeListOf<HTMLElement>|HTMLElement[])} items - List of pages as HTML Element
    */
   public updateFromHtml(items: NodeListOf<HTMLElement> | HTMLElement[]): void {
-    const current = this.pages.getCurrentPageIndex();
+    const pages = this.requirePages();
+    const current = pages.getCurrentPageIndex();
 
-    this.pages.destroy();
-    this.pages = new HTMLPageCollection(this, this.render, this.ui.getDistElement(), items);
-    this.pages.load();
-    (this.ui as HTMLUI).updateItems(items);
-    this.render.reload();
+    pages.destroy();
+    const next = new HTMLPageCollection(
+      this,
+      this.requireRender(),
+      this.requireUI().getDistElement(),
+      items,
+    );
+    this.pages = next;
+    next.load();
+    (this.requireUI() as HTMLUI).updateItems(items);
+    this.requireRender().reload();
 
-    this.pages.show(current);
+    next.show(current);
     this.trigger('update', this, {
       page: current,
-      mode: this.render.getOrientation(),
+      mode: this.requireRender().getOrientation(),
     });
     this.trigger('collectionRebuild', this, {
       page: current,
-      pageCount: this.pages.getPageCount(),
+      pageCount: next.getPageCount(),
     });
   }
 
@@ -223,22 +250,22 @@ export class PageFlip extends EventObject {
    * Clear pages from HTML (remove to initinalState)
    */
   public clear(): void {
-    this.pages.destroy();
-    (this.ui as HTMLUI).clear();
+    this.requirePages().destroy();
+    (this.requireUI() as HTMLUI).clear();
   }
 
   /**
    * Turn to the previous page (without animation)
    */
   public turnToPrevPage(): void {
-    this.pages.showPrev();
+    this.requirePages().showPrev();
   }
 
   /**
    * Turn to the next page (without animation)
    */
   public turnToNextPage(): void {
-    this.pages.showNext();
+    this.requirePages().showNext();
   }
 
   /**
@@ -247,14 +274,15 @@ export class PageFlip extends EventObject {
    * @param {number} page - New page number
    */
   public turnToPage(page: number): void {
-    if (page < 0 || page >= this.pages.getPageCount()) {
+    const pages = this.requirePages();
+    if (page < 0 || page >= pages.getPageCount()) {
       throw new PageFlipError(`Invalid page: ${page}`, 'INVALID_PAGE');
     }
-    const spreadIndex = this.pages.getSpreadIndexByPage(page);
+    const spreadIndex = pages.getSpreadIndexByPage(page);
     if (spreadIndex === null) {
       throw new PageFlipError(`Cannot turn to page ${page}: not in any spread`, 'INVALID_PAGE');
     }
-    this.pages.show(page);
+    pages.show(page);
   }
 
   /**
@@ -309,7 +337,7 @@ export class PageFlip extends EventObject {
    * @param {Orientation} newOrientation - New page orientation (portrait, landscape)
    */
   public updateOrientation(newOrientation: Orientation): void {
-    this.ui.setOrientationStyle(newOrientation);
+    this.requireUI().setOrientationStyle(newOrientation);
     this.update();
     this.trigger('changeOrientation', this, newOrientation);
   }
@@ -320,7 +348,7 @@ export class PageFlip extends EventObject {
    * @returns {number}
    */
   public getPageCount(): number {
-    return this.pages.getPageCount();
+    return this.requirePages().getPageCount();
   }
 
   /**
@@ -329,7 +357,7 @@ export class PageFlip extends EventObject {
    * @returns {number}
    */
   public getCurrentPageIndex(): number {
-    return this.pages.getCurrentPageIndex();
+    return this.requirePages().getCurrentPageIndex();
   }
 
   /**
@@ -339,7 +367,7 @@ export class PageFlip extends EventObject {
    * @returns {Page}
    */
   public getPage(pageIndex: number): Page {
-    return this.pages.getPage(pageIndex);
+    return this.requirePages().getPage(pageIndex);
   }
 
   /**
@@ -348,7 +376,7 @@ export class PageFlip extends EventObject {
    * @returns {Render}
    */
   public getRender(): Render {
-    return this.render;
+    return this.requireRender();
   }
 
   /**
@@ -366,7 +394,7 @@ export class PageFlip extends EventObject {
    * @returns {Orientation} Сurrent orientation: portrait or landscape
    */
   public getOrientation(): Orientation {
-    return this.render.getOrientation();
+    return this.requireRender().getOrientation();
   }
 
   /**
@@ -375,7 +403,7 @@ export class PageFlip extends EventObject {
    * @returns {PageRect}
    */
   public getBoundsRect(): PageRect {
-    return this.render.getRect();
+    return this.requireRender().getRect();
   }
 
   /**
@@ -393,7 +421,7 @@ export class PageFlip extends EventObject {
    * @returns {UI}
    */
   public getUI(): UI {
-    return this.ui;
+    return this.requireUI();
   }
 
   /**
@@ -411,7 +439,7 @@ export class PageFlip extends EventObject {
    * @returns {PageCollection}
    */
   public getPageCollection(): PageCollection {
-    return this.pages;
+    return this.requirePages();
   }
 
   /**

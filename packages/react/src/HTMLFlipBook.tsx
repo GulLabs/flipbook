@@ -407,11 +407,19 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         else engine.flipPrev();
       } else if (event.key === 'Home') {
         event.preventDefault();
-        engine.turnToPage(0);
+        try {
+          engine.turnToPage(0);
+        } catch {
+          // empty book / not loaded
+        }
       } else if (event.key === 'End') {
         event.preventDefault();
-        const last = Math.max(0, engine.getPageCount() - 1);
-        engine.turnToPage(last);
+        try {
+          const last = Math.max(0, engine.getPageCount() - 1);
+          engine.turnToPage(last);
+        } catch {
+          // empty book / not loaded
+        }
       }
     };
 
