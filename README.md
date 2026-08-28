@@ -172,16 +172,23 @@ Software — the engine's own files — never to the rest of your application:
   includes serving bundled JavaScript from a website: shipping client-side code
   to a browser is distribution.
 
-In practice, for the common case — `npm install`, bundle, deploy, engine
-unmodified — you discharge §3.2 by carrying a line in your
-licenses/acknowledgements such as “includes @gullabs/flipbook-core, MPL-2.0,
-source at https://github.com/GulLabs/flipbook”, and by that source remaining
-reachable. Most bundlers' license plugins emit this automatically. If you
-modified the engine, publish those modified files too and point at them instead.
+In the common case — `npm install`, bundle, deploy, engine unmodified — the
+source-availability half is already met: this repository and the published npm
+package are the Source Code Form, offered under MPL-2.0. What remains yours is
+the notice: carry a line in your licenses/acknowledgements such as “includes
+@gullabs/flipbook-core, MPL-2.0, source at
+https://github.com/GulLabs/flipbook”. Most bundlers' license plugins emit this
+automatically. Note the notice accompanies each distribution, and it depends on
+that source staying reachable — if this repository ever disappeared you would
+need to make the corresponding source available yourself.
+
+If you modified the engine, §3.1 additionally governs how you distribute the
+Source Code Form: it must be under MPL-2.0, carry the license notice, and not
+restrict recipients' rights in it. Publish the modified files and point your
+notice at them.
 
 The practical test for the first duty is whether you edit files under
-`packages/core/src`. The second is a one-time attribution line, not an ongoing
-obligation.
+`packages/core/src`.
 
 ## Trademark
 

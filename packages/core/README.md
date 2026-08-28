@@ -20,10 +20,13 @@ internal use carries none. On distribution they reach only this package's own
 files (the Covered Software) — modified files must be offered under MPL-2.0
 (§3.1), and distributing the engine in built form, which includes serving
 bundled JavaScript to a browser, requires both that the corresponding source be
-available and that recipients be informed how to obtain it (§3.2). For the
-common case — unmodified, installed from npm — an acknowledgements line naming
-the package, its license and <https://github.com/GulLabs/flipbook> discharges
-§3.2.
+available under §3.1 terms and that recipients be informed how to obtain it,
+for each distribution (§3.2). For the common case — unmodified, installed from
+npm — this repository and the published package are that source, so what falls
+to you is the notice: an acknowledgements line naming the package, its license
+and <https://github.com/GulLabs/flipbook>. If you modified the engine, §3.1
+also governs how you distribute those files: under MPL-2.0, with the license
+notice, without restricting recipients' rights in the source.
 
 Copyright (c) 2026 GulLabs, with upstream Nodlik MIT notices in
 [LICENSE](./LICENSE).

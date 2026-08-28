@@ -279,13 +279,18 @@ for (const { file, needles, grants } of NOTICE_FILES) {
 
 // MPL Exhibit A on every core source. Without this the headers can be stripped
 // file by file and nothing notices until someone reads the tree.
-const EXHIBIT_A = 'https://mozilla.org/MPL/2.0/';
+// The complete header, anchored to the start of the file — not a URL substring.
+// A substring test passes `// https://mozilla.org/MPL/2.0/`, which removes the
+// notice while looking like it is still there.
+const EXHIBIT_A = `/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */`;
 const coreSrc = join(root, 'packages/core/src');
 const walk = (dir) =>
   readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
     e.isDirectory() ? walk(join(dir, e.name)) : e.name.endsWith('.ts') ? [join(dir, e.name)] : [],
   );
-const missingHeaders = walk(coreSrc).filter((f) => !readFileSync(f, 'utf8').includes(EXHIBIT_A));
+const missingHeaders = walk(coreSrc).filter((f) => !readFileSync(f, 'utf8').startsWith(EXHIBIT_A));
 if (missingHeaders.length > 0) {
   const list = missingHeaders.map((f) => `  ${f.slice(root.length + 1)}`).join('\n');
   console.error(`packages/core/src: MPL Exhibit A header missing from:\n${list}`);
