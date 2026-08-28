@@ -31,12 +31,13 @@ export default defineConfig({
         '**/dist/**',
         '**/node_modules/**',
       ],
-      // Floor for CI. Raise as the suite grows (any-llm sits ~90+%).
+      // Floor for CI — Phase D4 ratchet. Do not lower.
+      // Measured ~60.9% lines / ~70.1% functions / ~45.0% branches / ~59.6% statements.
       thresholds: {
-        lines: 40,
-        functions: 40,
-        branches: 35,
-        statements: 40,
+        lines: 58,
+        functions: 66,
+        branches: 42,
+        statements: 57,
       },
     },
     projects: [
