@@ -149,6 +149,13 @@ tears the book down mid-animation.
   diverges from any-llm (pnpm 9 / Node 20); the fix there is to bring that repo
   up, since Node 20 went end-of-life in April 2026.
 
+## Deferred design work
+
+`docs/WEBGL_RENDERER.md` records the analysis behind a 3D renderer, deferred by
+the owner on 2026-08-28. Read it before proposing one, and before proposing a
+renderer plug-in system — its conclusion is that `Render` is the wrong seam and
+a headless state controller is the right one, which is not the obvious answer.
+
 ## Releasing and licensing
 
 Publishing runs from `.github/workflows/release.yml` (Changesets + npm provenance) on pushes to `main`, never from a laptop. Both packages move together (`fixed` in `.changeset/config.json`). The first 3.0.0 publish comes from the already-committed versions with no pending changeset; later releases go through `pnpm exec changeset`.

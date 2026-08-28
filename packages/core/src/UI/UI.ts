@@ -9,6 +9,7 @@ import { SizeType } from '../Settings';
 import { FlipCorner, FlippingState } from '../Flip/Flip';
 import { Orientation } from '../Render/Render';
 import { ensureFlipbookStyles } from '../styles';
+import { PageFlipError } from '../errors';
 import { FLIPBOOK_INTERACTIVE_SELECTOR } from '../interactive';
 
 type SwipeData = {
@@ -149,8 +150,11 @@ export abstract class UI {
   private currentOrientation(): Orientation | null {
     try {
       return this.app.getRender().getOrientation();
-    } catch {
-      return null;
+    } catch (err: unknown) {
+      // Only "there is no render yet" is expected here, during construction.
+      // Anything else is a real fault and must not be read as an orientation.
+      if (err instanceof PageFlipError && err.code === 'NOT_LOADED') return null;
+      throw err;
     }
   }
 

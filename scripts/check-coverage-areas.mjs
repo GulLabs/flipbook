@@ -27,7 +27,13 @@ const AREAS = [
   { label: 'Flip.ts', match: /[/\\]Flip[/\\]Flip\.ts$/, lines: 86, branches: 78 },
   { label: 'CanvasRender.ts', match: /[/\\]Render[/\\]CanvasRender\.ts$/, lines: 87, branches: 70 },
   { label: 'ImagePage.ts', match: /[/\\]Page[/\\]ImagePage\.ts$/, lines: 86, branches: 64 },
-  { label: 'HTMLFlipBook.tsx', match: /[/\\]HTMLFlipBook\.tsx$/, lines: 92, branches: 77 },
+  // Lines eased 92 -> 91 for the `instanceof PageFlipError` rethrows added
+  // when explicit navigation stopped swallowing non-engine errors: those
+  // lines only execute when something else is already broken, and React's
+  // synthetic event boundary absorbs the rethrow so they cannot be asserted
+  // from this layer (the engine-level equivalent is covered in
+  // packages/core/tests/lifecycle.test.ts). Branches ratchet up 77 -> 78.
+  { label: 'HTMLFlipBook.tsx', match: /[/\\]HTMLFlipBook\.tsx$/, lines: 91, branches: 78 },
   { label: 'usePageFlip.ts', match: /[/\\]usePageFlip\.ts$/, lines: 98, branches: 98 },
 ];
 

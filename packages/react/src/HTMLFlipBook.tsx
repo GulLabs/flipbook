@@ -464,13 +464,20 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       if (controlledPage === engine.getCurrentPageIndex()) return;
       try {
         engine.turnToPage(controlledPage);
-      } catch {
+      } catch (error: unknown) {
+        // Only the engine refusing the page is a navigation error. A consumer
+        // `onPageChange` that throws, or a broken renderer, must not be
+        // relabelled as "invalid page" and hidden.
+        if (!(error instanceof PageFlipError)) throw error;
+
         const count = engine.getPageCount();
         const actual = count <= 0 ? 0 : Math.min(Math.max(0, controlledPage), count - 1);
         try {
           if (count > 0 && actual !== engine.getCurrentPageIndex()) engine.turnToPage(actual);
-        } catch {
-          /* empty */
+        } catch (clampError: unknown) {
+          // The clamp is a best effort; if even that page is refused we still
+          // report below. A non-engine failure is still a defect.
+          if (!(clampError instanceof PageFlipError)) throw clampError;
         }
         const resolved = engine.getCurrentPageIndex();
         setEnginePage(resolved);
@@ -508,16 +515,17 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         event.preventDefault();
         try {
           engine.turnToPage(0);
-        } catch {
-          // empty book / not loaded
+        } catch (error: unknown) {
+          // An empty or unloaded book has nowhere to go; anything else is real.
+          if (!(error instanceof PageFlipError)) throw error;
         }
       } else if (event.key === 'End') {
         event.preventDefault();
         try {
           const last = Math.max(0, engine.getPageCount() - 1);
           engine.turnToPage(last);
-        } catch {
-          // empty book / not loaded
+        } catch (error: unknown) {
+          if (!(error instanceof PageFlipError)) throw error;
         }
       }
     };

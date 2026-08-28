@@ -801,3 +801,66 @@ describe('startPage out of range', () => {
     expect(onNavigationError).not.toHaveBeenCalled();
   });
 });
+
+describe('explicit navigation on an empty book', () => {
+  /**
+   * Home / End and the controlled `page` effect all ask the engine for a
+   * specific page, and the engine refuses with `PageFlipError` when there is
+   * nowhere to go. That refusal is expected and absorbed; a non-engine error
+   * is not, and propagates.
+   */
+  test('Home and End are absorbed when there is nothing to turn to', async () => {
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0}>
+        {pages('only')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-only"]')).toBeTruthy();
+    });
+
+    const root = container.querySelector('.stf__parent');
+    expect(root).toBeInstanceOf(HTMLElement);
+
+    expect(() => fireEvent.keyDown(root as HTMLElement, { key: 'Home' })).not.toThrow();
+    expect(() => fireEvent.keyDown(root as HTMLElement, { key: 'End' })).not.toThrow();
+  });
+
+  test('a controlled page beyond the end clamps and reports once', async () => {
+    const onNavigationError = vi.fn();
+
+    function Harness() {
+      const [page, setPage] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setPage(99)}>
+            jump
+          </button>
+          <HTMLFlipBook
+            width={200}
+            height={300}
+            flippingTime={0}
+            page={page}
+            onNavigationError={onNavigationError}
+          >
+            {pages('a', 'b')}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('jump'));
+
+    await waitFor(() => {
+      expect(onNavigationError).toHaveBeenCalledWith(
+        expect.objectContaining({ code: 'INVALID_PAGE', requested: 99 }),
+      );
+    });
+  });
+});

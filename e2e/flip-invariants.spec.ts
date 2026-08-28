@@ -18,6 +18,17 @@ async function openBook(page: Page, size: { width: number; height: number }, que
   await page.goto(`/${query}`);
   await expect(page.locator('body[data-ready="1"]')).toBeAttached();
   await expect(page.locator('#book .stf__block')).toBeVisible();
+
+  // Leaves get their visibility and position from `drawFrame`, which runs on
+  // rAF — `data-ready` only says the engine was constructed. Reading the DOM
+  // before the first frame saw 1 leaf instead of 2 under parallel load, which
+  // is a flaky test, not a flaky engine.
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
 }
 
 function orientation(page: Page) {

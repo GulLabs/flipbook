@@ -65,6 +65,16 @@ export class FlipCalculation {
 
       return true;
     } catch {
+      // Deliberately broad, and the one place in the engine that is.
+      //
+      // `calc` runs on every pointer move of a drag and uses exceptions as
+      // control flow: the geometry guards below throw for a position that has
+      // no valid fold, and `false` means "not a usable position, do not
+      // advance". Distinguishing those from a genuine fault by type was tried
+      // and measured — a marker class or a tagged error costs bundle bytes on
+      // a hot path to catch something a consumer cannot act on mid-drag.
+      // Elsewhere (`Flip.start`, `PageFlip.requestTurn`, the React navigation
+      // paths) a non-`PageFlipError` propagates.
       return false;
     }
   }

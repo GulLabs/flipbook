@@ -7,6 +7,12 @@ import type { FlipBookHandle, IEventProps } from './types';
 /**
  * State + actions for a flipbook. Pass `ref` to `<HTMLFlipBook ref={ref} />`
  * and spread `bookProps` so `page` / `pageCount` stay in sync (FE-004).
+ *
+ * Before mount (and after unmount) there is no engine behind `ref`, so the
+ * actions are no-ops and `flipNext` / `flipPrev` return `false`. That is the
+ * contract, not an oversight: these get called from effects and event handlers
+ * that can legitimately run early, and throwing there would punish correct
+ * code. The engine's own `turnToPage` / `flip` do throw `NOT_LOADED`.
  */
 export function usePageFlip(initialPage = 0) {
   const ref = useRef<FlipBookHandle | null>(null);
