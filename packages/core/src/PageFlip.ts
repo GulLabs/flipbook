@@ -177,7 +177,7 @@ export class PageFlip extends EventObject {
   /**
    * Load pages from images on the Canvas mode.
    * Canvas renderer is a separate chunk so the HTML engine stays within
-   * packages/core size-limit (47 kB raw / 15 kB brotli on html-engine).
+   * packages/core size-limit (48 kB raw / 12 kB brotli (debt; spec target 35 kB) on html-engine).
    */
   public loadFromImages(imagesHref: string[]): Promise<void> {
     return import('./canvas-loader')
@@ -321,14 +321,17 @@ export class PageFlip extends EventObject {
    * @param {FlipCorner} corner - Active page corner when turning
    */
   public flipNext(corner: FlipCorner = FlipCorner.TOP): boolean {
-    return this.finishFlip(this.flipController?.flipNext(corner));
+    const ok = this.flipController?.flipNext(corner);
+    if (ok == null) {
+      this.trigger('turnRejected', this, { reason: 'setup', code: 'NOT_LOADED' });
+      return false;
+    }
+    if (!ok) this.trigger('turnRejected', this, { reason: 'boundary', code: 'REJECTED' });
+    return ok;
   }
 
   public flipPrev(corner: FlipCorner = FlipCorner.TOP): boolean {
-    return this.finishFlip(this.flipController?.flipPrev(corner));
-  }
-
-  private finishFlip(ok: boolean | undefined): boolean {
+    const ok = this.flipController?.flipPrev(corner);
     if (ok == null) {
       this.trigger('turnRejected', this, { reason: 'setup', code: 'NOT_LOADED' });
       return false;

@@ -298,19 +298,24 @@ test('keyboard ArrowRight turns with userEvent', async () => {
 });
 
 test('nested interactive keeps Arrow keys (does not turn the book)', async () => {
-  const user = userEvent.setup();
   const onPageChange = vi.fn();
-  render(
+  const { container } = render(
     <HTMLFlipBook width={200} height={300} flippingTime={0} onPageChange={onPageChange}>
       <div key="a">
         <button type="button">Inside</button>
+        <div role="combobox" tabIndex={0} aria-label="Combo">
+          Combo
+        </div>
       </div>
       <div key="b">b</div>
       <div key="c">c</div>
     </HTMLFlipBook>,
   );
-  const btn = await screen.findByRole('button', { name: 'Inside' });
-  btn.focus();
-  await user.keyboard('{ArrowRight}');
+  await waitFor(() => expect(container.querySelector('button')).toBeTruthy());
+  onPageChange.mockClear();
+  const btn = container.querySelector('button')!;
+  const combo = container.querySelector('[role="combobox"]')!;
+  fireEvent.keyDown(btn, { key: 'ArrowRight', bubbles: true });
+  fireEvent.keyDown(combo, { key: 'ArrowRight', bubbles: true });
   expect(onPageChange).not.toHaveBeenCalled();
 });
