@@ -75,6 +75,9 @@ describe('HTMLFlipBook (shipped binding)', () => {
   });
 
   test('controlled page + onPageChange', async () => {
+    const handleRef: { current: import('@gullabs/react-flipbook').FlipBookHandle | null } = {
+      current: null,
+    };
     function Harness() {
       const [page, setPage] = useState(0);
       return (
@@ -83,6 +86,9 @@ describe('HTMLFlipBook (shipped binding)', () => {
             go
           </button>
           <HTMLFlipBook
+            ref={(h) => {
+              handleRef.current = h;
+            }}
             width={200}
             height={300}
             flippingTime={0}
@@ -94,10 +100,10 @@ describe('HTMLFlipBook (shipped binding)', () => {
         </>
       );
     }
-    const { container } = render(<Harness />);
+    render(<Harness />);
     fireEvent.click(screen.getByText('go'));
     await waitFor(() => {
-      expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 2 of/);
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(1);
     });
   });
 

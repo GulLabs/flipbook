@@ -78,7 +78,8 @@ export interface FlipSetting {
   respectReducedMotion: boolean;
 
   /**
-   * Reading direction. `rtl` inverts next/prev hit-testing (Arabic, Hebrew, manga).
+   * Reading direction. `rtl` inverts swipe next/prev (Arabic, Hebrew, manga).
+   * Programmatic `flipNext`/`flipPrev` still advance by page index.
    */
   direction: FlipDirectionSetting;
 }

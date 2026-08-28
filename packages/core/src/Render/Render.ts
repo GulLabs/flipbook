@@ -84,6 +84,9 @@ export abstract class Render {
     /** Timer started from start of rendering */
     protected timer = 0;
 
+    /** Active requestAnimationFrame id; 0 when the loop is stopped. */
+    private rafId = 0;
+
     /**
      * Safari browser definitions for resolving a bug with a css property clip-area
      *
@@ -138,13 +141,23 @@ export abstract class Render {
      */
     public start(): void {
         this.update();
+        this.stop();
 
         const loop = (timer: number): void => {
+            if (this.rafId === 0) return;
             this.render(timer);
-            requestAnimationFrame(loop);
+            this.rafId = requestAnimationFrame(loop);
         };
 
-        requestAnimationFrame(loop);
+        this.rafId = requestAnimationFrame(loop);
+    }
+
+    /** Cancel the render loop. Safe to call more than once. */
+    public stop(): void {
+        if (this.rafId !== 0 && typeof cancelAnimationFrame === 'function') {
+            cancelAnimationFrame(this.rafId);
+        }
+        this.rafId = 0;
     }
 
     /**

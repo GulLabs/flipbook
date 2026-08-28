@@ -52,6 +52,7 @@ export class PageFlip extends EventObject {
      * Destructor. Remove a root HTML element and all event handlers
      */
     public destroy(): void {
+        this.render?.stop();
         this.ui?.destroy();
         // The host owns `block` (React/SSR). Do not remove it from the DOM.
     }

@@ -49,8 +49,7 @@ See [`MIGRATION.md`](./MIGRATION.md) for the drop-in `HTMLFlipBook` prop surface
 
 ```bash
 pnpm add @gullabs/flipbook-core
-# React wrapper (rename in progress):
-# pnpm add @gullabs/react-flipbook
+pnpm add @gullabs/react-flipbook
 ```
 
 See [`RELEASING.md`](./RELEASING.md) for publish status.
@@ -63,7 +62,7 @@ import { PageFlip } from '@gullabs/flipbook-core';
 const pageFlip = new PageFlip(htmlParentElement, settings);
 pageFlip.loadFromImages(['page1.jpg', 'page2.jpg']);
 // or
-pageFlip.loadFromHtml(htmlCollection);
+pageFlip.loadFromHTML(htmlCollection);
 ```
 
 ## Usage (React)

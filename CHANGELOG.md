@@ -31,5 +31,5 @@ Engine + React binding merge. Start of the maintained 3.x line.
 - `direction: 'rtl'`.
 - Controlled `page` + `onPageChange`, imperative handle, `usePageFlip()`.
 - Lazy page mounting via `lazyRadius`.
-- React 19 (`ref` as prop, Strict Mode double-mount safe).
+- React 18/19 (`forwardRef` handle so `ref.current.pageFlip()` works on 18; Strict Mode double-mount safe).
 - Typed `WidgetEvent<T>`; no `any` in the public API.

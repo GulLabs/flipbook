@@ -202,7 +202,7 @@ export abstract class UI {
     private onPointerDown = (e: PointerEvent): void => {
         if (e.button !== 0 && e.pointerType === 'mouse') return;
         if (!this.checkTarget(e.target)) return;
-        if (e.pointerType === 'mouse' && e.cancelable) e.preventDefault();
+
 
         const pos = this.getMousePos(e.clientX, e.clientY);
 

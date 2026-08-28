@@ -32,7 +32,7 @@ import HTMLFlipBook from '@gullabs/react-flipbook';
 | `flippingTime: 0` | Now means **instant**. Upstream threw `Invalid flipping time`. |
 | `respectReducedMotion` | Defaults to `true`. Turns become instant under `prefers-reduced-motion`. Set `false` to keep animating. |
 | `pageBackground` | New, default `#fff`. Set to your paper color so the fold is opaque. |
-| `direction: 'rtl'` | New. Inverts next/prev hit-testing. |
+| `direction: 'rtl'` | New. Inverts swipe next/prev. Programmatic `flipNext`/`flipPrev` still follow page index. |
 | `turnToPage` / `flipToPage` (`PageFlip.flip`) | Throw `PageFlipError` on setup failure instead of silently advancing one page. |
 | React types | `react` is a **peer** (`>=18`). Isolated pnpm `node_modules` type-checks props. |
 | React 18/19 | Imperative handle is attached via `forwardRef` so `ref.current.pageFlip()` works on React 18 and 19. React 19 can also pass `ref` as a prop. |
