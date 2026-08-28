@@ -133,7 +133,7 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ## Phase D — Optional ratchets (post C)
 
-**Status:** `in_progress` (D1 done; D2 awaiting re-signoff)  
+**Status:** `in_progress` (D1–D2 done; D3 next)  
 **Depends on:** Phase C signed off  
 **Estimate:** one sub-item per commit + Codex signoff
 
@@ -162,17 +162,17 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ### D2 — `verbatimModuleSyntax: true`
 
-**Status:** `codex_review`
+**Status:** `done`
 
 - [x] `tsconfig.base.json`: `"verbatimModuleSyntax": true`
 - [x] `pnpm typecheck` green (0 residual debt)
 - [x] Commit
-- [ ] Codex signoff
+- [x] Codex signoff
 
 #### Codex signoff
 
-- Job: `task-mtd28yf0-cbi00t` (REQUEST_CHANGES — doc table/log drift)
-- Re-signoff after doc fix: _pending this commit_
+- Jobs: `task-mtd28yf0-cbi00t` (REQUEST_CHANGES doc), then `task-mtd2dfnr-4kepog`
+- Verdict: **APPROVE** — Phase D2 signoff: **YES**
 - Date: 2026-08-28
 
 ---
@@ -208,7 +208,7 @@ not a product decision (AGENTS.md §2: **do not raise again**).
 | 2026-08-28 | B     | Done — Codex APPROVE (NUIA + lifecycle)         |
 | 2026-08-28 | C     | Done — Codex APPROVE (no-unnecessary-condition) |
 | 2026-08-28 | D1    | Done — Codex APPROVE_WITH_NITS                  |
-| 2026-08-28 | D2    | verbatimModuleSyntax on; doc drift fixed        |
+| 2026-08-28 | D2    | Done — Codex APPROVE                            |
 
 ---
 
