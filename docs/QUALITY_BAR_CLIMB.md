@@ -142,7 +142,7 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 | D1 `useUnknownInCatchVariables: true` | `done` | Codex APPROVE_WITH_NITS                             |
 | D2 `verbatimModuleSyntax: true`       | `done` | Codex APPROVE                                       |
 | D3 `strict-boolean-expressions`       | `done` | error + pragmatic allowString/Number/nullableObject |
-| D4 Coverage floors ratchet            | `done` | 55/64/40/55 (from 40/40/35/40); do not lower        |
+| D4 Coverage floors ratchet            | `done` | 58/66/42/57 (from 40/40/35/40); do not lower        |
 | D5 Package `typecheck` includes tests | `done` | core include tests; react `tsconfig.tests.json`     |
 
 ### D1 — `useUnknownInCatchVariables: true`
@@ -187,7 +187,7 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 
 ### D4 — Coverage floors ratchet
 
-**Status:** `codex_review`
+**Status:** `done`
 
 - [x] Raise thresholds toward measured suite (not above flaky headroom)
 - [x] `pnpm test:coverage` green
@@ -206,6 +206,15 @@ Root `tsconfig.json` typechecks `vitest.setup.ts` and `playwright.config.ts`. Re
 - [x] `pnpm typecheck` green
 - [x] Commit
 - [x] Codex signoff
+
+---
+
+### Phase D batch Codex signoff (D3–D5)
+
+- Job: `task-mtd3wqd0-yoi8yv` (session `01a048fc-d6c8-7cb1-9e7d-0ce89c884325`)
+- Verdict: **APPROVE_WITH_NITS**
+- D3 YES / D4 YES / D5 YES / Phase D **COMPLETE**
+- Date: 2026-08-28
 
 ---
 
