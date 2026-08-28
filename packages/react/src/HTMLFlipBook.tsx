@@ -423,6 +423,8 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       }
     };
 
+    /* Composite widget: keyboard turns when focused (Arrow/Home/End). */
+    /* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex -- role=group flipbook root is intentionally focusable */
     return (
       <div
         ref={rootRef}
@@ -442,5 +444,6 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         ) : null}
       </div>
     );
+    /* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */
   },
 );

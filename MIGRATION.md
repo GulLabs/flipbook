@@ -61,3 +61,10 @@ import HTMLFlipBook from '@gullabs/react-flipbook';
 ## Portrait back-curl
 
 No consumer monkey-patch is required. Portrait BACK animates a temporary copy of the **current** leaf on the vendor local path (`to.x = -pageWidth`). `Render.convertToGlobal` BACK-mirror yields a rightward on-screen curl. The bottom leaf paints unless `flippingPage === bottomPage` (hard cover).
+
+## GulLabs 3.x binding notes (craft-audit climb)
+
+- `HTMLFlipBook` **`useKeyboard` defaults to `true`**. Pass `useKeyboard={false}` to restore pointer-only.
+- `PageFlip.flipNext` / `flipPrev` (and the React handle) return **`boolean`** — `false` means the turn did not start. Subscribe to **`turnRejected`** for the same signal as an event.
+- Controlled `page` out of range calls optional **`onNavigationError`** and clamps via `onPageChange` to the engine index.
+- `usePageFlip()` returns **`bookProps`** — spread onto `<HTMLFlipBook {...bookProps} />` so `pageCount` stays in sync.

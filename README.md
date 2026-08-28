@@ -97,3 +97,14 @@ Only [@atifgul99](https://github.com/atifgul99) can push or merge to `main`. Eve
 ## License
 
 [MIT](./LICENSE) — Copyright (c) 2026 GulLabs, with upstream MIT notices retained.
+
+## Accessibility
+
+- **`useKeyboard`** defaults to `true` on `<HTMLFlipBook>` — ArrowLeft/Right and Home/End turn pages. Set `useKeyboard={false}` only if you provide your own labeled controls.
+- **`aria-label`** names the book for assistive tech (default `"Flipbook"`).
+- **`liveRegion`** (default `true`) announces page changes via a visually hidden `role="status"` region. Customize with `liveRegionText={(page, pageCount) => ...}`.
+- **`respectReducedMotion`** (default `true` on the engine) makes turns instant under `prefers-reduced-motion`.
+- **`direction: 'rtl'`** mirrors turn direction only, never pointer coordinates.
+- Vanilla core: call `flipNext`/`flipPrev` from your own buttons; listen for `turnRejected` when a turn does not start.
+
+See package READMEs for full props.

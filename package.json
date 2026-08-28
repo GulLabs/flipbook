@@ -2,7 +2,7 @@
   "name": "flipbook",
   "private": true,
   "type": "module",
-  "description": "Realistic page-flip libraries for the web \u2014 vanilla TypeScript core and React wrapper.",
+  "description": "Realistic page-flip libraries for the web — vanilla TypeScript core and React wrapper.",
   "license": "MIT",
   "packageManager": "pnpm@10.34.5",
   "engines": {
@@ -53,6 +53,8 @@
     "@vitest/coverage-v8": "^4.1.11",
     "eslint": "^10.9.1",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.1.1",
     "globals": "^17.11.0",
     "husky": "^9.1.7",
@@ -66,5 +68,13 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.68.0",
     "vitest": "^4.1.11"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp",
+      "@swc/core",
+      "unrs-resolver"
+    ]
   }
 }

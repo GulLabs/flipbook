@@ -18,3 +18,7 @@ export function Book() {
 ```
 
 `react` is a peer dependency (`>=18`). License: MIT. Copyright (c) 2026 GulLabs, with upstream notices in [LICENSE](./LICENSE).
+
+### Cleanup
+
+`pageFlip().destroy()` tears down engine UI and handlers but **does not remove the host DOM node** — React owns that element.

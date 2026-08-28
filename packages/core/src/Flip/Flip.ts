@@ -142,8 +142,13 @@ export class Flip {
       );
 
       return true;
-    } catch {
-      return false;
+    } catch (err: unknown) {
+      // Preserve the original failure so flipToPage / turnRejected can surface it.
+      if (err instanceof PageFlipError) {
+        throw err;
+      }
+      const message = err instanceof Error ? err.message : 'Flip setup failed';
+      throw new PageFlipError(message, 'FLIP_SETUP');
     }
   }
 
@@ -224,7 +229,7 @@ export class Flip {
     let started = false;
     try {
       started = dir === 'next' ? this.flipNext(corner) : this.flipPrev(corner);
-    } catch (err) {
+    } catch (err: unknown) {
       collection.setCurrentSpreadIndex(current);
       throw err;
     }

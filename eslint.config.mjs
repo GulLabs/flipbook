@@ -2,6 +2,8 @@ import js from '@eslint/js';
 import { defineConfig } from 'eslint/config';
 import globals from 'globals';
 import reactHooks from 'eslint-plugin-react-hooks';
+import reactPlugin from 'eslint-plugin-react';
+import jsxA11y from 'eslint-plugin-jsx-a11y';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import tseslint from 'typescript-eslint';
 
@@ -45,6 +47,7 @@ const focusGuards = [
 
 /** Shared non-type-aware hygiene (ai-studio baseSecurity + baseGeneral, slimmed for a library). */
 const hygieneRules = {
+  curly: 'error',
   eqeqeq: ['error', 'always', { null: 'ignore' }],
   'no-console': ['warn', { allow: ['warn', 'error'] }],
   'no-debugger': 'error',
@@ -120,6 +123,10 @@ export default defineConfig(
     },
     plugins: {
       'react-hooks': reactHooks,
+      react: reactPlugin,
+    },
+    settings: {
+      react: { version: 'detect' },
     },
     rules: {
       ...hygieneRules,
@@ -135,9 +142,8 @@ export default defineConfig(
       '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: false }],
       '@typescript-eslint/prefer-nullish-coalescing': 'error',
       '@typescript-eslint/prefer-optional-chain': 'error',
-      // Off until `noUncheckedIndexedAccess` is on monorepo-wide — defensive
-      // pre-init / OOB guards trip false positives against definite-assignment `!`.
-      '@typescript-eslint/no-unnecessary-condition': 'off',
+      // Phase C (docs/QUALITY_BAR_CLIMB.md): honest after NUIA + lifecycle guards.
+      '@typescript-eslint/no-unnecessary-condition': 'error',
       '@typescript-eslint/no-unnecessary-type-assertion': 'warn',
       '@typescript-eslint/restrict-template-expressions': 'off',
       '@typescript-eslint/require-await': 'warn',
@@ -148,7 +154,8 @@ export default defineConfig(
       '@typescript-eslint/no-unsafe-return': 'error',
       '@typescript-eslint/no-unsafe-argument': 'error',
       'react-hooks/rules-of-hooks': 'error',
-      'react-hooks/exhaustive-deps': 'warn',
+      'react-hooks/exhaustive-deps': 'error',
+      'react/jsx-no-leaked-render': 'error',
     },
   },
   {
@@ -174,4 +181,12 @@ export default defineConfig(
     },
   },
   eslintConfigPrettier,
+
+  {
+    files: ['packages/react/src/**/*.{tsx,jsx}', 'examples/**/*.{tsx,jsx}'],
+    plugins: { 'jsx-a11y': jsxA11y },
+    rules: {
+      ...jsxA11y.flatConfigs.recommended.rules,
+    },
+  },
 );

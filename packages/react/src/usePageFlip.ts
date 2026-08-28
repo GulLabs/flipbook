@@ -1,11 +1,12 @@
 'use client';
 
 import { useCallback, useRef, useState } from 'react';
-import type { FlipCorner } from '@gullabs/flipbook-core';
-import type { FlipBookHandle } from './types';
+import type { FlipCorner, FlipbookEventMap, WidgetEvent } from '@gullabs/flipbook-core';
+import type { FlipBookHandle, IEventProps } from './types';
 
 /**
- * State + actions for a flipbook. Pass `ref` to `<HTMLFlipBook ref={ref} />`.
+ * State + actions for a flipbook. Pass `ref` to `<HTMLFlipBook ref={ref} />`
+ * and spread `bookProps` so `page` / `pageCount` stay in sync (FE-004).
  */
 export function usePageFlip(initialPage = 0) {
   const ref = useRef<FlipBookHandle | null>(null);
@@ -13,11 +14,11 @@ export function usePageFlip(initialPage = 0) {
   const [pageCount, setPageCount] = useState(0);
 
   const flipNext = useCallback((corner?: FlipCorner) => {
-    ref.current?.flipNext(corner);
+    return ref.current?.flipNext(corner) ?? false;
   }, []);
 
   const flipPrev = useCallback((corner?: FlipCorner) => {
-    ref.current?.flipPrev(corner);
+    return ref.current?.flipPrev(corner) ?? false;
   }, []);
 
   const turnToPage = useCallback((next: number) => {
@@ -27,6 +28,24 @@ export function usePageFlip(initialPage = 0) {
   const flipToPage = useCallback((next: number) => {
     ref.current?.flipToPage(next);
   }, []);
+
+  const onPageChange = useCallback((next: number) => {
+    setPage(next);
+  }, []);
+
+  const onCollectionRebuild = useCallback(
+    (e: WidgetEvent<FlipbookEventMap['collectionRebuild']>) => {
+      setPageCount(e.data.pageCount);
+      setPage(e.data.page);
+    },
+    [],
+  );
+
+  /** Spread onto `<HTMLFlipBook {...bookProps} />` so pageCount stays live. */
+  const bookProps: Pick<IEventProps, 'onPageChange' | 'onCollectionRebuild'> = {
+    onPageChange,
+    onCollectionRebuild,
+  };
 
   return {
     ref,
@@ -38,5 +57,6 @@ export function usePageFlip(initialPage = 0) {
     flipPrev,
     turnToPage,
     flipToPage,
+    bookProps,
   };
 }
