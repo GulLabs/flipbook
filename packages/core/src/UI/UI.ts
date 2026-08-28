@@ -25,7 +25,6 @@ export abstract class UI {
 
   private touchPoint: SwipeData | null = null;
   private readonly swipeTimeout = 250;
-  private readonly swipeDistance: number;
   private resizeObserver: ResizeObserver | null = null;
   private handlersBound = false;
   /** Active pointer id, so `pointerleave` after `pointerup` is ignored. */
@@ -71,7 +70,6 @@ export abstract class UI {
 
     this.applyHostSize(setting);
 
-    this.swipeDistance = setting.swipeDistance;
     this.observeResize();
   }
 
@@ -329,10 +327,14 @@ export abstract class UI {
     if (this.touchPoint !== null) {
       const dx = pos.x - this.touchPoint.point.x;
       const distY = Math.abs(pos.y - this.touchPoint.point.y);
+      // Read live: caching this at construction meant `updateSettings` was
+      // accepted and reported back by `getSettings()` while the gesture kept
+      // using the old threshold.
+      const { swipeDistance } = this.app.getSettings();
 
       if (
-        Math.abs(dx) > this.swipeDistance &&
-        distY < this.swipeDistance * 2 &&
+        Math.abs(dx) > swipeDistance &&
+        distY < swipeDistance * 2 &&
         Date.now() - this.touchPoint.time < this.swipeTimeout
       ) {
         const corner =
