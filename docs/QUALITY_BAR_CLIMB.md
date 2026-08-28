@@ -137,13 +137,13 @@ Only honest after NUIA. Re-measured after B: **0 errors** with the rule at
 **Depends on:** Phase C signed off  
 **Estimate:** one sub-item per commit + Codex signoff
 
-| Item                                  | Status | Notes                                  |
-| ------------------------------------- | ------ | -------------------------------------- |
-| D1 `useUnknownInCatchVariables: true` | `done` | Codex APPROVE_WITH_NITS                |
-| D2 `verbatimModuleSyntax: true`       | `done` | Codex APPROVE                          |
-| D3 `strict-boolean-expressions`       | `done` | Own commit + Codex                     |
-| D4 Coverage floors ratchet            | `done` | lines/stmts 55, funcs 60, branches 40  |
-| D5 Package `typecheck` includes tests | `done` | core tests + react tsconfig.tests.json |
+| Item                                  | Status | Notes                                               |
+| ------------------------------------- | ------ | --------------------------------------------------- |
+| D1 `useUnknownInCatchVariables: true` | `done` | Codex APPROVE_WITH_NITS                             |
+| D2 `verbatimModuleSyntax: true`       | `done` | Codex APPROVE                                       |
+| D3 `strict-boolean-expressions`       | `done` | error + pragmatic allowString/Number/nullableObject |
+| D4 Coverage floors ratchet            | `done` | 55/64/40/55 (from 40/40/35/40); do not lower        |
+| D5 Package `typecheck` includes tests | `done` | core include tests; react `tsconfig.tests.json`     |
 
 ### D1 — `useUnknownInCatchVariables: true`
 
