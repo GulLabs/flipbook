@@ -28,7 +28,7 @@ Baseline measured on `feat/gullabs-flipbook-3.0` (2026-08-28):
 
 ## Phase A — Promote `no-unsafe-*` to error
 
-**Status:** `in_progress`  
+**Status:** `codex_review`  
 **Depends on:** nothing  
 **Estimate:** same day
 
@@ -40,10 +40,11 @@ assignment / call / member / return / argument.
 
 ### Work
 
-- [ ] `eslint.config.mjs`: all five `@typescript-eslint/no-unsafe-*` → `'error'`
-- [ ] `pnpm lint` green
-- [ ] `pnpm quality:ci` green
-- [ ] Commit on climb branch
+- [x] `eslint.config.mjs`: all five `@typescript-eslint/no-unsafe-*` → `'error'`
+- [x] Ignore generated `packages/**/size-check/**` in ESLint (+ gitignore)
+- [x] `pnpm lint` green
+- [x] `pnpm quality:ci` green
+- [x] Commit on climb branch (`b7c9749`)
 - [ ] Codex signoff
 
 ### Exit criteria
@@ -53,7 +54,8 @@ assignment / call / member / return / argument.
 
 ### Codex signoff
 
-- Job / thread: _pending_
+- Commit: `b7c9749` (and follow-up doc/status if any)
+- Job / thread: _pending launch_
 - Verdict: _pending_
 - Date: _pending_
 
