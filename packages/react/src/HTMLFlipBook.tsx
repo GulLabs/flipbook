@@ -276,6 +276,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     });
 
     const handlersBoundRef = useRef(false);
+    const startPageAppliedRef = useRef(false);
     const bindHandlers = useCallback((flip: PageFlip) => {
       if (handlersBoundRef.current) return;
       handlersBoundRef.current = true;
@@ -315,6 +316,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       const engine = new PageFlip(root, settings);
       engineRef.current = engine;
       handlersBoundRef.current = false;
+      startPageAppliedRef.current = false;
       bindHandlers(engine);
 
       // Build the DOM shell with no leaves, so there is a portal target before
@@ -327,6 +329,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
 
       return () => {
         handlersBoundRef.current = false;
+        startPageAppliedRef.current = false;
         engine.destroy();
         setPageHost(null);
         loadedNodes.current = null;
@@ -390,14 +393,15 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       loadedNodes.current = nodes.slice();
       setPageCount(engine.getPageCount());
 
-      // Honor startPage when uncontrolled (FE-001). updateFromHtml shows 0 first.
-      if (controlledPage === undefined) {
+      // Honor startPage once after the first real collection (FE-001).
+      if (controlledPage === undefined && !startPageAppliedRef.current) {
+        startPageAppliedRef.current = true;
         const start = props.startPage ?? 0;
         if (start > 0 && start < engine.getPageCount()) {
           try {
             engine.turnToPage(start);
           } catch {
-            /* invalid */
+            // invalid startPage for this collection
           }
         }
         setEnginePage(engine.getCurrentPageIndex());
@@ -408,6 +412,8 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       const engine = engineRef.current;
       if (!engine || controlledPage === undefined) return;
       if (!engine.getFlipController()) return;
+      // Empty portal shell has no leaves yet — don't treat start page as OOB.
+      if (engine.getPageCount() <= 0) return;
       if (controlledPage === engine.getCurrentPageIndex()) return;
       try {
         engine.turnToPage(controlledPage);
@@ -434,6 +440,16 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       if (!useKeyboard) return;
       const engine = engineRef.current;
       if (!engine) return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target !== event.currentTarget &&
+        target.closest(
+          'input,textarea,select,button,a[href],[contenteditable],[role=textbox],[role=combobox]',
+        )
+      ) {
+        return;
+      }
       const rtl = props.direction === 'rtl';
       if (event.key === 'ArrowRight') {
         event.preventDefault();

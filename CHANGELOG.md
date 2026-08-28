@@ -4,6 +4,14 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### API / accessibility (craft-audit climb)
+
+- `PageFlip.flipNext` / `flipPrev` return `boolean` and emit `turnRejected` when a turn does not start.
+- `HTMLFlipBook` `useKeyboard` defaults to `true` (Arrow/Home/End); nested form controls keep their keys.
+- Optional `onNavigationError` for controlled `page` out-of-range; `onTurnRejected` mirrors core events.
+- `usePageFlip().bookProps` keeps `page` / `pageCount` in sync via engine events.
+- Uncontrolled `startPage` is applied once after the first real page collection load.
+
 ### Engine
 
 - `pageBackground` opacity is checked for real. Sanitising the value for CSS
