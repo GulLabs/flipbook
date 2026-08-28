@@ -29,6 +29,8 @@ export const FLIPBOOK_CSS = `.stf__parent {
   perspective: 2000px;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-user-drag: none;
+  user-drag: none;
 }
 
 .stf__item {

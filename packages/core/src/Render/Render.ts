@@ -144,12 +144,14 @@ export abstract class Render {
         this.stop();
 
         const loop = (timer: number): void => {
-            if (this.rafId === 0) return;
+            if (id !== this.rafId) return;
             this.render(timer);
             this.rafId = requestAnimationFrame(loop);
+            id = this.rafId;
         };
 
-        this.rafId = requestAnimationFrame(loop);
+        let id = requestAnimationFrame(loop);
+        this.rafId = id;
     }
 
     /** Cancel the render loop. Safe to call more than once. */

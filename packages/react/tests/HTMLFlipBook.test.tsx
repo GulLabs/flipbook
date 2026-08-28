@@ -105,6 +105,7 @@ describe('HTMLFlipBook (shipped binding)', () => {
     await waitFor(() => {
       expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(1);
     });
+    expect(screen.getByText(/Page 2 of/)).toBeTruthy();
   });
 
   test('usePageFlip actions are wired to the handle', async () => {

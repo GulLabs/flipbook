@@ -25,6 +25,7 @@
     "size": "pnpm --filter @gullabs/flipbook-core size"
   },
   "devDependencies": {
+    "@changesets/cli": "^3.0.1",
     "@playwright/test": "1.59.0",
     "@testing-library/react": "^16.3.0",
     "@types/react": "^19.1.13",

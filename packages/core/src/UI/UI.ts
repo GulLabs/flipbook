@@ -121,6 +121,7 @@ export abstract class UI {
         this.distElement.removeEventListener('pointerup', this.onPointerUp);
         this.distElement.removeEventListener('pointercancel', this.onPointerUp);
         this.distElement.removeEventListener('pointerleave', this.onPointerLeave);
+        this.distElement.removeEventListener('dragstart', this.onDragStart);
         this.handlersBound = false;
     }
 
@@ -133,6 +134,7 @@ export abstract class UI {
         this.distElement.addEventListener('pointerup', this.onPointerUp);
         this.distElement.addEventListener('pointercancel', this.onPointerUp);
         this.distElement.addEventListener('pointerleave', this.onPointerLeave);
+        this.distElement.addEventListener('dragstart', this.onDragStart);
         this.handlersBound = true;
     }
 
@@ -189,6 +191,10 @@ export abstract class UI {
         }
         return rtl ? 'prev' : 'next';
     }
+
+    private onDragStart = (e: DragEvent): void => {
+        e.preventDefault();
+    };
 
     private onPointerLeave = (): void => {
         this.touchPoint = null;
