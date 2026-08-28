@@ -1,101 +1,64 @@
 name: Release
 
+# Runs only after CI has gone green on `main`, against that exact commit — the
+# same shape as GulLabs/any-llm, which publishes @gullabs/* today. Re-running
+# the whole quality bar here would only repeat what CI just did on this SHA.
 on:
-  push:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
     branches: [main]
 
-# Same-SHA gate: one workflow run runs full verify then publish (INFRA-001 / SEC-001).
-concurrency:
-  group: release-main
-  cancel-in-progress: false
+concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 permissions:
   contents: read
 
 jobs:
-  gate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-
-      - name: Install gitleaks
-        run: |
-          set -euo pipefail
-          VERSION=8.30.1
-          ARCHIVE="gitleaks_${VERSION}_linux_x64.tar.gz"
-          EXPECTED_SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
-          curl -fsSL -o "$ARCHIVE" \
-            "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/${ARCHIVE}"
-          echo "${EXPECTED_SHA256}  ${ARCHIVE}" | sha256sum -c -
-          tar -xzf "$ARCHIVE" gitleaks
-          sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
-          gitleaks version
-
-      - name: Scan for secrets
-        run: gitleaks detect --source . -v --redact
-
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-
-      - name: Install workspace
-        run: pnpm install --frozen-lockfile
-
-      # Production deps only: the core ships zero runtime dependencies, so this
-      # stays meaningful and cannot be turned red by an advisory in a dev tool
-      # that never reaches a consumer. `pnpm quality:full` audits everything.
-      - name: Audit production dependencies
-        run: pnpm audit --prod --audit-level=high
-
-      - name: Quality gate
-        run: pnpm quality:ci
-
   release:
-    needs: [gate]
-    if: github.ref == 'refs/heads/main'
+    name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Create Environment "npm-publish" in repo Settings (reviewers optional).
-    environment: npm-publish
+    if: github.event.workflow_run.conclusion == 'success'
     permissions:
       contents: write
-      id-token: write
       pull-requests: write
+      # Required to sign the npm provenance attestation.
+      id-token: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.nvmrc'
-          cache: pnpm
           registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
-      # `files: ["dist"]` means an unbuilt workspace publishes an empty tarball.
-      # `prepack` in each package covers manual publishes; this keeps the CI
-      # path explicit and topologically ordered.
-      - run: pnpm build
+      # Publishable packages must point at this repo, ship dist-only, and keep
+      # the core dependency-free.
+      - run: pnpm preflight
 
-      # OIDC trusted publishing only (SEC-002) — no classic npm automation token.
-      # Register this workflow as a trusted publisher on npm for both packages
-      # before the first publish (see RELEASING.md).
-      - name: Create Release Pull Request or Publish
+      # `pnpm release` builds before it publishes: both packages are
+      # `files: ["dist"]`, so publishing an unbuilt workspace ships an empty
+      # tarball. `prepack` covers manual publishes for the same reason.
+      - name: Create Release PR or publish to npm
         uses: changesets/action@e98c6107e7918c57adc9790f48eb50a62ddc6a16 # v1.5.3
         with:
-          publish: pnpm exec changeset publish
+          version: pnpm version-packages
+          publish: pnpm release
+          title: 'chore: version packages'
+          commit: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # `setup-node` writes an .npmrc that expands NODE_AUTH_TOKEN, while
+          # changesets reads NPM_TOKEN. Set both, or publish fails ENEEDAUTH.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'

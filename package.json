@@ -33,6 +33,8 @@
     "quality:examples": "pnpm build:examples",
     "quality:full": "pnpm quality:ci && pnpm quality:examples && pnpm audit --audit-level=high",
     "size": "pnpm --filter @gullabs/flipbook-core size",
+    "version-packages": "changeset version",
+    "release": "pnpm build && changeset publish",
     "prepare": "husky",
     "lint:fix": "eslint . --fix --max-warnings=0",
     "format": "prettier --write .",

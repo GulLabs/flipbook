@@ -1,56 +1,66 @@
 # Releasing
 
-Publishing runs from GitHub Actions on `main` after the **Release** workflow’s
-same-SHA `gate` job is green — not from a developer laptop.
+Publishing runs from GitHub Actions, never from a laptop. The **Release**
+workflow triggers on a successful **CI** run on `main` and checks out that
+exact commit (`workflow_run` + `head_sha`), so what ships is what CI proved.
 
 Packages are `@gullabs/flipbook-core` and `@gullabs/react-flipbook`, currently
-versioned **3.0.0**. The workflow (`.github/workflows/release.yml`) runs:
+versioned **3.0.0**. They are `fixed` in `.changeset/config.json` and always
+move together.
 
-1. **`gate`** — gitleaks, `pnpm audit`, `pnpm quality:ci` (packages bar)
-2. **`release`** — Changesets publish with **OIDC trusted publishing only**
-   (`id-token: write`, `NPM_CONFIG_PROVENANCE=true`, no long-lived `NPM_TOKEN`)
+The release job:
 
-3. Do not publish from a local machine unless it is an emergency.
-4. Keep `repository.url` on every publishable `package.json` pointing at
-   `https://github.com/GulLabs/flipbook.git`.
-5. First 3.0.0 publish is from the committed package versions (no pending
-   changeset). Later minors/patches go through Changesets.
+1. `pnpm install --frozen-lockfile`
+2. `pnpm preflight` — publishable packages point at this repo, ship dist-only,
+   core stays dependency-free, TypeScript stays inside typescript-eslint's
+   supported range
+3. `changesets/action` → `pnpm release`, which is `pnpm build && changeset publish`
 
-## One-time setup (ops — outside the repo)
+The build is inside the publish script on purpose: both packages declare
+`files: ["dist"]`, so publishing an unbuilt workspace ships an empty tarball.
+`prepack` in each package covers `npm pack` and manual publishes for the same
+reason.
 
-These steps activate the in-repo OIDC path. Until they are done, publish will
-fail closed (no classic token fallback).
+## One-time setup
 
-1. **GitHub Environment `npm-publish`**  
-   Repo → Settings → Environments → create `npm-publish`. Optionally require
-   reviewers before the release job runs.
+1. **`NPM_TOKEN` repository secret.** An npm **granular access token** scoped to
+   the `@gullabs` packages, with write access and the shortest expiry you will
+   tolerate re-issuing. Repo → Settings → Secrets and variables → Actions.
 
-2. **npm trusted publishers** for both packages  
-   On [npmjs.com](https://www.npmjs.com/), for `@gullabs/flipbook-core` and
-   `@gullabs/react-flipbook`, add a trusted publisher:
-   - Provider: GitHub Actions
-   - Repository: `GulLabs/flipbook`
-   - Workflow: `release.yml`
-   - Environment: `npm-publish` (if required by npm UI)
+   The workflow sets both `NODE_AUTH_TOKEN` (which the `.npmrc` written by
+   `setup-node` expands) and `NPM_TOKEN` (which changesets reads). Setting only
+   one is the classic failure: publish dies with `ENEEDAUTH`.
 
-3. **Branch protection on `main`** (human check — not auto-verified from git)  
-   Require status check `CI / verify` (packages quality). Prefer also
-   Dependency Review and CodeQL. Restrict who can push to `main`.
+2. **Provenance.** `NPM_CONFIG_PROVENANCE=true` with `id-token: write` makes npm
+   attach a signed provenance attestation linking each published tarball to this
+   repository, workflow and commit. Consumers can verify it with
+   `npm audit signatures`. This works with a token — it is not the same thing as
+   trusted publishing.
 
-`GITHUB_TOKEN` is provided by GitHub Actions. There is **no** `NPM_TOKEN`
-secret in the release path.
+3. **Branch protection on `main`.** Require the `CI / verify` and `CI / e2e`
+   checks. Restrict who can push. (Not verifiable from the repo; a human must
+   confirm it.)
+
+### On OIDC trusted publishing
+
+npm's trusted publishing would remove the long-lived token entirely, and it is
+worth moving to — but not silently. Two things must be true first: `changeset
+publish` resolves to `pnpm publish` in this workspace, so pnpm must be a version
+that implements OIDC (10+), and each package needs a trusted publisher
+registered on npmjs.com naming this repository and `release.yml` **before** the
+first publish. Until both are done, a token-less workflow fails closed at
+publish time. `GulLabs/any-llm` publishes with the token + provenance path
+today; this repo matches it deliberately.
 
 ## Manual release (emergency only)
 
-If Actions is unavailable and a human must publish once:
-
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm quality:ci
-pnpm exec changeset publish
+pnpm release          # builds, then changeset publish
 ```
 
-Prefer restoring OIDC CI publish over leaving a long-lived token on a laptop.
+Prefer restoring CI publishing over leaving a long-lived token on a laptop.
 
 ## Rollback / yank
 

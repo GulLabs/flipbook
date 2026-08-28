@@ -122,9 +122,15 @@ tears the book down mid-animation.
   cleanly and then silently disable every type-aware rule. `ignoreDeprecations`
   in `tsconfig.base.json` is a shim for tsup hard-coding `baseUrl` into its dts
   build; drop it when tsup stops.
-- **OIDC publishing is unverified.** `release.yml` publishes with no npm token,
-  which needs the workflow registered as a trusted publisher on npm first (see
-  `RELEASING.md`). It fails loudly if that has not been done.
+- **The release path needs an `NPM_TOKEN` secret.** Publishing uses the token +
+  provenance path, matching `GulLabs/any-llm`. Moving to npm trusted publishing
+  is worthwhile but needs per-package setup on npmjs.com first — see
+  `RELEASING.md`.
+- **pnpm is 10.34.5, not 11.** pnpm 11 enables `minimumReleaseAge` by default,
+  which rejects lockfile entries for anything published in the last day — so CI
+  would fail `--frozen-lockfile` on someone else's release schedule. Note this
+  diverges from any-llm (pnpm 9 / Node 20); the fix there is to bring that repo
+  up, since Node 20 went end-of-life in April 2026.
 
 ## Releasing and licensing
 
