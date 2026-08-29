@@ -195,3 +195,37 @@ describe('Flip direction hit-testing under portrait', () => {
     if (flip.getCalculation()) flip.stopMove();
   });
 });
+
+describe('programmatic turns ignore click policy (StPageFlip #29)', () => {
+  /**
+   * Upstream `flipNext`/`flipPrev` built a synthetic point and then ran it
+   * through the `disableFlipByClick` corner test. The point was in global
+   * coordinates, so for any book not sitting at x=0 the corner test failed and
+   * the turn was silently blocked: "when disableFlipByClick is true,
+   * flipNext() does not function".
+   *
+   * Two things make that impossible here — the direction is forced, and the
+   * click policy lives in `PageFlip.userStop` rather than `Flip.flip` — so this
+   * pins both against a refactor that reintroduces either.
+   */
+  test('flipNext and flipPrev work with disableFlipByClick, at any book offset', () => {
+    const { book: app } = book({
+      pageCount: 6,
+      flippingTime: 0,
+      disableFlipByClick: true,
+    });
+
+    const rejected: unknown[] = [];
+    app.on('turnRejected', (e) => rejected.push(e.data));
+
+    expect(app.flipNext()).toBe(true);
+    expect(app.getCurrentPageIndex()).toBeGreaterThan(0);
+
+    const forward = app.getCurrentPageIndex();
+    expect(app.flipPrev()).toBe(true);
+    expect(app.getCurrentPageIndex()).toBeLessThan(forward);
+
+    // Neither turn was refused by policy.
+    expect(rejected).toEqual([]);
+  });
+});

@@ -267,3 +267,66 @@ describe('canvas mode: the leaf under the fold (StPageFlip #44)', () => {
     book.destroy();
   });
 });
+
+describe('canvas mode honours pageBackground (StPageFlip #56)', () => {
+  let host: HTMLElement;
+  let ctx: ReturnType<typeof stubCanvas2d>;
+
+  beforeEach(() => {
+    ctx = stubCanvas2d();
+    host = document.createElement('div');
+    document.body.appendChild(host);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    host.remove();
+  });
+
+  /** The colour in effect at the first fillRect — the clear, before shadows. */
+  function paperColourAtClear(ctxStub: ReturnType<typeof stubCanvas2d>): { value: string } {
+    let first: string | undefined;
+    ctxStub.fillRect.mockImplementation(() => {
+      first ??= ctxStub.fillStyle;
+    });
+    return {
+      get value(): string {
+        return first ?? '';
+      },
+    };
+  }
+
+  test('the canvas is cleared to the configured paper colour, not white', async () => {
+    const book = new PageFlip(host, {
+      width: 200,
+      height: 300,
+      flippingTime: 0,
+      pageBackground: '#f4ecd8',
+    });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    const paper = paperColourAtClear(ctx);
+    (book.getRender() as unknown as { drawFrame: () => void }).drawFrame();
+
+    expect(paper.value).toBe('#f4ecd8');
+
+    book.destroy();
+  });
+
+  test('an unsafe value still falls back to the opaque default', async () => {
+    const book = new PageFlip(host, {
+      width: 200,
+      height: 300,
+      flippingTime: 0,
+      pageBackground: 'url(javascript:alert(1))',
+    });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    const paper = paperColourAtClear(ctx);
+    (book.getRender() as unknown as { drawFrame: () => void }).drawFrame();
+
+    expect(paper.value).toBe('#fff');
+
+    book.destroy();
+  });
+});

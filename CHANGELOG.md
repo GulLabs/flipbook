@@ -12,6 +12,9 @@ All notable changes to this monorepo will be documented in this file.
   unclipped copy sat under the turning image and vanished only when the turn
   finished. `HTMLRender` has guarded this since the §4.1 fix; the guard now
   applies to both. ([StPageFlip #44](https://github.com/Nodlik/StPageFlip/issues/44))
+- Canvas mode honours `pageBackground`. The setting is this fork's own and was
+  wired only into the HTML renderer, so a cream-paper book came out white on
+  canvas. ([StPageFlip #56](https://github.com/Nodlik/StPageFlip/issues/56))
 - `clear()` releases only the leaves the engine actually adopted. It moved
   everything in `.stf__block` back to the host element, including pages a
   framework had rendered there itself — React portals its pages into that
