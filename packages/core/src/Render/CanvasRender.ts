@@ -53,7 +53,10 @@ export class CanvasRender extends Render {
         const rect = this.getRect();
 
         this.ctx.beginPath();
-        this.ctx.rect(rect.left + rect.pageWidth, rect.top, rect.width, rect.height);
+        // `rect.width` is the SPREAD width, so upstream's clip ran a whole page
+        // past the book's right edge. Harmless only while nothing paints there;
+        // fit modes, insets and hard pages all will.
+        this.ctx.rect(rect.left + rect.pageWidth, rect.top, rect.pageWidth, rect.height);
         this.ctx.clip();
       } else if (this.leftPage != null) {
         this.leftPage.simpleDraw(PageOrientation.LEFT);

@@ -194,6 +194,9 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       lazyRadius,
       liveRegion = true,
       liveRegionText = defaultLiveText,
+      // Localisable: VoiceOver and NVDA substitute this for the role, so a
+      // hardcoded English string is worse than none for a non-English book.
+      roleDescription = 'book',
       'aria-label': ariaLabel = 'Flipbook',
     } = props;
 
@@ -212,8 +215,22 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     const [pageHost, setPageHost] = useState<HTMLElement | null>(null);
     const [enginePage, setEnginePage] = useState(props.startPage ?? 0);
     const [pageCount, setPageCount] = useState(0);
+    // The live region's text, held separately from `currentPage`/`pageCount` so
+    // it can stay empty until a turn actually commits.
+    const [announced, setAnnounced] = useState('');
+    const didAnnounce = useRef(false);
 
     const currentPage = controlledPage ?? enginePage;
+
+    useEffect(() => {
+      // Skip the first settled render: announcing the spread the reader has not
+      // turned to yet is noise, and it fires for every book on the page.
+      if (!didAnnounce.current) {
+        didAnnounce.current = pageCount > 0;
+        return;
+      }
+      setAnnounced(liveRegionText(currentPage, pageCount));
+    }, [currentPage, pageCount, liveRegionText]);
     const settings = pickSettings(props);
     const remountKey = remountKeyOf(props);
 
@@ -530,15 +547,35 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       }
     };
 
-    /* Composite widget: keyboard turns when focused (Arrow/Home/End). */
+    /*
+     * Composite widget: keyboard turns when focused (Arrow/Home/End).
+     *
+     * jsx-a11y objects to a tabIndex and a keydown handler on a `group`. Its
+     * model is "make the role interactive" — and the only role that would
+     * satisfy it here is `application`, which is precisely what must not be
+     * used: it strips the virtual cursor from NVDA and JAWS for the whole
+     * subtree, and linear reading is the entire value of a book to a
+     * screen-reader user. A single-tab-stop composite with a `group` role is
+     * the APG carousel shape; the rule simply does not model composites.
+     * Browse-mode users turn pages with the controls, not the arrows.
+     */
     return (
+      // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
       <div
         ref={rootRef}
         className={className}
         style={style}
         data-flipbook-placeholder={hydrated ? undefined : ''}
         aria-label={ariaLabel}
-        role={useKeyboard ? 'application' : 'group'}
+        // NEVER `application`. It forces NVDA and JAWS out of browse mode for
+        // the whole subtree, which removes the virtual cursor: no
+        // element-by-element reading, no heading/graphic quick-nav, no "say
+        // all", no find-in-page. For a BOOK, linear reading is the entire value
+        // to a screen-reader user, so buying arrow keys with it is the worst
+        // trade available. Browse-mode users turn pages with real controls.
+        role="group"
+        aria-roledescription={roleDescription}
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- see above
         tabIndex={useKeyboard ? 0 : undefined}
         aria-keyshortcuts={useKeyboard ? 'ArrowLeft ArrowRight Home End' : undefined}
         data-flipbook-kb={useKeyboard ? '' : undefined}
@@ -556,7 +593,13 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
             data-flipbook-live=""
             style={VISUALLY_HIDDEN}
           >
-            {liveRegionText(currentPage, pageCount)}
+            {/*
+              Mounts EMPTY. `pageCount` starts at 0, so rendering the text
+              immediately produced "Book", then a mutation to "Page 1 of 32"
+              once the collection loaded — a real live-region change, which AT
+              announces. Every book on the page introduced itself during load.
+            */}
+            {announced}
           </div>
         ) : null}
       </div>

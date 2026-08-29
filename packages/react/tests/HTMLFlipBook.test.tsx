@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createRef, StrictMode, useState } from 'react';
-import { cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HTMLFlipBook, usePageFlip } from '@gullabs/react-flipbook';
 import type { FlipBookHandle } from '@gullabs/react-flipbook';
@@ -796,9 +796,57 @@ describe('startPage out of range', () => {
     );
 
     await waitFor(() => {
-      expect(container.querySelector('[data-flipbook-live]')?.textContent).toBe('Page 2 of 3');
+      expect(container.querySelector('.stf__block')).toBeTruthy();
     });
     expect(onNavigationError).not.toHaveBeenCalled();
+
+    // The live region stays EMPTY on load. It used to render its text
+    // immediately with pageCount 0 ("Book"), then mutate to "Page 2 of 3" once
+    // the collection loaded — a real live-region change, which a screen reader
+    // announces. Every book on a page introduced itself during load.
+    expect(container.querySelector('[data-flipbook-live]')?.textContent).toBe('');
+  });
+
+  test('the live region announces a turn, but not the initial spread', async () => {
+    const ref = createRef<FlipBookHandle>();
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} ref={ref}>
+        {pages('a', 'b', 'c')}
+      </HTMLFlipBook>,
+    );
+
+    const live = () => container.querySelector('[data-flipbook-live]')?.textContent;
+    await waitFor(() => {
+      expect(container.querySelector('.stf__block')).toBeTruthy();
+    });
+    expect(live()).toBe('');
+
+    act(() => {
+      ref.current?.flipNext();
+    });
+
+    await waitFor(() => {
+      expect(live()).toBe('Page 2 of 3');
+    });
+  });
+
+  test('the book is never role="application"', async () => {
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} useKeyboard>
+        {pages('a', 'b')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.stf__block')).toBeTruthy();
+    });
+
+    // `application` forces NVDA and JAWS out of browse mode for the whole
+    // subtree, removing the virtual cursor — no element-by-element reading, no
+    // quick-nav, no find-in-page. For a book that is the entire value.
+    const root = container.querySelector('[data-flipbook-kb]');
+    expect(root?.getAttribute('role')).toBe('group');
+    expect(root?.getAttribute('aria-roledescription')).toBe('book');
   });
 });
 

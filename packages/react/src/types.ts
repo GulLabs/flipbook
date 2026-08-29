@@ -56,6 +56,12 @@ export type HTMLFlipBookProps = {
   lazyRadius?: number;
   /** Accessible name for the book. */
   'aria-label'?: string;
+  /**
+   * `aria-roledescription` for the book. Localisable: VoiceOver and NVDA
+   * substitute it for the role, so a hardcoded English string is worse than
+   * none for a book in another language.
+   */
+  roleDescription?: string;
   /** When false, no live region is rendered. Default true. */
   liveRegion?: boolean;
   liveRegionText?: (page: number, pageCount: number) => string;
