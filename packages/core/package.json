@@ -3,7 +3,7 @@
   "version": "3.0.0",
   "description": "Framework-agnostic page-curl engine. Maintained fork of StPageFlip.",
   "license": "MPL-2.0",
-  "author": "GulLabs",
+  "author": "Atif Gul",
   "repository": {
     "type": "git",
     "url": "https://github.com/gul-labs/flipbook.git",

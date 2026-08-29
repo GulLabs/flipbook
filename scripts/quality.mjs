@@ -202,7 +202,7 @@ if (mplDigest !== MPL_2_0_SHA256) {
 // The notice block that follows the MPL body in packages/core/LICENSE is pinned
 // too. Hashing only the MPL text left the trailing block free to contradict it
 // — e.g. to assert terms the license does not grant — without tripping anything.
-const CORE_LICENSE_TAIL_SHA256 = 'd1d4a9356f61a74bba805ba29cf99daa9ebe682282c0a44f2b1a2217eaa01170';
+const CORE_LICENSE_TAIL_SHA256 = '3803bbb053002c6ebdf1c7b4c7935c6385438d7ff6643b69612955921e4cbade';
 const coreTailDigest = createHash('sha256').update(coreLicense.slice(tailAt)).digest('hex');
 if (coreTailDigest !== CORE_LICENSE_TAIL_SHA256) {
   console.error(
@@ -245,7 +245,7 @@ const NOTICE_FILES = [
   {
     file: 'LICENSE',
     needles: [
-      'Copyright (c) 2026 GulLabs',
+      'Copyright (c) 2026 Gul Labs',
       'Copyright (c) 2020 Nodlik',
       'Copyright (c) 2020 oleg.litovski9@gmail.com',
     ],
@@ -257,7 +257,7 @@ const NOTICE_FILES = [
     grants: 0,
   },
   { file: 'packages/core/LICENSE', needles: ['Copyright (c) 2020 Nodlik'], grants: 1 },
-  { file: 'packages/react/LICENSE', needles: ['Copyright (c) 2026 GulLabs'], grants: 1 },
+  { file: 'packages/react/LICENSE', needles: ['Copyright (c) 2026 Gul Labs'], grants: 1 },
 ];
 
 for (const { file, needles, grants } of NOTICE_FILES) {

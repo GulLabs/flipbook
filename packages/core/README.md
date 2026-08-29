@@ -31,7 +31,7 @@ what falls to you is the notice: an acknowledgements line naming the package,
 its license and that repository URL. If you modified the engine, publish your
 version and point the notice there instead.
 
-Copyright (c) 2026 GulLabs, with upstream Nodlik MIT notices in
+Copyright (c) 2026 Gul Labs, with upstream Nodlik MIT notices in
 [LICENSE](./LICENSE).
 
 ## Error codes

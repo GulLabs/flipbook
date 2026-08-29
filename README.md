@@ -159,7 +159,7 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`AGENTS.md`](./AGENTS.md). Other
 
 ## License
 
-Licensed per package — Copyright (c) 2026 GulLabs, with upstream Nodlik MIT
+Licensed per package — Copyright (c) 2026 Gul Labs, with upstream Nodlik MIT
 notices retained in [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
 
 | Package                   | License                            |                   |

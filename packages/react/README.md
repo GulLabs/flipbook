@@ -17,7 +17,7 @@ export function Book() {
 }
 ```
 
-`react` is a peer dependency (`>=18`). License: MIT. Copyright (c) 2026 GulLabs,
+`react` is a peer dependency (`>=18`). License: MIT. Copyright (c) 2026 Gul Labs,
 with upstream notices in [LICENSE](./LICENSE). Note that its dependency
 `@gullabs/flipbook-core` is MPL-2.0 — see [packages/core/LICENSE](../core/LICENSE).
 
