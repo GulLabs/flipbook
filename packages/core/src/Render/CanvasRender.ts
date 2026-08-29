@@ -4,6 +4,7 @@
 
 import { Orientation, Render, type Shadow } from './Render';
 import { shouldDrawBottomPage } from './bottomPage';
+import { foldFill } from './pageBackground';
 import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { PageOrientation } from '../Page/Page';
@@ -184,9 +185,7 @@ export class CanvasRender extends Render {
     // `pageBackground` is this fork's setting and it was only wired into the
     // HTML renderer, so a cream-paper book came out white on canvas.
     // Upstream asked for exactly this: https://github.com/Nodlik/StPageFlip/issues/56
-    // Already sanitised by `Settings.getSettings`; re-checking it here would put
-    // a CSS parse in the render loop.
-    this.ctx.fillStyle = this.getSettings().pageBackground;
+    this.ctx.fillStyle = foldFill(this.getSettings().pageBackground);
     this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
   }
 }

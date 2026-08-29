@@ -18,8 +18,10 @@ All notable changes to this monorepo will be documented in this file.
   exactly the place it matters: CSS drops the declaration, leaving a
   transparent fold — the §4.2 bug the setting exists to prevent — and canvas
   keeps whatever `fillStyle` was there before.
-- Validation happens once, in `Settings.getSettings`, instead of on every draw.
-  The renderers were re-sanitising an already-safe value per page per frame.
+- The platform check happens once, in `Settings.getSettings`, instead of on
+  every draw. The renderers keep a cheap pattern-and-keyword guard, because
+  `getSettings()` hands back the live settings object and assigning to it
+  bypasses `updateSettings` entirely.
 - Canvas mode honours `pageBackground`. The setting is this fork's own and was
   wired only into the HTML renderer, so a cream-paper book came out white on
   canvas. ([StPageFlip #56](https://github.com/Nodlik/StPageFlip/issues/56))
