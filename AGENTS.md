@@ -99,6 +99,23 @@ does.
   per-file and read the diff. _What happened: a blanket `prefer-template` fix
   mangled template literals into `` `--${  density}` `` across the Page
   renderers._
+- **Audit every line you read, not just the lines you change.** You have the
+  file open and the context loaded; that is the cheapest a defect will ever be
+  to find. _What happened: reading `ImagePage` to plan the portrait-curl fix led
+  to `CanvasUI`, which turned out to size its backing store in CSS pixels — so
+  every canvas book renders at half resolution on a 2× display. Nobody was
+  looking for it, and it is the most visible defect in that renderer._
+  - Record what you find **with `file:line` and a stated failure mode**, in the
+    relevant plan doc or `CHANGELOG.md`, _before_ deciding whether to fix it.
+  - Fix in place only when it is the same failure family and the fix is small.
+    Otherwise it becomes its own unit of work — do not silently widen a change,
+    and do not silently drop the finding either.
+  - An unrecorded bug is indistinguishable from one nobody noticed. Upstream
+    #44 and #56 both survived that way, in code this repo had already read.
+  - **A guess recorded as a finding is worse than no finding.** No file:line, no
+    finding. _What happened: an unmeasured "~27 kB" upstream baseline (really
+    44,058 B) produced a "73% larger" figure, and both drove real work before
+    anyone packed the tarball._
 
 ## 4. Engine-specific traps
 
