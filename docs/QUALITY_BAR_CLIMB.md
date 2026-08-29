@@ -220,12 +220,10 @@ Root `pnpm typecheck` runs `tsc -p tsconfig.json` (covers `vitest.setup.ts`, `pl
 
 ## Tracked debt — bundle size
 
-Spec budgets core at **≤ 35 KiB minified**. Current raw ~**47.3 KiB** (brotli
-~11.1 KiB). Ceiling has been raised to keep builds green — that is a ratchet,
-not a product decision (AGENTS.md §2: **do not raise again**).
-
-- Raw ceiling 48 KiB / brotli 12 KiB (tight one is brotli).
-- Real reduction means restructuring `FlipCalculation` / `Render` — own phase.
+Superseded by "Bundle size: the measured baseline" below, which replaces the
+figures that used to live here. They were wrong: they cited a 35 KiB spec target
+that upstream itself never met, an unmeasured upstream baseline, and KiB/kB
+units that disagreed with what `size-limit` enforces.
 
 ---
 
@@ -311,37 +309,104 @@ pnpm test:coverage-areas   # after test:coverage; needs coverage/coverage-final.
 
 ---
 
-## Bundle size: what the numbers are, and what is still open
+## Bundle size: the measured baseline
 
-The spec (§5) sets **≤ 35 kB minified** for the core. That target is **unmet**:
-the HTML engine is ~45 kB raw / ~11 kB brotli.
+Every size argument in this repo until 2026-08-29 was conducted against numbers
+nobody had measured. Here is the measurement. Both artifacts are terser-minified
+single-line ESM/UMD; `page-flip@2.0.7` was measured from its published tarball
+(`npm pack page-flip@2.0.7`, `dist/js/page-flip.browser.js`).
 
-Two things are worth separating, because they got conflated and cost real work:
+|                                                            | raw (min) |   gzip | brotli |
+| ---------------------------------------------------------- | --------: | -----: | -----: |
+| `page-flip@2.0.7` (upstream, **includes** canvas)          |    44,058 | 10,360 |  9,261 |
+| `@gullabs/flipbook-core` HTML engine (**excludes** canvas) |    45,002 | 12,269 | 11,011 |
+| delta                                                      |     +2.1% | +18.4% | +18.9% |
 
-**The gap is features, not sloppiness.** The engine is ~73% larger than upstream
-(~26 kB) because it carries RTL, keyboard and live-region accessibility,
-reduced-motion handling, typed errors, `strictNullChecks` guards, checked index
-access, the interactive-target selector, and `pageBackground` validation.
-Closing the gap to 35 kB means removing some of that. That is an owner
-decision, not something to shave identifiers toward — an earlier attempt golfed
-helper names to `iseg`/`lim`/`ang` and error messages to "Bad page" for a
-measured **19 bytes**.
+Canvas ships here as a lazily-imported chunk (5,779 B raw / 1,698 B brotli) that
+upstream carried inline. So an HTML-mode consumer downloads **944 bytes more
+than upstream** and gets the flip-state-machine fixes, RTL, reduced motion,
+typed errors, `strictNullChecks` guards and `pageBackground` validation.
+A canvas-mode consumer pays ~+15% raw.
 
-**The enforced numbers were never the spec's.** The 45 kB raw alarm was reached
-by ratcheting 35→45→47→48→45 to keep builds green, and the brotli budget was
-reverse-engineered from wherever the code happened to sit. A budget pinned to
-"current + 0" is not a budget; it turns every later fix into a negotiation, and
-it did: four correctness fixes cost 13 bytes and a public helper was deleted to
-pay for them.
+**The §5 "≤ 35 kB minified" target was never achievable and is retired.**
+Upstream itself is 44 kB minified; the target asked this fork to be ~20% smaller
+than the thing it forks while doing strictly more. It was not a stretch goal, it
+was a number with no derivation, and enforcing it produced only churn.
 
-They are now **52 kB raw / 13 kB brotli**, set with room for a real feature.
-`AGENTS.md` §2 carries the policy: dead code always goes, working code never
-goes to buy bytes, fixes and features may spend the headroom and say so, and an
-alarm that fires is a question about growth rather than a hunt for something to
-delete.
+Two claims that circulated and were both false: that upstream is "~26–27 kB"
+(it is 44,058 B), and that this engine is "~73% larger" than upstream (it is
++2.1% raw for the common case). Neither was ever measured before being acted on.
 
-### Open decision for the owner
+### The enforced numbers
 
-Either accept that this engine is ~45 kB minified and revise the §5 target, or
-decide which capabilities come out to reach 35 kB. Leaving the spec saying 35
-while CI enforces something else is the state that produced the churn above.
+The 45 kB raw alarm was reached by ratcheting 35→45→47→48→45 to keep builds
+green, and the brotli budget was reverse-engineered from wherever the code
+happened to sit. A budget pinned to "current + 0" is not a budget; it turns
+every later fix into a negotiation, and it did — four correctness fixes cost 13
+bytes and a public helper was deleted to pay for them.
+
+They are now **52 kB raw / 13 kB brotli / 14.5 kB gzip**, roughly 16–18% above
+the current artifact. Gzip is gated as well as brotli because not every
+consumer's CDN negotiates brotli. All three are hard gates that fail the build;
+what makes them workable is headroom, not leniency. `AGENTS.md` §2 carries the
+policy: dead code always goes, working code never goes to buy bytes, fixes and
+features may spend the headroom and say so, and a breach is a question about
+growth rather than a hunt for something to delete.
+
+### What the raw check is not
+
+`scripts/pack-html-engine.mjs` concatenates the shipped chunks into one
+envelope. That is a drift signal — it catches an accidental dependency, a broken
+tree-shake, a duplicated runtime — but it is **not** what a consumer's bundler
+emits for `import { PageFlip }`, and it should not be quoted as a per-consumer
+payload figure.
+
+### Peer context
+
+At 12.3 kB gzip the engine sits between Splide (~11 kB, which likewise keeps
+accessibility in core) and Swiper (20–47 kB), above headless carousels like
+Embla (4–7 kB) and keen-slider (~5.5 kB) that delegate their controls surface to
+the consumer. Reasonable for a widget owning page geometry, curl rendering, DOM
+ownership, pointer input and responsive layout.
+
+Splitting RTL / reduced motion behind opt-in subpath exports was considered and
+rejected: they are not separable modules but small conditionals threaded through
+`Flip` / `UI` / `Render` (`reducedMotion.ts` is 681 B of _source_), and they
+change input and animation semantics rather than decorating them. The one
+genuinely separable unit — the canvas renderer — is already split.
+
+### Still missing
+
+There is no gate on animation frame time, which is what actually determines
+perceived quality during a curl. See "Frame-time gate" below.
+
+---
+
+## Frame-time gate (not yet built)
+
+A flipbook's perceived quality is dominated by what happens during the curl, not
+at load: the rAF loop, `clip-path` recalculation and shadow gradients, on
+mid-range mobile. The repo gates bytes to 0.5% precision and does not measure
+this at all, which is backwards.
+
+Proposed: a deterministic Playwright fixture on pinned Chromium — ordinary HTML
+pages (no raster images, so the engine is what is being measured), default
+shadows, a scripted forward and back flip. Establish a baseline first, then gate:
+
+| Metric                                      | Threshold |
+| ------------------------------------------- | --------- |
+| p95 rAF interval during a flip              | ≤ 20 ms   |
+| p99 rAF interval during a flip              | ≤ 33 ms   |
+| Long Animation Frames > 50 ms during a flip | 0         |
+| Pointer/key to first visual response        | ≤ 100 ms  |
+
+A 60 Hz frame is ~16.7 ms end to end, of which roughly 10 ms is available to
+application work. The [Long Animation Frames API][loaf] captures missed
+rendering updates directly and attributes forced style/layout cost.
+
+Do **not** state or imply that this library "passes INP". INP is a field metric
+for the host page, where the consumer's own DOM, framework and third-party
+scripts dominate. What this repo can honestly claim is a bounded frame profile
+in its own fixture; hosts should target p75 INP ≤ 200 ms themselves.
+
+[loaf]: https://developer.mozilla.org/en-US/docs/Web/API/Performance_API/Long_animation_frame_timing

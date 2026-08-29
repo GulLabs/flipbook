@@ -41,9 +41,16 @@
       "brotli": false
     },
     {
-      "name": "html-engine (brotli, what consumers pay)",
+      "name": "html-engine (brotli transfer)",
       "path": "size-check/html-engine.js",
       "limit": "13 kB"
+    },
+    {
+      "name": "html-engine (gzip transfer)",
+      "path": "size-check/html-engine.js",
+      "limit": "14.5 kB",
+      "gzip": true,
+      "brotli": false
     }
   ],
   "devDependencies": {

@@ -67,6 +67,24 @@ The fold and its temporary copy fill with `pageBackground` (default `#fff`). Und
 
 Also: Pointer Events (one input path), `ResizeObserver` + `visualViewport`, `respectReducedMotion` (default on), SSR-safe imports, opt-in keyboard, `direction: 'rtl'` (turn direction only — the fold still follows the finger), controlled `page` + `usePageFlip()`.
 
+### What it costs
+
+Measured from the published artifacts, both terser-minified, zero runtime dependencies:
+
+|                                                            | raw (min) |    gzip |  brotli |
+| ---------------------------------------------------------- | --------: | ------: | ------: |
+| `page-flip@2.0.7` (upstream, **includes** canvas)          |   44.1 kB | 10.4 kB |  9.3 kB |
+| `@gullabs/flipbook-core` HTML engine (**excludes** canvas) |   45.0 kB | 12.3 kB | 11.0 kB |
+
+The canvas/image renderer is a lazily-imported chunk here (5.8 kB raw / 1.7 kB
+brotli) that upstream carried inline. So if you use HTML pages you download
+**~900 bytes more than upstream** and get the fixes above; if you use canvas
+mode you pay about 15% more raw. Compressed transfer is ~18% larger either way —
+that is RTL, reduced motion, typed errors and validation, and it is the honest
+price. This is not a smaller drop-in replacement, it is a maintained one.
+
+Reproduce with `npm pack page-flip@2.0.7` and `pnpm build && pnpm size`.
+
 ---
 
 ## Install

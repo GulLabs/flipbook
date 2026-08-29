@@ -37,11 +37,17 @@ writeFileSync(out, body);
 const bytes = Buffer.byteLength(body);
 console.log(`html-engine.js ${files.join('+')} ${bytes} B (${(bytes / 1000).toFixed(2)} kB)`);
 
-// Raw bytes are a *drift alarm*, not the ratchet. Consumers pay transfer size,
-// which `size-limit` enforces tightly against the brotli number. Enforcing raw
-// bytes to 0.5% precision is what drove helper names down to `iseg`/`lim` and
-// error messages down to "Bad page" for a measured 19-byte return — see
-// docs/QUALITY_BAR_CLIMB.md.
+// Raw bytes track parse/compile cost and catch gross drift — an accidental
+// dependency, a broken tree-shake, a duplicated runtime. Transfer size is
+// enforced separately by `size-limit` (brotli *and* gzip: not every consumer's
+// CDN negotiates brotli). This is a wall — it exits non-zero — but it is set
+// with headroom, because enforcing raw bytes to 0.5% precision is what drove
+// helper names down to `iseg`/`lim` and error messages down to "Bad page" for a
+// measured 19-byte return — see docs/QUALITY_BAR_CLIMB.md.
+//
+// Note this file is a concatenated envelope of the shipped chunks, not what a
+// consumer's bundler emits for `import { PageFlip }`. It is a drift signal, not
+// a per-consumer payload figure.
 //
 // Units matter: `size-limit` reads "45 kB" as 45000, so this uses the same
 // decimal convention. Previously this file used KiB (45056) while size-limit
@@ -50,10 +56,11 @@ const RAW_ALARM_BYTES = 52_000;
 
 if (bytes > RAW_ALARM_BYTES) {
   console.error(
-    `HTML engine raw size ${bytes} B exceeds the ${RAW_ALARM_BYTES} B drift alarm.\n` +
-      'This is an alarm, not a wall: find out WHY it grew. A correctness fix\n' +
-      'that needs the room may take it and say so in the commit. Deleting a\n' +
-      'public helper to buy back bytes is the wrong trade (AGENTS.md §2).',
+    `HTML engine raw size ${bytes} B exceeds the ${RAW_ALARM_BYTES} B ceiling.\n` +
+      'This fails the build. Find out WHY it grew before deciding what to do:\n' +
+      'a correctness fix or a feature may take the room, with an owner-approved\n' +
+      'ceiling raise that says what was added. Deleting a public helper or\n' +
+      'golfing identifiers to buy back bytes is the wrong trade (AGENTS.md §2).',
   );
   process.exit(1);
 }
