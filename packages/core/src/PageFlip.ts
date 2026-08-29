@@ -352,6 +352,32 @@ export class PageFlip extends EventObject {
    * Explicit navigation (`turnToPage` / `flip`) throws instead, because asking
    * for a specific page and landing elsewhere is the §4.6 bug this fork fixes.
    */
+  /**
+   * A click that lands on the book.
+   *
+   * Unlike `flipNext` / `flipPrev` this turn can be refused by policy, and a
+   * refused click used to be silent: `userStop` discarded the boolean, so
+   * `turnRejected` fired only for programmatic turns. That is half a contract
+   * — the event exists to say "your turn was refused", and being clicked is
+   * the most common way a turn gets refused. `reason: 'disabled'` was declared
+   * in the public event type and emitted by nothing at all.
+   *
+   * The `disableFlipByClick` check lives here rather than in `Flip.flip`
+   * because it is a policy about *clicks*, and only this path has one.
+   */
+  private requestUserTurn(pos: Point): void {
+    const flip = this.flipController;
+
+    if (flip !== null && this.setting.disableFlipByClick && !flip.isPointOnCorners(pos)) {
+      this.trigger('turnRejected', this, { reason: 'disabled' });
+      return;
+    }
+
+    // Falls through to `requestTurn` when there is no controller yet, so a
+    // click before load reports `NOT_LOADED` like every other turn does.
+    this.requestTurn((f) => f.flip(pos));
+  }
+
   private requestTurn(run: (flip: Flip) => boolean): boolean {
     const flip = this.flipController;
 
@@ -380,7 +406,7 @@ export class PageFlip extends EventObject {
 
     if (started) return true;
 
-    this.trigger('turnRejected', this, { reason: 'boundary', code: 'REJECTED' });
+    this.trigger('turnRejected', this, { reason: 'boundary' });
     return false;
   }
 
@@ -568,7 +594,7 @@ export class PageFlip extends EventObject {
       this.isUserTouch = false;
 
       if (!isSwipe) {
-        if (!this.isUserMove) this.flipController?.flip(pos);
+        if (!this.isUserMove) this.requestUserTurn(pos);
         else this.flipController?.stopMove();
       }
     }

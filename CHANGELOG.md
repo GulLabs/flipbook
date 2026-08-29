@@ -6,6 +6,14 @@ All notable changes to this monorepo will be documented in this file.
 
 ### Fixed
 
+- A refused **click** now reports `turnRejected`. `userStop` discarded the
+  result of the turn, so the event fired only for programmatic
+  `flipNext`/`flipPrev` — the most common way a turn gets refused was silent.
+- `turnRejected` can actually carry `reason: 'disabled'`. It was declared in
+  the public event type and emitted by nothing, so a click blocked by
+  `disableFlipByClick` produced no signal at all. The policy check moved from
+  `Flip.flip` to `PageFlip.userStop`, which is the only path that has clicks.
+
 - `lazyRadius` combined with `renderOnlyPageLengthChange` left every page
   outside the initial window as an empty placeholder for the life of the book.
   Turning a page moves the lazy window without changing the page count, so the

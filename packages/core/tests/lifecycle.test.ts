@@ -125,3 +125,71 @@ describe('a refused turn is a boolean, a broken one is not', () => {
     book.destroy();
   });
 });
+
+describe('a refused click is reported, not swallowed', () => {
+  function clickAt(book: PageFlip, x: number, y: number): void {
+    book.startUserTouch({ x, y });
+    book.userStop({ x, y });
+  }
+
+  /**
+   * `turnRejected` exists to say "your turn was refused". It used to fire only
+   * for programmatic turns: `userStop` discarded `flip()`'s boolean, so the
+   * most common way a turn gets refused — a click — was silent. And
+   * `reason: 'disabled'` was declared in the public event type while nothing
+   * anywhere emitted it.
+   */
+  test("disableFlipByClick reports 'disabled' instead of nothing", () => {
+    const book = new PageFlip(host(), {
+      width: 200,
+      height: 300,
+      flippingTime: 0,
+      disableFlipByClick: true,
+    });
+    book.loadFromHTML(makePages(4));
+
+    const rejected: { reason: string; code?: string }[] = [];
+    book.on('turnRejected', (e) => rejected.push(e.data));
+
+    // Middle of the book: not a corner, so policy refuses it.
+    clickAt(book, 100, 150);
+
+    expect(rejected).toEqual([{ reason: 'disabled' }]);
+    expect(book.getCurrentPageIndex()).toBe(0);
+
+    book.destroy();
+  });
+
+  test('a click at the last page reports the boundary', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(2));
+    book.turnToPage(1);
+
+    const rejected: { reason: string; code?: string }[] = [];
+    book.on('turnRejected', (e) => rejected.push(e.data));
+
+    // Right edge, which would turn forward if there were anywhere to go.
+    const rect = book.getBoundsRect();
+    clickAt(book, rect.left + rect.width - 5, 10);
+
+    expect(rejected).toEqual([{ reason: 'boundary' }]);
+
+    book.destroy();
+  });
+
+  test('a click that does turn stays silent', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(4));
+
+    const rejected: unknown[] = [];
+    book.on('turnRejected', (e) => rejected.push(e.data));
+
+    const rect = book.getBoundsRect();
+    clickAt(book, rect.left + rect.width - 5, 10);
+
+    expect(rejected).toEqual([]);
+    expect(book.getCurrentPageIndex()).toBe(1);
+
+    book.destroy();
+  });
+});

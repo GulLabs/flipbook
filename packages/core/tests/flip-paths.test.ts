@@ -118,19 +118,30 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
       flippingTime: 0,
       disableFlipByClick: true,
     });
-    const flip = app.getFlipController()!;
     const rect = app.getBoundsRect();
+
+    // Through the real click path: `disableFlipByClick` is a policy about
+    // clicks and now lives in `PageFlip.userStop`, so testing it on
+    // `Flip.flip` would no longer exercise the guard at all.
+    const rejected: { reason: string }[] = [];
+    app.on('turnRejected', (e) => rejected.push(e.data));
 
     const center = {
       x: rect.left + rect.width * 0.75,
       y: rect.top + rect.height / 2,
     };
-    expect(flip.flip(center, false)).toBe(false);
+    app.startUserTouch(center);
+    app.userStop(center);
+
     expect(app.getCurrentPageIndex()).toBe(0);
+    expect(rejected).toEqual([{ reason: 'disabled' }]);
 
     const corner = { x: rect.left + rect.width - 4, y: rect.top + 4 };
-    expect(flip.flip(corner, false)).toBe(true);
+    app.startUserTouch(corner);
+    app.userStop(corner);
+
     expect(app.getCurrentPageIndex()).toBeGreaterThan(0);
+    expect(rejected).toHaveLength(1);
   });
 
   test('flipToPage advances toward the target with a real turn animation end', () => {

@@ -55,14 +55,11 @@ export class Flip {
    *
    * @param globalPos - Touch Point Coordinates (relative window)
    */
-  public flip(globalPos: Point, skipClickCheck = false, direction?: FlipDirection): boolean {
-    if (
-      !skipClickCheck &&
-      this.app.getSettings().disableFlipByClick &&
-      !this.isPointOnCorners(globalPos)
-    ) {
-      return false;
-    }
+  public flip(globalPos: Point, direction?: FlipDirection): boolean {
+    // No `disableFlipByClick` check here any more: that is a policy about
+    // clicks, and `PageFlip.userStop` is the only path that has one. Keeping a
+    // copy here meant a blocked click returned a bare `false` that nobody
+    // could tell apart from "there is no next page".
 
     // the flipping process is already running
     if (this.calc !== null) this.render.finishAnimation();
@@ -234,14 +231,15 @@ export class Flip {
    * @param {FlipCorner} corner - Active page corner when turning
    */
   public flipNext(corner: FlipCorner): boolean {
+    // `x` is deliberately arbitrary. Forcing the direction means `start` never
+    // calls `getDirectionByPoint`, and the only other thing it reads from this
+    // point is `y`, to pick the corner. The old right-edge arithmetic computed
+    // a coordinate nothing looked at.
+    //
+    // Forcing it also keeps `direction: 'rtl'` from inverting the page index:
+    // a synthetic point must not go through reading-direction hit-testing.
     return this.flip(
-      {
-        x: this.render.getRect().left + this.render.getRect().pageWidth * 2 - 10,
-        y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2,
-      },
-      true,
-      // Programmatic: the synthetic point must not go through `rtl`
-      // hit-testing, or `direction: 'rtl'` would invert the page index.
+      { x: 0, y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2 },
       FlipDirection.FORWARD,
     );
   }
@@ -253,11 +251,7 @@ export class Flip {
    */
   public flipPrev(corner: FlipCorner): boolean {
     return this.flip(
-      {
-        x: 10,
-        y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2,
-      },
-      true,
+      { x: 0, y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2 },
       FlipDirection.BACK,
     );
   }
@@ -450,7 +444,11 @@ export class Flip {
     return false;
   }
 
-  private isPointOnCorners(globalPos: Point): boolean {
+  /**
+   * @internal Wiring seam for `PageFlip.userStop`, which owns the
+   * `disableFlipByClick` policy so a refused click can be reported.
+   */
+  public isPointOnCorners(globalPos: Point): boolean {
     const rect = this.getBoundsRect();
     const pageWidth = rect.pageWidth;
 
