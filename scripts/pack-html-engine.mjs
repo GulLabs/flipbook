@@ -7,15 +7,29 @@ const dist = join(root, 'packages/core/dist');
 const outDir = join(root, 'packages/core/size-check');
 mkdirSync(outDir, { recursive: true });
 
-const files = readdirSync(dist)
-  .filter(
-    (f) =>
-      f.endsWith('.js') &&
-      !f.includes('canvas-loader') &&
-      !f.endsWith('.map') &&
-      f !== 'html-engine.js',
-  )
+const allJs = readdirSync(dist)
+  .filter((f) => f.endsWith('.js') && !f.endsWith('.map') && f !== 'html-engine.js')
   .sort();
+
+const canvasFiles = allJs.filter((f) => f.includes('canvas-loader'));
+const files = allJs.filter((f) => !f.includes('canvas-loader'));
+
+// The canvas renderer is the one genuinely separable unit in this package, and
+// keeping it out of the eager graph is an *architectural* property — not
+// something the byte ceiling can protect. A static `import { CanvasRender }`
+// would pull ~5.8 kB into the main chunk and still land under the raw ceiling,
+// so the size gate would go green on exactly the regression it looks like it
+// guards. These assertions are what actually holds the boundary; the filename
+// filter above only decides what gets counted.
+if (canvasFiles.length !== 1) {
+  const found = canvasFiles.length > 0 ? `: ${canvasFiles.join(', ')}` : '';
+  console.error(
+    `Expected exactly one lazily-imported canvas chunk in dist, found ${canvasFiles.length}${found}.\n` +
+      `If tsup changed its chunk naming, this script has been silently\n` +
+      `measuring the wrong set of files. Fix the boundary, not the filter.`,
+  );
+  process.exit(1);
+}
 
 // Concatenate the already-terser'd ESM chunks (canvas stays out).
 // A full esbuild re-bundle of minified ESM expands identifiers (`i`→`i2`)
@@ -31,6 +45,29 @@ body = body
   .replace(/export\s*\{[^}]*\}\s*from\s*["']\.\/chunk-[^"']+["'];?/g, '')
   // Source-map comments are not shipped in the size budget payload.
   .replace(/\/\/# sourceMappingURL=[^\n]*/g, '');
+
+// Canvas must be reachable only through a dynamic import, and its renderer must
+// not have leaked into the eager graph. `getContext` is the marker: both
+// `CanvasUI` and `CanvasRender` acquire a 2d context, and nothing on the HTML
+// path touches one.
+if (!/import\(\s*["']\.\/canvas-loader-/.test(body)) {
+  console.error(
+    'The HTML engine no longer dynamically imports the canvas loader.\n' +
+      'Canvas mode must stay behind `import("./canvas-loader")` so HTML-only\n' +
+      'consumers never download it.',
+  );
+  process.exit(1);
+}
+
+if (body.includes('getContext')) {
+  console.error(
+    'Canvas renderer code leaked into the eager HTML engine graph (found\n' +
+      '`getContext`). Something now imports CanvasRender/CanvasUI statically.\n' +
+      'This costs every HTML-only consumer the canvas renderer, and it fits\n' +
+      'under the raw ceiling, so the size gate will NOT catch it.',
+  );
+  process.exit(1);
+}
 
 const out = join(outDir, 'html-engine.js');
 writeFileSync(out, body);
