@@ -1,6 +1,6 @@
 # Governance
 
-flipbook is maintained by [Gul Labs](https://github.com/GulLabs).
+flipbook is maintained by [Gul Labs](https://github.com/gul-labs).
 
 | Role       | Who                                        | Scope                                        |
 | ---------- | ------------------------------------------ | -------------------------------------------- |
