@@ -12,28 +12,36 @@ CI job ([ci.yml](../.github/workflows/ci.yml)).
 
 ## Revision history
 
-- **r1** (df30cb8) — 15 defects, 9 phases. Sent for signoff.
+- **r1** (df30cb8) — 16 inventory IDs, 9 phases. Sent for signoff.
 - **r2** (afdc1cf) — **Codex REQUEST_CHANGES**, job `task-mte7kt7m-wu2hid`
   (gpt-5.6-sol, high). Two findings withdrawn as false, one diagnosis corrected,
-  two demoted, **eight new defects added**, phase order rewritten, C1 respecified
-  as a scheduler contract.
-- **r3** (this) — **Codex REQUEST_CHANGES**, job `task-mtercfv3-kaqjdg`
+  two demoted, **seven new IDs added (G1–G7, of which six are defects — G7 is a
+  forward constraint, not a bug)**, phase order rewritten, C1 respecified as a
+  scheduler contract.
+- **r3** (c75c32c) — **Codex REQUEST_CHANGES**, job `task-mtercfv3-kaqjdg`
   (gpt-5.6-sol, high). The r1 corrections were confirmed faithful and the phase
   reorder endorsed, but **Phase 0 was not executable as written** — it required
   covering behaviour that stays broken until Phases 1–8, so it could not be both
   meaningful and green. Phase 0 is now a full acceptance contract. One more
   defect found (**G8**, a mode-attachment race), several citations corrected,
   and two repo-wide test-infrastructure gaps exposed.
+- **r4** (this) — **Codex REQUEST_CHANGES**, job `task-mtev9jp8-axqiu5`
+  (gpt-5.6-sol, high). Corrections 3, 5, 6, 7 and 10 confirmed faithful; Phase 0
+  still not fully executable; **four more source defects (B2b, G9, G10, G11)**;
+  full Phase 1 acceptance contract supplied. One Codex finding **rejected** — see
+  below. Revision counts corrected: r1 was 16 IDs, not 15, and r2 added seven,
+  not eight.
 
 Every disputed call in every round was independently re-verified against source
 before being accepted or rejected.
 
 ## Standing rule: every line read is a line audited
 
-This plan started as three defects. It reached fifteen because reading
+This plan started as three defects. It reached sixteen because reading
 `ImagePage` to fix the portrait curl meant reading `CanvasUI` next, which
-surfaced the `devicePixelRatio` gap (B1). It reached twenty-one because Codex
-read the same files again and found eight more.
+surfaced the `devicePixelRatio` gap (B1). It reached twenty-six across three review rounds, because Codex read the same
+files again each time. The counts per round were 16, then +7, then +1, then +4 —
+narrowing, but never zero.
 
 So: **while fixing any defect here, audit every line you read, not just the
 lines you change.** A phase that touches a file owns what it found in that file.
@@ -51,35 +59,39 @@ lines you change.** A phase that touches a file owns what it found in that file.
 
 ### Confirmed defects
 
-| #      | Defect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | Evidence                                                                                                                                                                                                             |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A1** | Portrait BACK uses upstream's previous-leaf slide-in. `newTemporaryCopy()` returns `this`, so `getPortraitFlippingPage` sees `copy === current` and falls to `pages[i-1]`. **The bug this fork exists to kill is present in canvas mode.**                                                                                                                                                                                                                                                                | [ImagePage.ts:120](../packages/core/src/Page/ImagePage.ts:120), [flippingPage.ts:32](../packages/core/src/Collection/flippingPage.ts:32)                                                                             |
-| **A2** | No hard-page rendering. ~~`ImagePageCollection` hardcodes SOFT~~ — **corrected**: `createSpread()` _does_ mark the cover hard via `setDensity`. The real failure is that `ImagePage.draw()` ignores density and hard angles entirely, and `CanvasRender` has no hard-page path. A hard cover therefore curls like paper.                                                                                                                                                                                  | [PageCollection.ts:71](../packages/core/src/Collection/PageCollection.ts:71), [ImagePage.ts:27](../packages/core/src/Page/ImagePage.ts:27), [CanvasRender.ts:39](../packages/core/src/Render/CanvasRender.ts:39)     |
-| **A3** | Bitmaps stretched to the leaf rect. No aspect preservation, no fit mode, no inset.                                                                                                                                                                                                                                                                                                                                                                                                                        | [ImagePage.ts:49](../packages/core/src/Page/ImagePage.ts:49), [:69](../packages/core/src/Page/ImagePage.ts:69)                                                                                                       |
-| **A4** | No `onerror`. A 404 spins the loader forever and emits nothing.                                                                                                                                                                                                                                                                                                                                                                                                                                           | [ImagePage.ts:113](../packages/core/src/Page/ImagePage.ts:113)                                                                                                                                                       |
-| **B1** | **No `devicePixelRatio` anywhere in the repo.** One backing pixel per CSS pixel is linearly half-resolution on a 2× display. The most visible defect in the list.                                                                                                                                                                                                                                                                                                                                         | [CanvasUI.ts:32](../packages/core/src/UI/CanvasUI.ts:32)                                                                                                                                                             |
-| **B2** | `resizeCanvas()` truncates fractional layout sizes and has no zero-size handling. _(The r1 "`NaN` when `display:none`" claim is withdrawn — unverified, and browsers commonly resolve a hidden box to `0px`.)_                                                                                                                                                                                                                                                                                            | [CanvasUI.ts:33](../packages/core/src/UI/CanvasUI.ts:33)                                                                                                                                                             |
-| **C1** | The rAF loop reschedules unconditionally, so `drawFrame()` runs forever on an untouched book. **Repo-wide — this affects HTML mode too, not just canvas.**                                                                                                                                                                                                                                                                                                                                                | [Render.ts:129](../packages/core/src/Render/Render.ts:129), [:151](../packages/core/src/Render/Render.ts:151)                                                                                                        |
-| **D1** | No accessibility. Caveat: keyboard and live region live in the **React binding**, not core, so "parity" must name which layer owns what.                                                                                                                                                                                                                                                                                                                                                                  | [CanvasUI.ts:18](../packages/core/src/UI/CanvasUI.ts:18), [HTMLFlipBook.tsx:493](../packages/react/src/HTMLFlipBook.tsx:493)                                                                                         |
-| **G1** | **Canvas clip state leaks across frames.** The portrait clip at the end of `drawFrame()` has no `save()`/`restore()` around it. It cannot affect the current frame; it constrains every _subsequent_ frame, including the next `clear()`, Identical repeated clips intersect without further shrinking, so this is not a slow collapse — the defect is **leaked frame state and a stale clip after any geometry change**, with correctness resting on canvas resizing implicitly resetting context state. | [CanvasRender.ts:68](../packages/core/src/Render/CanvasRender.ts:68)                                                                                                                                                 |
-| **G2** | **Transparent images defeat `pageBackground`.** `clear()` fills the canvas, but `ImagePage.draw()` paints the turning bitmap straight over the already-painted bottom page. Transparent PNG pixels reveal the page beneath — the §4.2 read-through bug the setting exists to prevent. The turning leaf must fill its own clipped, transformed area with `foldFill(pageBackground)` first.                                                                                                                 | [ImagePage.ts:47](../packages/core/src/Page/ImagePage.ts:47), [:69](../packages/core/src/Page/ImagePage.ts:69), [CanvasRender.ts:184](../packages/core/src/Render/CanvasRender.ts:184)                               |
-| **G3** | **Eager resource model.** Every page constructs an `HTMLImageElement` and sets `src` at load, so a 500-page book starts 500 fetches immediately. No lazy window, no eviction. _(Decoded-memory totals are deliberately not asserted — browsers evict. The eager network behaviour is what is definite.)_                                                                                                                                                                                                  | [ImagePage.ts:20](../packages/core/src/Page/ImagePage.ts:20), [ImagePageCollection.ts:23](../packages/core/src/Collection/ImagePageCollection.ts:23)                                                                 |
-| **G4** | **`destroy()` releases nothing.** It stops rendering and removes UI but never nulls the collection or render, and `PageCollection.destroy()` only drops its array — no per-page disposal, no load cancellation. A retained destroyed engine retains every image.                                                                                                                                                                                                                                          | [PageFlip.ts:64](../packages/core/src/PageFlip.ts:64), [PageCollection.ts:50](../packages/core/src/Collection/PageCollection.ts:50)                                                                                  |
-| **G5** | **Mode lifecycle is unsafe.** `PageFlip.clear()` casts the active UI to `HTMLUI` unconditionally — in canvas mode `CanvasUI` has no `clear()`, so this throws. `updateFromImages()` can also run while HTML mode is active (building image pages against `HTMLRender`) and vice versa.                                                                                                                                                                                                                    | [PageFlip.ts:293](../packages/core/src/PageFlip.ts:293), [:219](../packages/core/src/PageFlip.ts:219), [:238](../packages/core/src/PageFlip.ts:238), [canvas-loader.ts:17](../packages/core/src/canvas-loader.ts:17) |
-| **G6** | **Shrinking `updateFromImages()` leaves stale render state.** `replacePages()` preserves the old index; `show()` silently returns when it exceeds the new collection, so the render keeps holding old left/right pages and their images — and `update` / `collectionRebuild` then emit the **rejected old index**.                                                                                                                                                                                        | [PageFlip.ts:127](../packages/core/src/PageFlip.ts:127), [PageCollection.ts:253](../packages/core/src/Collection/PageCollection.ts:253)                                                                              |
-| **G8** | **Stale async mode attachment.** `loadFromImages()` awaits a dynamic import and guards only `this.destroyed`. If `loadFromHTML()` runs while that import is in flight, the stale canvas continuation still calls `attachMode()` and replaces the newer HTML mode. `updateFromImages()` has the same race. Needs a monotonically increasing load generation so only the latest operation may attach.                                                                                                       | [PageFlip.ts:188](../packages/core/src/PageFlip.ts:188), [:207](../packages/core/src/PageFlip.ts:207), [:219](../packages/core/src/PageFlip.ts:219)                                                                  |
-| **F1** | No React binding for images mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | [react/src/index.ts](../packages/react/src/index.ts)                                                                                                                                                                 |
-| **F2** | No browser coverage — jsdom with a mocked 2d context, which is how #44 and #56 shipped broken.                                                                                                                                                                                                                                                                                                                                                                                                            | [canvas-mode.test.ts](../packages/core/tests/canvas-mode.test.ts)                                                                                                                                                    |
-| **F3** | No example uses canvas mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `examples/`                                                                                                                                                                                                          |
-| **F4** | README advertises the back-curl fix unqualified, which A1 makes false for canvas.                                                                                                                                                                                                                                                                                                                                                                                                                         | [README.md:3](../README.md:3), [:18](../README.md:18)                                                                                                                                                                |
+| #       | Defect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Evidence                                                                                                                                                                                                             |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A1**  | Portrait BACK uses upstream's previous-leaf slide-in. `newTemporaryCopy()` returns `this`, so `getPortraitFlippingPage` sees `copy === current` and falls to `pages[i-1]`. **The bug this fork exists to kill is present in canvas mode.**                                                                                                                                                                                                                                                                                                                                                                                      | [ImagePage.ts:120](../packages/core/src/Page/ImagePage.ts:120), [flippingPage.ts:32](../packages/core/src/Collection/flippingPage.ts:32)                                                                             |
+| **A2**  | No hard-page rendering. ~~`ImagePageCollection` hardcodes SOFT~~ — **corrected**: `createSpread()` _does_ mark the cover hard via `setDensity`. The real failure is that `ImagePage.draw()` ignores density and hard angles entirely, and `CanvasRender` has no hard-page path. A hard cover therefore curls like paper.                                                                                                                                                                                                                                                                                                        | [PageCollection.ts:71](../packages/core/src/Collection/PageCollection.ts:71), [ImagePage.ts:27](../packages/core/src/Page/ImagePage.ts:27), [CanvasRender.ts:39](../packages/core/src/Render/CanvasRender.ts:39)     |
+| **A3**  | Bitmaps stretched to the leaf rect. No aspect preservation, no fit mode, no inset.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | [ImagePage.ts:49](../packages/core/src/Page/ImagePage.ts:49), [:69](../packages/core/src/Page/ImagePage.ts:69)                                                                                                       |
+| **A4**  | No `onerror`. A 404 spins the loader forever and emits nothing.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | [ImagePage.ts:113](../packages/core/src/Page/ImagePage.ts:113)                                                                                                                                                       |
+| **B1**  | **No `devicePixelRatio` anywhere in the repo.** One backing pixel per CSS pixel is linearly half-resolution on a 2× display. The most visible defect in the list.                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [CanvasUI.ts:32](../packages/core/src/UI/CanvasUI.ts:32)                                                                                                                                                             |
+| **B2**  | `resizeCanvas()` truncates fractional layout sizes and has no zero-size handling. _(The r1 "`NaN` when `display:none`" claim is withdrawn — unverified, and browsers commonly resolve a hidden box to `0px`.)_                                                                                                                                                                                                                                                                                                                                                                                                                  | [CanvasUI.ts:33](../packages/core/src/UI/CanvasUI.ts:33)                                                                                                                                                             |
+| **C1**  | The rAF loop reschedules unconditionally, so `drawFrame()` runs forever on an untouched book. **Repo-wide — this affects HTML mode too, not just canvas.**                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | [Render.ts:129](../packages/core/src/Render/Render.ts:129), [:151](../packages/core/src/Render/Render.ts:151)                                                                                                        |
+| **D1**  | No accessibility. Caveat: keyboard and live region live in the **React binding**, not core, so "parity" must name which layer owns what.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | [CanvasUI.ts:18](../packages/core/src/UI/CanvasUI.ts:18), [HTMLFlipBook.tsx:493](../packages/react/src/HTMLFlipBook.tsx:493)                                                                                         |
+| **G1**  | **Canvas clip state leaks across frames.** The portrait clip at the end of `drawFrame()` has no `save()`/`restore()` around it. It cannot affect the current frame; it constrains every _subsequent_ frame, including the next `clear()`, Identical repeated clips intersect without further shrinking, so this is not a slow collapse — the defect is **leaked frame state and a stale clip after any geometry change**, with correctness resting on canvas resizing implicitly resetting context state.                                                                                                                       | [CanvasRender.ts:68](../packages/core/src/Render/CanvasRender.ts:68)                                                                                                                                                 |
+| **G2**  | **Transparent images defeat `pageBackground`.** `clear()` fills the canvas, but `ImagePage.draw()` paints the turning bitmap straight over the already-painted bottom page. Transparent PNG pixels reveal the page beneath — the §4.2 read-through bug the setting exists to prevent. The turning leaf must fill its own clipped, transformed area with `foldFill(pageBackground)` first.                                                                                                                                                                                                                                       | [ImagePage.ts:47](../packages/core/src/Page/ImagePage.ts:47), [:69](../packages/core/src/Page/ImagePage.ts:69), [CanvasRender.ts:184](../packages/core/src/Render/CanvasRender.ts:184)                               |
+| **G3**  | **Eager resource model.** Every page constructs an `HTMLImageElement` and sets `src` at load, so a 500-page book starts 500 fetches immediately. No lazy window, no eviction. _(Decoded-memory totals are deliberately not asserted — browsers evict. The eager network behaviour is what is definite.)_                                                                                                                                                                                                                                                                                                                        | [ImagePage.ts:20](../packages/core/src/Page/ImagePage.ts:20), [ImagePageCollection.ts:23](../packages/core/src/Collection/ImagePageCollection.ts:23)                                                                 |
+| **G4**  | **`destroy()` releases nothing.** It stops rendering and removes UI but never nulls the collection or render, and `PageCollection.destroy()` only drops its array — no per-page disposal, no load cancellation. A retained destroyed engine retains every image.                                                                                                                                                                                                                                                                                                                                                                | [PageFlip.ts:64](../packages/core/src/PageFlip.ts:64), [PageCollection.ts:50](../packages/core/src/Collection/PageCollection.ts:50)                                                                                  |
+| **G5**  | **Mode lifecycle is unsafe.** `PageFlip.clear()` casts the active UI to `HTMLUI` unconditionally — in canvas mode `CanvasUI` has no `clear()`, so this throws. `updateFromImages()` can also run while HTML mode is active (building image pages against `HTMLRender`) and vice versa.                                                                                                                                                                                                                                                                                                                                          | [PageFlip.ts:293](../packages/core/src/PageFlip.ts:293), [:219](../packages/core/src/PageFlip.ts:219), [:238](../packages/core/src/PageFlip.ts:238), [canvas-loader.ts:17](../packages/core/src/canvas-loader.ts:17) |
+| **G6**  | **Shrinking `updateFromImages()` leaves stale render state.** `replacePages()` preserves the old index; `show()` silently returns when it exceeds the new collection, so the render keeps holding old left/right pages and their images — and `update` / `collectionRebuild` then emit the **rejected old index**.                                                                                                                                                                                                                                                                                                              | [PageFlip.ts:127](../packages/core/src/PageFlip.ts:127), [PageCollection.ts:253](../packages/core/src/Collection/PageCollection.ts:253)                                                                              |
+| **G8**  | **Stale async mode attachment.** `loadFromImages()` awaits a dynamic import and guards only `this.destroyed`. If `loadFromHTML()` runs while that import is in flight, the stale canvas continuation still calls `attachMode()` and replaces the newer HTML mode. `updateFromImages()` has the same race. Needs a monotonically increasing load generation guarding **both `attachMode()` and `replacePages()`**, with every superseding operation — HTML or image load, HTML or image update, `clear`, `destroy` — invalidating older continuations. "Only the latest may attach" does not cover a stale `updateFromImages()`. | [PageFlip.ts:188](../packages/core/src/PageFlip.ts:188), [:207](../packages/core/src/PageFlip.ts:207), [:219](../packages/core/src/PageFlip.ts:219)                                                                  |
+| **B2b** | **The deeper cause of B2.** Even with `parseInt` gone from `CanvasUI`, shared layout still reads integer `offsetWidth`/`offsetHeight`, so the backing store can use fractional geometry while `getBoundsRect()` stays rounded — page/canvas disagreement and an unpainted edge strip.                                                                                                                                                                                                                                                                                                                                           | [Render.ts:328](../packages/core/src/Render/Render.ts:328), [CanvasUI.ts:32](../packages/core/src/UI/CanvasUI.ts:32)                                                                                                 |
+| **G9**  | `drawLoader()` hardcodes white (`rgb(255,255,255)`), so the placeholder flashes white over a custom `pageBackground` before the image arrives.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | [ImagePage.ts:84](../packages/core/src/Page/ImagePage.ts:84)                                                                                                                                                         |
+| **G10** | **`replacePages()` is not atomic against an active turn.** It swaps collections without cancelling the running animation or clearing flipping/bottom/shadow/page-rect state, so the old turn's completion callback can commit against the **new** collection.                                                                                                                                                                                                                                                                                                                                                                   | [PageFlip.ts:127](../packages/core/src/PageFlip.ts:127), [Flip.ts:337](../packages/core/src/Flip/Flip.ts:337), [Render.ts:75](../packages/core/src/Render/Render.ts:75)                                              |
+| **G11** | **`attachMode()` leaks the old page collection.** It destroys the old UI and stops the old render, but overwrites `this.pages` without destroying it. Once Phase 3 adds real resource disposal, second loads and cross-mode replacement must run it.                                                                                                                                                                                                                                                                                                                                                                            | [PageFlip.ts:150](../packages/core/src/PageFlip.ts:150)                                                                                                                                                              |
+| **F1**  | No React binding for images mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [react/src/index.ts](../packages/react/src/index.ts)                                                                                                                                                                 |
+| **F2**  | No browser coverage — jsdom with a mocked 2d context, which is how #44 and #56 shipped broken.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | [canvas-mode.test.ts](../packages/core/tests/canvas-mode.test.ts)                                                                                                                                                    |
+| **F3**  | No example uses canvas mode.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `examples/`                                                                                                                                                                                                          |
+| **F4**  | README advertises the back-curl fix unqualified, which A1 makes false for canvas.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | [README.md:3](../README.md:3), [:18](../README.md:18)                                                                                                                                                                |
 
 ### Reclassified
 
-| #      | Was                                                                                 | Now                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| ------ | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **A5** | Defect — `getTemporaryCopy()` returns `this` where the base declares `Page \| null` | **Contract cleanup, folded into Phase 2.** Semantically dishonest. The only caller is [HTMLRender.ts:338](../packages/core/src/Render/HTMLRender.ts:338) — but "which only sees `HTMLPage`s" holds **only under the matching-mode invariant G5/G8 do not yet guarantee**: `updateFromImages()` can inject `ImagePage`s into a live `HTMLRender` today. Harmless once mode safety lands, not before.                                                                                             |
-| **E2** | Defect — leaf-clip eats the edge, forcing a 2.8% downstream inset                   | **Investigation only.** No repository evidence; it violates this plan's own no-guess rule. Do not promise to delete the downstream workaround before reproducing it.                                                                                                                                                                                                                                                                                                                            |
-| **G7** | —                                                                                   | **Not a current bug, but a Phase 2 constraint.** Cached `onload` is not missed today: `src` is set in the constructor and `load()` runs in the same synchronous script, which the HTML Standard guarantees is safe. It becomes a hazard once Phase 2 introduces temporary copies of already-complete images — so install handlers before `src` and distinguish `complete && naturalWidth > 0` (decoded) from `complete && naturalWidth === 0` (**broken** — a failed image is also `complete`). |
+| #      | Was                                                                                 | Now                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A5** | Defect — `getTemporaryCopy()` returns `this` where the base declares `Page \| null` | **Contract cleanup, folded into Phase 2.** Semantically dishonest. The only caller is [HTMLRender.ts:338](../packages/core/src/Render/HTMLRender.ts:338) — but "which only sees `HTMLPage`s" holds **only under the matching-mode invariant G5/G8 do not yet guarantee**: `updateFromImages()` can inject `ImagePage`s into a live `HTMLRender` today. Harmless once mode safety lands, not before.                                                                                                                      |
+| **E2** | Defect — leaf-clip eats the edge, forcing a 2.8% downstream inset                   | **Investigation only.** No repository evidence; it violates this plan's own no-guess rule. Do not promise to delete the downstream workaround before reproducing it.                                                                                                                                                                                                                                                                                                                                                     |
+| **G7** | —                                                                                   | **Not a current bug, but a Phase 2 constraint.** Cached `onload` is not missed today: `src` is set in the constructor and `load()` runs in the same synchronous script, which the HTML Standard guarantees is safe. It becomes a hazard once Phase 2 introduces temporary copies of already-complete images — so install handlers before `src` and distinguish `complete && naturalWidth > 0` (successfully loaded and drawable) from `complete && naturalWidth === 0` (**broken** — a failed image is also `complete`). |
 
 ### Withdrawn — false as written
 
@@ -89,9 +101,11 @@ lines you change.** A phase that touches a file owns what it found in that file.
 | ~~**E1**~~       | The Safari webkit#126207 workaround is part of canvas work                                      | It is HTML-mode CSS/3D debt. Canvas uses Canvas2D clipping and has no `clip-path`/`translate3d` equivalent. Worth auditing — **separately**; it does not make canvas second-class. [HTMLPage.ts:114](../packages/core/src/Page/HTMLPage.ts:114) |
 | ~~**A2** cause~~ | `ImagePageCollection` hardcodes `SOFT`, so there are no hard pages                              | Initial density is overridden by `createSpread()`, which sets the cover `HARD`. The defect is real; the _cause_ was wrong, and fixing the collection would have changed nothing.                                                                |
 
-## Settled design decisions
+## Proposed design decisions — PENDING OWNER APPROVAL
 
-These were open in r1 and are now fixed, per Codex's recommendations.
+These are Codex-recommended proposals, **not settled**. They are public API and
+therefore the owner's call under AGENTS.md §5. The Phase 2 gate below is where
+they get accepted or changed; nothing here is authority to implement.
 
 ### Image source descriptor
 
@@ -154,8 +168,9 @@ behaviour that marks an unmatched terminal landscape page hard even when
 
 Nine phases. Codex explicitly advised **against** compressing to eight: that
 would force resource ownership and the mode/update lifecycle into one oversized
-phase. `CHANGELOG.md` and `MIGRATION.md` entries belong to **each owning phase**
-(AGENTS.md §3), not to a final catch-all.
+phase. Documentation belongs to **each applicable owning phase** (AGENTS.md §3), not to
+a final catch-all: user-visible behaviour requires a `CHANGELOG.md` entry, and
+**only public API changes** require `MIGRATION.md`.
 
 | #   | Phase                                                                 | Status |
 | --- | --------------------------------------------------------------------- | ------ |
@@ -201,31 +216,6 @@ is not an acceptable renderer invariant.)
   A parked scheduler cannot observe `book.getSettings().pageBackground = …`.
   Either make `updateSettings()` the typed, documented sole mutation path, or
   introduce observable mutation. This is an API decision, not a fix.
-
-## Phase 7 — the scheduler contract
-
-C1 is the phase most likely to break the product, so it is specified rather than
-sketched. "Dirty flag" is not a design.
-
-- `requestDraw()` schedules **one** rAF when none is pending.
-- Continue scheduling only while an animation — or an intentionally animated
-  loading state — is active.
-- Animation `startedAt` derives from the **resumed** frame clock, never a stale
-  `this.timer`.
-- `startAnimation(…, 0, …)` runs the final action and callback **synchronously**
-  (the `flippingTime: 0` invariant in CLAUDE.md), then schedules exactly one
-  post-callback draw.
-- Invalidation sources: `finishAnimation`, every render setter, collection
-  show/replace, resize, DPR change, runtime settings change, image load, image
-  error.
-- A disposed image resource must not restart an old renderer.
-- **Open question to settle in-phase:** animated GIF/WebP/APNG pages — parking
-  the loop freezes them. Decide support explicitly rather than by accident.
-
-**Gate matrix**, Chromium and WebKit, HTML **and** canvas: nonzero animation,
-instant turns, reduced motion, drag, hover fold, resize/orientation, late image
-load, image error, runtime `pageBackground` change, collection replacement,
-destroy — plus an assertion that draw and rAF counts **stop increasing at rest**.
 
 ## Phase 0 — acceptance contract
 
@@ -317,11 +307,75 @@ e2e flake.
   to exact backing/CSS ratios and far-edge painting);
 - **a separate raw built-`dist` route** imports `dist/index.js`, fetches its
   canvas chunk, and paints a page;
-- no `pageerror` and no unexpected console error.
+- no uncaught page exception and no unexpected console error.
+  _(This is Playwright's `page.on('pageerror')` — an uncaught JS exception in
+  the browser context. **Codex r4 read it as an engine event name and called
+  the assertion vacuous; that is rejected.** `pageerror` is not, and is not
+  proposed as, a `PageFlip` event. Worded explicitly so no future reader
+  repeats the confusion.)_
 
 Transparent-paper correctness, hard geometry, shrink clamping, load errors and
 exact DPR backing size stay **red**, owned by their phases. Phase 0 ships their
 fixtures and helpers only.
+
+### Sentinels — exact assignment
+
+Ambiguity here is why r3 failed: the plan probed at 85% width but specified no
+sentinel there. Per `400×300` page, all sizes in image pixels:
+
+| Sentinel     | Position              | Colour                               |
+| ------------ | --------------------- | ------------------------------------ |
+| Centre       | `160,110` → `240,190` | the page's identity colour           |
+| Corner TL    | `0,0` → `40,40`       | white `#FFFFFF`                      |
+| Corner TR    | `360,0` → `400,40`    | black `#000000`                      |
+| Corner BL    | `0,260` → `40,300`    | cyan `#00FFFF`                       |
+| Corner BR    | `360,260` → `400,300` | magenta `#FF00FF`                    |
+| **Far-edge** | `320,130` → `360,170` | **identity colour at 60% luminance** |
+
+The far-edge band sits at centre height and spans the 80–90% width range, so the
+`rect.left + 1.85 * rect.pageWidth` probe lands inside it. Corner markers must
+**not** be used for the far-edge probe — they are at the extreme edge where
+resampling is least trustworthy.
+
+### Thresholds that must not be vague
+
+- **Held fold:** sample a 5×5 grid of points spanning the leaf interior
+  (20%–80% on both axes, excluding the fold edge). Require **≥8 of 25 cells** to
+  change by **≥12** in at least one RGB channel. "Changes a sparse grid" would
+  otherwise pass on one noisy pixel.
+- **Coordinates:** `getBoundsRect()` is **canvas-local**. Viewport coordinates
+  must subtract the canvas bounding-box origin before use. State this in the
+  helper, not in a comment.
+- **Reduced motion:** assert in the **same JavaScript task**. Respected ⇒ index
+  advanced **and** state `READ`. Disabled ⇒ index unchanged, state `FLIPPING`,
+  calculation non-null.
+- **Deterministic destroy:** hold an image response open, `destroy()`, _then_
+  release it. Assert no console error, no unhandled rejection, and no late event.
+
+### Additional fixtures and baselines
+
+- A generated **500-URL route**, to characterise the G3 eager-fetch behaviour
+  (Phase 0 measures it; Phase 3 fixes it).
+- **`showCover` density baseline** and **odd/even collection baselines** — both
+  green today, and both change under Phase 6.
+- **Static** transparent-page rendering is green now; **turning-leaf**
+  transparency (G2) is red and belongs to Phase 5. Assert the first, fixture the
+  second.
+
+### The lazy graph, stated as a rule
+
+The metafile check is only meaningful if the property is written down:
+
+> The static import closure from **both** the ESM and CJS `index` entries
+> contains **no** canvas module. Exactly **one** dynamic edge reaches a closure
+> containing `canvas-loader`, `CanvasUI`, `CanvasRender`, `ImagePageCollection`
+> and `ImagePage`.
+
+Failure of either half fails the build. `tsup` currently emits no metafile
+([tsup.config.ts:43](../packages/core/tsup.config.ts:43)), so Phase 0 must turn
+one on per format. The built-`dist` route must serve **literal** `dist/index.js`
+and its hashed chunk — no Vite rebundling, and the source alias must not apply,
+or the test measures `src/` again.
 
 ### Exit criteria
 
@@ -330,6 +384,8 @@ fixtures and helpers only.
 - a temporary **negative control** (wrong sentinel expectation, or a suppressed
   image response) has been observed failing, then reverted;
 - no arbitrary sleeps, no `toDataURL` comparisons;
+- the suite survives `--repeat-each=10`, and the negative control was observed
+  failing in **both** browser projects, not one;
 - `test:e2e:canvas` exists for focused runs, and the full e2e job discovers it
   via `pnpm test:e2e`. **Do not add Playwright to `quality:ci`** — CI already
   runs it as a separate job ([ci.yml](../.github/workflows/ci.yml));
@@ -348,6 +404,85 @@ Neither is canvas-specific, and both weaken every existing gate:
    filename and detects leakage by searching for `getContext`. A canvas-only
    _resource_ or _fit_ helper can leak without that marker. Phase 0 adds
    bundler-metafile reachability checks for both ESM and CJS.
+
+## Phase 1 — acceptance contract
+
+Supplied by Codex r4 and adopted. DPR is capped at **2**: it proves the required
+2× quality while bounding backing-store area at 4× CSS pixels. Native 3× would
+need an explicit allocation-budget decision, which is an owner call.
+
+```ts
+effectiveDpr = clamp(finitePositive(devicePixelRatio) ? devicePixelRatio : 1, 1, 2);
+backingWidth = cssWidth > 0 ? Math.ceil(cssWidth * effectiveDpr) : 0;
+backingHeight = cssHeight > 0 ? Math.ceil(cssHeight * effectiveDpr) : 0;
+scaleX = backingWidth / cssWidth;
+scaleY = backingHeight / cssHeight;
+```
+
+Requirements:
+
+- Measure **one** fractional CSS box for both the backing size and the render
+  geometry. `Render.getBlockWidth/Height()` must stop returning rounded
+  `offsetWidth` — that is B2b, and leaving it rounded reintroduces the disagreement.
+- Change intrinsic canvas dimensions **only** when the integer backing dimensions
+  change.
+- Reapply `setTransform(scaleX, 0, 0, scaleY, 0, 0)` after every intrinsic
+  resize — and also when CSS dimensions change while the backing integers do not.
+- At `0×0`: use a `0×0` backing, skip the division and transform, keep all bounds
+  finite, and recover on the next nonzero observation.
+
+Acceptance:
+
+- **G1 frame isolation.** Apply the portrait clip **before** painting, inside a
+  frame-level `save()`/`restore()` guaranteed by `finally`. Proof: after a real
+  portrait frame, paint a 5×5 canary through the live context _outside_ the
+  portrait clip — it must appear. Today it cannot, because the clip survives the
+  frame ([CanvasRender.ts:68](../packages/core/src/Render/CanvasRender.ts:68)).
+  Also assert balanced stack depth, the expected base transform after every
+  frame, and restoration after a deliberately throwing draw. **Prove the test red
+  by temporarily removing the `restore`.**
+- **DPR.** At DPR 1 and 2: exact backing dimensions, `getTransform().a/.d` equal
+  to `scaleX`/`scaleY`, and both centre and far-edge sentinels correct. At DPR 3:
+  the cap yields DPR-2 backing. Invalid or zero DPR falls back to 1.
+- **Runtime DPR change.** Install a resolution `matchMedia` listener for the
+  current DPR; on change, remove the old listener, recompute/resize/redraw, then
+  arm the new query — and join the existing `UI` teardown path. Unit-test the
+  1→2 rearm and teardown. Browser-test initial DPR 1 and 2 in **separate
+  contexts**: Playwright cannot portably change DPR in place across Chromium and
+  WebKit, so do not dress that up as cross-browser proof.
+- **Fractional size.** Force a verified fractional canvas box at DPR 1 and 2.
+  Assert formula-exact backing dimensions, finite bounds, landscape `rect.width`
+  agreement within 0.01 CSS px, **no unpainted right/bottom strip**, and a correct
+  far-edge sentinel.
+- **Zero recovery.** Collapse to `display:none`, assert `0×0`, finite state, no
+  exception. Restore, and after ResizeObserver plus the pixel protocol assert
+  backing/transform, the prior page index, orientation, centre colour and
+  far-edge sentinel are all restored.
+
+## Phase 7 — the scheduler contract
+
+C1 is the phase most likely to break the product, so it is specified rather than
+sketched. "Dirty flag" is not a design.
+
+- `requestDraw()` schedules **one** rAF when none is pending.
+- Continue scheduling only while an animation — or an intentionally animated
+  loading state — is active.
+- Animation `startedAt` derives from the **resumed** frame clock, never a stale
+  `this.timer`.
+- `startAnimation(…, 0, …)` runs the final action and callback **synchronously**
+  (the `flippingTime: 0` invariant in CLAUDE.md), then schedules exactly one
+  post-callback draw.
+- Invalidation sources: `finishAnimation`, every render setter, collection
+  show/replace, resize, DPR change, runtime settings change, image load, image
+  error.
+- A disposed image resource must not restart an old renderer.
+- **Open question to settle in-phase:** animated GIF/WebP/APNG pages — parking
+  the loop freezes them. Decide support explicitly rather than by accident.
+
+**Gate matrix**, Chromium and WebKit, HTML **and** canvas: nonzero animation,
+instant turns, reduced motion, drag, hover fold, resize/orientation, late image
+load, image error, runtime `pageBackground` change, collection replacement,
+destroy — plus an assertion that draw and rAF counts **stop increasing at rest**.
 
 ## Non-goals
 
@@ -370,4 +505,5 @@ eager graph ([pack-html-engine.mjs](../scripts/pack-html-engine.mjs)).
 | ------- | ------------------------------------------ | ------------------- | ---------- |
 | Plan r1 | `task-mte7kt7m-wu2hid` (gpt-5.6-sol, high) | **REQUEST_CHANGES** | 2026-08-29 |
 | Plan r2 | `task-mtercfv3-kaqjdg` (gpt-5.6-sol, high) | **REQUEST_CHANGES** | 2026-08-29 |
-| Plan r3 | —                                          | —                   | —          |
+| Plan r3 | `task-mtev9jp8-axqiu5` (gpt-5.6-sol, high) | **REQUEST_CHANGES** | 2026-08-29 |
+| Plan r4 | —                                          | —                   | —          |
