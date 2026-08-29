@@ -75,7 +75,16 @@ describe('the guards hold where the platform is odd or the caller misbehaves', (
     page.draw();
     expect(leaves[0]?.style.backgroundColor).toBe('rgb(255, 255, 255)');
 
-    // A legitimate value is still honoured through the same path.
+    // The temporary copy is a third, independent path: it stamps the colour on
+    // a cloned element rather than on the page's own.
+    book.getSettings().pageBackground = 'rgba(0, 0, 0, 0.4)';
+    const copy = page.newTemporaryCopy();
+    expect(copy).not.toBe(page);
+    expect(
+      (copy as unknown as { getElement(): HTMLElement }).getElement().style.backgroundColor,
+    ).toBe('rgb(255, 255, 255)');
+
+    // A legitimate value is still honoured through the same paths.
     book.getSettings().pageBackground = '#f4ecd8';
     page.simpleDraw(1);
     expect(leaves[0]?.style.backgroundColor).toBe('rgb(244, 236, 216)');

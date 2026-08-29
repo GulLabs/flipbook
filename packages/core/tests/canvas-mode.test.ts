@@ -313,6 +313,22 @@ describe('canvas mode honours pageBackground (StPageFlip #56)', () => {
     book.destroy();
   });
 
+  test('a settings object mutated behind updateSettings cannot reach fillStyle', async () => {
+    const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    // Skips `Settings.getSettings` entirely — the getter hands back the live
+    // object. The draw-time guard is what stops it.
+    book.getSettings().pageBackground = 'rgba(0, 0, 0, 0.4)';
+
+    const paper = paperColourAtClear(ctx);
+    (book.getRender() as unknown as { drawFrame: () => void }).drawFrame();
+
+    expect(paper.value).toBe('#fff');
+
+    book.destroy();
+  });
+
   test('an unsafe value still falls back to the opaque default', async () => {
     const book = new PageFlip(host, {
       width: 200,
