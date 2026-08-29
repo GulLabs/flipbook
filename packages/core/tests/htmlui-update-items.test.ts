@@ -61,4 +61,26 @@ describe('clear() and the framework that owns the leaves', () => {
     book.destroy();
     host.remove();
   });
+
+  test('updateFromHtml does not delete a page the caller parents itself', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+
+    const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML([]);
+
+    const block = book.getUI().getDistElement();
+    const portalled = document.createElement('div');
+    block.appendChild(portalled);
+
+    book.updateFromHtml([portalled]);
+    // The framework drops the page from the next render; it will remove the
+    // node itself. Deleting it here would pull it out from under React.
+    book.updateFromHtml([]);
+
+    expect(portalled.parentElement).toBe(block);
+
+    book.destroy();
+    host.remove();
+  });
 });

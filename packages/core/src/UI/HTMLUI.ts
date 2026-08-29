@@ -81,7 +81,11 @@ export class HTMLUI extends UI {
     // the render's shadow elements, and it deletes nodes a framework may
     // still consider its own (React portals its pages in here).
     for (const previous of Array.from(this.items)) {
-      if (!next.has(previous) && previous.parentElement === this.distElement) {
+      // Only leaves we adopted are ours to delete. A framework that rendered
+      // its page into the block still owns that node — removing it here is the
+      // same stale-parent failure `clear()` used to cause, just on the other
+      // side of the lifecycle. React removes its own pages; we must not.
+      if (!next.has(previous) && this.adopted.has(previous)) {
         previous.remove();
         this.adopted.delete(previous);
       }

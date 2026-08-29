@@ -864,3 +864,53 @@ describe('explicit navigation on an empty book', () => {
     });
   });
 });
+
+describe("engine teardown does not steal React's nodes", () => {
+  /**
+   * The binding portals its pages into `.stf__block`, so React's recorded
+   * parent for them *is* that block. Anything in the engine that reparents or
+   * deletes those nodes invalidates that, and React throws `NotFoundError` on
+   * its next removal or reorder — the failure the portal exists to prevent.
+   *
+   * `clear()` is reachable through the handle, and `updateFromHtml` with fewer
+   * pages runs the engine's own removal path. Both are exercised here through
+   * real React reconciliation rather than a hand-built node, so the assertion
+   * is "React can still edit its own children afterwards".
+   */
+  test('clear() then a children change still reconciles', async () => {
+    const handleRef = createRef<FlipBookHandle | null>();
+
+    function Harness() {
+      const [labels, setLabels] = useState(['a', 'b', 'c']);
+      return (
+        <>
+          <button type="button" onClick={() => handleRef.current?.pageFlip()?.clear()}>
+            clear
+          </button>
+          <button type="button" onClick={() => setLabels(['c', 'a'])}>
+            shuffle
+          </button>
+          <HTMLFlipBook ref={handleRef} width={200} height={300} flippingTime={0}>
+            {pages(...labels)}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-c"]')).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByText('clear'));
+
+    // React removes one page and reorders the rest. If the engine moved or
+    // deleted those nodes, this throws NotFoundError.
+    expect(() => fireEvent.click(screen.getByText('shuffle'))).not.toThrow();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-b"]')).toBeNull();
+      expect(container.querySelector('[data-testid="page-c"]')).toBeTruthy();
+    });
+  });
+});
