@@ -1,17 +1,13 @@
 import { describe, expect, test } from 'vitest';
-import {
-  DEFAULT_PAGE_BACKGROUND,
-  isOpaquePageBackground,
-  safePageBackground,
-} from '@gullabs/flipbook-core';
-import { foldFill, foldFillCss } from '../src/Render/pageBackground';
+import { DEFAULT_PAGE_BACKGROUND, safePageBackground } from '@gullabs/flipbook-core';
+import { foldFill, isOpaquePageBackground } from '../src/Render/pageBackground';
 
 describe('opaque fold fill (shipped)', () => {
   test('temporary copy / fold use opaque pageBackground', () => {
     expect(foldFill(undefined)).toBe('#fff');
     expect(foldFill('')).toBe('#fff');
     expect(foldFill('#f5f0e6')).toBe('#f5f0e6');
-    expect(foldFillCss('#fff')).toContain('background-color: #fff');
+    expect(foldFill('#fff')).toBe('#fff');
     expect(isOpaquePageBackground(foldFill())).toBe(true);
   });
 
@@ -47,6 +43,6 @@ describe('opaque fold fill (shipped)', () => {
     expect(safePageBackground('#fff; position: fixed')).toBe(DEFAULT_PAGE_BACKGROUND);
     expect(safePageBackground('var(--paper)')).toBe(DEFAULT_PAGE_BACKGROUND);
     expect(safePageBackground('expression(alert(1))')).toBe(DEFAULT_PAGE_BACKGROUND);
-    expect(foldFillCss('#fff; position: fixed')).toBe('background-color: #fff;');
+    expect(foldFill('#fff; position: fixed')).toBe(DEFAULT_PAGE_BACKGROUND);
   });
 });

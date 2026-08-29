@@ -66,34 +66,52 @@ export function isOpaquePageBackground(pageBackground?: string): boolean {
 }
 
 /**
- * Normalize a page background to a value that is both safe to interpolate and
- * opaque. Anything else falls back to {@link DEFAULT_PAGE_BACKGROUND}: a fold
- * you can read the next page through is the §4.2 bug this setting exists to
- * fix, so a translucent value is treated the same as an unsafe one.
+ * Pattern + opacity: the half that is cheap enough to repeat on every draw.
+ *
+ * A fold you can read the next page through is the §4.2 bug this setting
+ * exists to fix, so a translucent value is rejected exactly like an unsafe one.
  */
-export function safePageBackground(pageBackground?: string): string {
+function normalizePageBackground(pageBackground?: string): string {
   if (pageBackground == null) return DEFAULT_PAGE_BACKGROUND;
 
   const value = pageBackground.trim();
 
   if (value.length === 0) return DEFAULT_PAGE_BACKGROUND;
   if (!SAFE_CSS_COLOR.test(value)) return DEFAULT_PAGE_BACKGROUND;
-  // The pattern accepts any short word as a named colour, but only ~148 names
-  // are real. An invented one fails silently everywhere it matters: CSS drops
-  // the declaration (transparent fold — the §4.2 bug) and canvas keeps the
-  // previous `fillStyle`. Ask the platform where it can answer; Node has no
-  // `CSS`, and an older engine can have `CSS` without `supports`.
-  if (typeof CSS !== 'undefined' && typeof CSS.supports === 'function') {
-    if (!CSS.supports('color', value)) return DEFAULT_PAGE_BACKGROUND;
-  }
   if (!isOpaquePageBackground(value)) return DEFAULT_PAGE_BACKGROUND;
 
   return value;
 }
 
-/** Opaque fill for the turning leaf / temporary copy (alias of safePageBackground). */
-export const foldFill = safePageBackground;
+/**
+ * Full validation, for the settings boundary — crossed once per book, or once
+ * per `updateSettings`.
+ *
+ * Adds the platform check the pattern cannot do: it accepts any short word as a
+ * named colour, but only ~148 are real, and an invented one fails silently in
+ * the place it matters. CSS drops an unparseable declaration, leaving a
+ * transparent fold, and canvas keeps whatever `fillStyle` was there before.
+ * Node has no `CSS`, and an older engine can have `CSS` without `supports`.
+ */
+export function safePageBackground(pageBackground?: string): string {
+  const value = normalizePageBackground(pageBackground);
 
-export function foldFillCss(pageBackground?: string): string {
-  return `background-color: ${foldFill(pageBackground)};`;
+  // The DOM lib types `CSS` as always present, so the type system thinks these
+  // checks are dead. They are not: Node has no `CSS` at all, and an older
+  // engine can expose it without `supports`.
+  if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return value;
+  if (!CSS.supports('color', value)) return DEFAULT_PAGE_BACKGROUND;
+
+  return value;
 }
+
+/**
+ * Draw-time guard for the turning leaf and its temporary copy.
+ *
+ * `Settings.getSettings` already ran the full check, so this is a second line
+ * rather than the first: `getSettings()` hands back the live settings object,
+ * and assigning to it skips validation entirely and puts the value straight in
+ * front of the fold. `CSS.supports` parses, and this runs for every page on
+ * every frame, so only the cheap half is repeated here.
+ */
+export const foldFill = normalizePageBackground;

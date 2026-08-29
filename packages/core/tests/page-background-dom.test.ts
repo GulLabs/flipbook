@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_PAGE_BACKGROUND, safePageBackground } from '@gullabs/flipbook-core';
-import { foldFill } from '../src/Render/pageBackground';
+import { DEFAULT_PAGE_BACKGROUND, PageFlip, safePageBackground } from '@gullabs/flipbook-core';
 
 /**
  * The safe-colour pattern accepts any short word as a named colour, but only
@@ -58,10 +57,30 @@ describe('the guards hold where the platform is odd or the caller misbehaves', (
    * translucent value reaching the fold that way — the §4.2 bug.
    */
   test('a settings object mutated behind updateSettings still cannot show through', () => {
-    expect(foldFill('rgba(0, 0, 0, 0.4)')).toBe(DEFAULT_PAGE_BACKGROUND);
-    expect(foldFill('#ffffff00')).toBe(DEFAULT_PAGE_BACKGROUND);
-    expect(foldFill('transparent')).toBe(DEFAULT_PAGE_BACKGROUND);
-    expect(foldFill('url(javascript:alert(1))')).toBe(DEFAULT_PAGE_BACKGROUND);
-    expect(foldFill('#f4ecd8')).toBe('#f4ecd8');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+
+    const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
+    const leaves = [document.createElement('div'), document.createElement('div')];
+    book.loadFromHTML(leaves);
+
+    // The vector: the getter hands back the live object, so this reaches the
+    // renderer without passing through `Settings.getSettings` at all.
+    book.getSettings().pageBackground = 'rgba(0, 0, 0, 0.4)';
+
+    const page = book.getPage(0);
+    page.simpleDraw(1);
+    expect(leaves[0]?.style.backgroundColor).toBe('rgb(255, 255, 255)');
+
+    page.draw();
+    expect(leaves[0]?.style.backgroundColor).toBe('rgb(255, 255, 255)');
+
+    // A legitimate value is still honoured through the same path.
+    book.getSettings().pageBackground = '#f4ecd8';
+    page.simpleDraw(1);
+    expect(leaves[0]?.style.backgroundColor).toBe('rgb(244, 236, 216)');
+
+    book.destroy();
+    host.remove();
   });
 });
