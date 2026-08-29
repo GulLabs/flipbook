@@ -26,3 +26,39 @@ describe('HTMLUI.updateItems (shipped)', () => {
     host.remove();
   });
 });
+
+describe('clear() and the framework that owns the leaves', () => {
+  /**
+   * The React binding portals its pages into `.stf__block`, so React's recorded
+   * parent for those nodes *is* that block. `clear()` moved them back to the
+   * host element, which silently invalidates that: React's next removal or
+   * reorder throws `NotFoundError` — the exact failure the portal was
+   * introduced to fix.
+   *
+   * Leaves the engine adopted itself (the vanilla path, where the caller
+   * handed us detached nodes) still go back where they came from.
+   */
+  test('a page the caller still parents is left where the caller put it', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+
+    const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML([]);
+
+    const block = book.getUI().getDistElement();
+
+    // A framework-owned leaf: created inside the block, never adopted from
+    // elsewhere — exactly what createPortal produces.
+    const portalled = document.createElement('div');
+    portalled.dataset['owner'] = 'framework';
+    block.appendChild(portalled);
+
+    book.updateFromHtml([portalled]);
+    book.clear();
+
+    expect(portalled.parentElement).toBe(block);
+
+    book.destroy();
+    host.remove();
+  });
+});

@@ -6,6 +6,18 @@ All notable changes to this monorepo will be documented in this file.
 
 ### Fixed
 
+- Canvas mode no longer paints the turning page twice. `ImagePage.newTemporaryCopy()`
+  returns `this`, so the mover and the leaf beneath it are routinely the same
+  object there, and `CanvasRender` drew the bottom page unconditionally — an
+  unclipped copy sat under the turning image and vanished only when the turn
+  finished. `HTMLRender` has guarded this since the §4.1 fix; the guard now
+  applies to both. ([StPageFlip #44](https://github.com/Nodlik/StPageFlip/issues/44))
+- `clear()` releases only the leaves the engine actually adopted. It moved
+  everything in `.stf__block` back to the host element, including pages a
+  framework had rendered there itself — React portals its pages into that
+  block, so `clear()` invalidated React's recorded parent and the next removal
+  or reorder threw `NotFoundError`, the exact failure the portal prevents.
+
 - A refused **click** now reports `turnRejected`. `userStop` discarded the
   result of the turn, so the event fired only for programmatic
   `flipNext`/`flipPrev` — the most common way a turn gets refused was silent.

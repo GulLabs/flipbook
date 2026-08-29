@@ -217,3 +217,53 @@ describe('canvas mode', () => {
     book.destroy();
   });
 });
+
+describe('canvas mode: the leaf under the fold (StPageFlip #44)', () => {
+  let host: HTMLElement;
+
+  beforeEach(() => {
+    stubCanvas2d();
+    host = document.createElement('div');
+    document.body.appendChild(host);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    host.remove();
+  });
+
+  /**
+   * `ImagePage.newTemporaryCopy()` returns `this`, so in canvas mode the
+   * flipping page and the page beneath it are routinely the *same object*.
+   * `HTMLRender` guards that with `shouldDrawBottomPage`; `CanvasRender` drew
+   * the bottom page unconditionally, so the turning image was painted twice —
+   * once unclipped underneath, once clipped and rotating on top.
+   *
+   * Upstream: "the same image is visible under it and disappears only after
+   * flipping is over" — https://github.com/Nodlik/StPageFlip/issues/44
+   */
+  test('the same page is not painted twice when it is its own bottom page', async () => {
+    const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
+    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+
+    const render = book.getRender() as unknown as {
+      flippingPage: unknown;
+      bottomPage: unknown;
+      drawFrame: () => void;
+    };
+
+    const page = book.getPage(1) as unknown as { draw: (d?: unknown) => void };
+    const draws: string[] = [];
+    page.draw = () => draws.push('draw');
+
+    // The hard-cover shape: one leaf is both the mover and the leaf beneath.
+    render.flippingPage = page;
+    render.bottomPage = page;
+
+    render.drawFrame();
+
+    expect(draws).toHaveLength(1);
+
+    book.destroy();
+  });
+});

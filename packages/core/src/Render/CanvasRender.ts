@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Orientation, Render, type Shadow } from './Render';
+import { shouldDrawBottomPage } from './bottomPage';
 import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { PageOrientation } from '../Page/Page';
@@ -42,7 +43,13 @@ export class CanvasRender extends Render {
 
     if (this.rightPage != null) this.rightPage.simpleDraw(PageOrientation.RIGHT);
 
-    if (this.bottomPage != null) this.bottomPage.draw();
+    // Same guard the HTML renderer uses. `ImagePage.newTemporaryCopy()` returns
+    // `this`, so the mover and the leaf beneath it are routinely the same
+    // object here; painting it twice put an unclipped copy under the turning
+    // page — StPageFlip#44, "the same image is visible under it".
+    if (shouldDrawBottomPage(this.flippingPage, this.bottomPage)) {
+      this.bottomPage?.draw();
+    }
 
     this.drawBookShadow();
 

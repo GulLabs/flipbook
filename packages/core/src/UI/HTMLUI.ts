@@ -12,6 +12,17 @@ import type { FlipSetting } from '../Settings';
 export class HTMLUI extends UI {
   private items: NodeListOf<HTMLElement> | HTMLElement[];
 
+  /**
+   * Leaves this UI moved into `.stf__block` itself.
+   *
+   * A leaf that was already inside the block belongs to whoever put it there —
+   * React's portal renders its pages straight into it — and `clear()` must
+   * leave those alone. Releasing them would move nodes out from under React's
+   * recorded parent, and the next removal or reorder throws `NotFoundError`:
+   * exactly the failure the portal exists to prevent.
+   */
+  private readonly adopted = new Set<HTMLElement>();
+
   constructor(
     inBlock: HTMLElement,
     app: PageFlip,
@@ -32,16 +43,28 @@ export class HTMLUI extends UI {
 
     this.items = items;
     for (const item of items) {
-      dist.appendChild(item);
+      this.adopt(item);
     }
 
     this.setHandlers();
   }
 
   public clear(): void {
-    for (const item of this.items) {
+    // Hand back only what we took. See `adopted`.
+    for (const item of this.adopted) {
       this.parentElement.appendChild(item);
     }
+
+    this.adopted.clear();
+  }
+
+  /** Move a leaf into the block, remembering that we were the one who moved it. */
+  private adopt(item: HTMLElement): void {
+    const dist = this.distElement;
+    if (item.parentElement === dist) return;
+
+    this.adopted.add(item);
+    dist.appendChild(item);
   }
 
   /**
@@ -52,7 +75,7 @@ export class HTMLUI extends UI {
   public updateItems(items: NodeListOf<HTMLElement> | HTMLElement[]): void {
     this.removeHandlers();
 
-    const next = new Set<HTMLElement>(Array.from(items));
+    const next = new Set<HTMLElement>(items);
 
     // Drop only the leaves we adopted last time. `innerHTML = ''` also wiped
     // the render's shadow elements, and it deletes nodes a framework may
@@ -60,14 +83,12 @@ export class HTMLUI extends UI {
     for (const previous of Array.from(this.items)) {
       if (!next.has(previous) && previous.parentElement === this.distElement) {
         previous.remove();
+        this.adopted.delete(previous);
       }
     }
 
-    const dist = this.getDistElement();
     for (const item of items) {
-      if (item.parentElement !== dist) {
-        dist.appendChild(item);
-      }
+      this.adopt(item);
     }
 
     this.items = items;

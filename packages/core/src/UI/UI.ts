@@ -9,7 +9,6 @@ import { SizeType } from '../Settings';
 import { FlipCorner, FlippingState } from '../Flip/Flip';
 import { Orientation } from '../Render/Render';
 import { ensureFlipbookStyles } from '../styles';
-import { PageFlipError } from '../errors';
 import { FLIPBOOK_INTERACTIVE_SELECTOR } from '../interactive';
 
 type SwipeData = {
@@ -146,16 +145,18 @@ export abstract class UI {
     this.wrapper.style.paddingBottom = `${(setting.height / spreadWidth) * 100}%`;
   }
 
-  /** Book orientation, or `null` before a render exists. */
+  /**
+   * Book orientation, or `null` before a render exists.
+   *
+   * `UI` is constructed before `attachMode` wires up the render, so this runs
+   * with nothing behind it during construction. The controller is set in the
+   * same step as the render, so asking whether it exists is the same question
+   * — and unlike catching, it cannot swallow a real fault by accident.
+   */
   private currentOrientation(): Orientation | null {
-    try {
-      return this.app.getRender().getOrientation();
-    } catch (err: unknown) {
-      // Only "there is no render yet" is expected here, during construction.
-      // Anything else is a real fault and must not be read as an orientation.
-      if (err instanceof PageFlipError && err.code === 'NOT_LOADED') return null;
-      throw err;
-    }
+    if (this.app.getFlipController() === null) return null;
+
+    return this.app.getRender().getOrientation();
   }
 
   public destroy(): void {
