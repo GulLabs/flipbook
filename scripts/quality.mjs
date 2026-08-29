@@ -33,12 +33,12 @@ if (missing.length > 0) {
 
 // Soft check: warn if publishable packages still point at upstream, but do not
 // fail while package modernization is in flight on another branch/agent.
-const expected = 'GulLabs/flipbook';
+const expected = 'gul-labs/flipbook';
 for (const dir of ['packages/core', 'packages/react']) {
   const pkg = JSON.parse(readFileSync(join(root, dir, 'package.json'), 'utf8'));
   const url = String(pkg.repository?.url ?? pkg.repository ?? '');
   if (!url.includes(expected)) {
-    console.warn(`${dir}: repository.url is not yet GulLabs/flipbook (${url || 'missing'})`);
+    console.warn(`${dir}: repository.url is not yet gul-labs/flipbook (${url || 'missing'})`);
   }
 }
 
