@@ -7,6 +7,7 @@ import type { PageDensity } from './Page';
 import { Page, PageOrientation } from './Page';
 import type { Render } from '../Render/Render';
 import type { Point } from '../BasicTypes';
+import { foldFill } from '../Render/pageBackground';
 
 /**
  * Class representing a book page as an image on Canvas
@@ -46,6 +47,13 @@ export class ImagePage extends Page {
 
     ctx.clip();
 
+    // The turning leaf is paper before it is art. Without this the bitmap is
+    // painted straight onto the already-drawn page beneath, so a transparent
+    // PNG reads through the fold — the §4.2 bug `pageBackground` exists to
+    // prevent, which was fixed for HTML and missed here.
+    ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
+    ctx.fillRect(0, 0, pageWidth, pageHeight);
+
     if (!this.isLoad) {
       this.drawLoader(ctx, { x: 0, y: 0 }, pageWidth, pageHeight);
     } else {
@@ -66,6 +74,10 @@ export class ImagePage extends Page {
 
     const y = rect.top;
 
+    // Static leaves are opaque paper too — same reason as `draw()`.
+    ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
+    ctx.fillRect(x, y, pageWidth, pageHeight);
+
     if (!this.isLoad) {
       this.drawLoader(ctx, { x, y }, pageWidth, pageHeight);
     } else {
@@ -81,7 +93,9 @@ export class ImagePage extends Page {
   ): void {
     ctx.beginPath();
     ctx.strokeStyle = 'rgb(200, 200, 200)';
-    ctx.fillStyle = 'rgb(255, 255, 255)';
+    // Was hardcoded white, which flashed over a custom `pageBackground` for as
+    // long as the image took to arrive.
+    ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
     ctx.lineWidth = 1;
     ctx.rect(shiftPos.x + 1, shiftPos.y + 1, pageWidth - 1, pageHeight - 1);
     ctx.stroke();
@@ -121,8 +135,11 @@ export class ImagePage extends Page {
     return this;
   }
 
-  public getTemporaryCopy(): Page {
-    return this;
+  public getTemporaryCopy(): Page | null {
+    // An image page has no temporary copy: `newTemporaryCopy()` returns `this`.
+    // Returning `this` here handed a null-checking caller a truthy non-copy.
+    // (A1 will give canvas a real mover; until then, honest is null.)
+    return null;
   }
 
   public hideTemporaryCopy(): void {

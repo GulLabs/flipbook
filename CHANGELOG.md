@@ -4,6 +4,40 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Fixed — canvas renderer (first-class work, ahead of the phased plan)
+
+Found by the audit in `docs/CANVAS_FIRST_CLASS.md`. Each fix has a unit test
+that was **observed failing with the fix reverted**, then restored.
+
+- Canvas frame state no longer leaks between frames. The portrait clip was
+  applied at the _end_ of `drawFrame()` with no `restore()`, so it could not
+  affect the frame that set it — it constrained every later frame, including
+  that frame's `clear()`, leaving stale pixels outside the clip. The frame is
+  now bracketed by `save()`/`restore()` (guaranteed by `finally`) and the clip
+  is established before anything is painted, which is what upstream intended.
+- A turning image leaf is opaque paper. `ImagePage` painted its bitmap straight
+  onto the already-drawn page beneath, so a transparent PNG read through the
+  fold — the same §4.2 bug `pageBackground` exists to prevent, fixed for HTML
+  and missed for canvas. Both the turning and static paths now fill with
+  `pageBackground` first.
+- The loading placeholder no longer flashes white. `drawLoader` hardcoded
+  `rgb(255, 255, 255)`, which sat over a custom `pageBackground` for as long as
+  the image took to arrive.
+- `PageFlip.clear()` works in canvas mode. It cast the active UI to `HTMLUI`
+  unconditionally; `CanvasUI` has no `clear()`, so a public method threw a
+  TypeError in one of the two supported modes.
+- A slow `loadFromImages` can no longer replace a newer mode. Both image entry
+  points await a dynamic import and guarded only `destroyed`, so a load started
+  first could resolve later and call `attachMode()` over a newer
+  `loadFromHTML`. Every mode-replacing operation now bumps a load generation
+  that stale continuations must still match.
+- `attachMode()` releases the previous page collection instead of overwriting
+  the reference — for canvas that leaked every decoded image on a second load
+  or a mode switch.
+- `ImagePage.getTemporaryCopy()` returns `null` rather than `this`. An image
+  page has no temporary copy, and returning itself handed a null-checking
+  caller a truthy non-copy.
+
 ### Fixed
 
 - Canvas mode no longer paints the turning page twice. `ImagePage.newTemporaryCopy()`

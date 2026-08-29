@@ -346,3 +346,123 @@ describe('canvas mode honours pageBackground (StPageFlip #56)', () => {
     book.destroy();
   });
 });
+
+describe('canvas frame state and paper (r4 defect batch)', () => {
+  let host: HTMLElement;
+
+  beforeEach(() => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    host.remove();
+  });
+
+  test('G1: the frame is bracketed, and the portrait clip is set before painting', async () => {
+    const ctx = stubCanvas2d();
+    const order: string[] = [];
+    for (const name of ['save', 'restore', 'clip', 'fillRect', 'drawImage'] as const) {
+      ctx[name].mockImplementation(() => {
+        order.push(name);
+      });
+    }
+
+    const book = new PageFlip(host, { width: 100, height: 150, usePortrait: true });
+    await book.loadFromImages(['a.png', 'b.png']);
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+
+    // Balanced: every save is matched. Upstream clipped after painting and
+    // never restored, so the clip leaked into the next frame's clear().
+    expect(order.filter((c) => c === 'save').length).toBe(
+      order.filter((c) => c === 'restore').length,
+    );
+
+    // A frame opens with save() and the portrait clip is established before any
+    // page paint, rather than after every paint as upstream did.
+    expect(order[0]).toBe('save');
+
+    const firstClip = order.indexOf('clip');
+    const lastPaint = Math.max(order.lastIndexOf('fillRect'), order.lastIndexOf('drawImage'));
+    expect(firstClip).toBeGreaterThanOrEqual(0);
+    expect(lastPaint).toBeGreaterThan(firstClip);
+
+    book.destroy();
+  });
+
+  test('G2/G9: leaf paper and loader both use pageBackground, never white', async () => {
+    const ctx = stubCanvas2d();
+    // Kept apart on purpose: page paper is painted with fillRect() (G2) and the
+    // loader placeholder with fill() (G9). Pooling them let each test pass with
+    // the other's fix present — the pool always contained the right colour.
+    const rectFills: string[] = [];
+    const pathFills: string[] = [];
+    const rectCalls: { style: string; w: number; h: number }[] = [];
+    ctx.fillRect.mockImplementation((_x: number, _y: number, w: number, h: number) => {
+      rectFills.push(String(ctx.fillStyle));
+      rectCalls.push({ style: String(ctx.fillStyle), w, h });
+    });
+    ctx.fill.mockImplementation(() => {
+      pathFills.push(String(ctx.fillStyle));
+    });
+
+    const book = new PageFlip(host, {
+      width: 100,
+      height: 150,
+      usePortrait: true,
+      pageBackground: '#f5f0e6',
+    });
+    await book.loadFromImages(['a.png', 'b.png']);
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+
+    // G2: the leaf itself is opaque paper, so a transparent PNG cannot read
+    // through to the page beneath. Must be a *page-sized* fill: CanvasRender
+    // .clear() also fillRects the whole canvas in pageBackground (#56), and
+    // matching on colour alone let this pass with the page fill deleted.
+    const rect = book.getBoundsRect();
+    const paperFills = rectCalls.filter(
+      (c) => Math.abs(c.w - rect.pageWidth) < 1 && Math.abs(c.h - rect.height) < 1,
+    );
+    expect(paperFills.length).toBeGreaterThan(0);
+    expect(paperFills.every((c) => c.style === '#f5f0e6')).toBe(true);
+    expect(rectFills).not.toContain('rgb(255, 255, 255)');
+
+    // G9: the loader placeholder used to paint rgb(255,255,255) over custom
+    // paper for as long as the image took to arrive.
+    expect(pathFills).toContain('#f5f0e6');
+    expect(pathFills).not.toContain('rgb(255, 255, 255)');
+
+    book.destroy();
+  });
+
+  test('G5: clear() works in canvas mode instead of throwing on an HTMLUI cast', async () => {
+    stubCanvas2d();
+    const book = new PageFlip(host, { width: 100, height: 150 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    expect(() => {
+      book.clear();
+    }).not.toThrow();
+
+    book.destroy();
+  });
+
+  test('G8: a slow image load cannot replace a newer HTML mode', async () => {
+    stubCanvas2d();
+    const book = new PageFlip(host, { width: 100, height: 150 });
+
+    const pending = book.loadFromImages(['a.png', 'b.png']);
+    // The newer load wins even though it starts while the import is in flight.
+    const nodes = [document.createElement('div'), document.createElement('div')];
+    for (const n of nodes) host.appendChild(n);
+    book.loadFromHTML(nodes);
+
+    await pending;
+
+    // The stale canvas continuation must not have re-attached over HTML mode.
+    expect(host.querySelector('canvas')).toBeNull();
+
+    book.destroy();
+  });
+});

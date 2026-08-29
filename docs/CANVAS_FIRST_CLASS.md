@@ -172,17 +172,18 @@ phase. Documentation belongs to **each applicable owning phase** (AGENTS.md §3)
 a final catch-all: user-visible behaviour requires a `CHANGELOG.md` entry, and
 **only public API changes** require `MIGRATION.md`.
 
-| #   | Phase                                                                 | Status |
-| --- | --------------------------------------------------------------------- | ------ |
-| 0   | Browser harness + built-artifact smoke                                | `todo` |
-| 1   | Frame isolation (G1), DPR (B1), fractional/zero sizing (B2)           | `todo` |
-| 2   | **Owner API gate**, descriptor, A1 portrait BACK, shared resource     | `todo` |
-| 3   | Image errors (A4), lazy loading, eviction, disposal (G3, G4)          | `todo` |
-| 4   | Mode generation (G8), cross-mode guards, clear/update/shrink (G5, G6) | `todo` |
-| 5   | Fit, inset, page-local opacity (A3, G2) + E2 investigation            | `todo` |
-| 6   | Hard-page rendering (A2)                                              | `todo` |
-| 7   | Idle scheduler (C1)                                                   | `todo` |
-| 8   | Accessible `ImageFlipBook` (D1, F1), examples, final docs (F3, F4)    | `todo` |
+| #   | Phase                                                                  | Status |
+| --- | ---------------------------------------------------------------------- | ------ |
+| —   | **Landed ahead of the phases:** G1, G2, G5, G8, G9, A5 (see CHANGELOG) | `done` |
+| 0   | Browser harness + built-artifact smoke                                 | `todo` |
+| 1   | Frame isolation (G1), DPR (B1), fractional/zero sizing (B2)            | `todo` |
+| 2   | **Owner API gate**, descriptor, A1 portrait BACK, shared resource      | `todo` |
+| 3   | Image errors (A4), lazy loading, eviction, disposal (G3, G4)           | `todo` |
+| 4   | Mode generation (G8), cross-mode guards, clear/update/shrink (G5, G6)  | `todo` |
+| 5   | Fit, inset, page-local opacity (A3, G2) + E2 investigation             | `todo` |
+| 6   | Hard-page rendering (A2)                                               | `todo` |
+| 7   | Idle scheduler (C1)                                                    | `todo` |
+| 8   | Accessible `ImageFlipBook` (D1, F1), examples, final docs (F3, F4)     | `todo` |
 
 Frame isolation and DPR precede the portrait fix: a leaking clip and a
 half-resolution backing store would corrupt the pixel evidence Phase 2 depends

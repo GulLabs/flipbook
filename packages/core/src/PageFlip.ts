@@ -45,6 +45,15 @@ export class PageFlip extends EventObject {
   private destroyed = false;
 
   /**
+   * Bumped by every operation that replaces or tears down the current mode.
+   * `loadFromImages` / `updateFromImages` await a dynamic import, so a load
+   * started before a newer one could still call `attachMode` afterwards and
+   * silently replace the newer mode. A continuation may only act if the
+   * generation it captured is still current.
+   */
+  private loadGeneration = 0;
+
+  /**
    * Create a new PageFlip instance
    *
    * @constructor
@@ -154,9 +163,12 @@ export class PageFlip extends EventObject {
       return;
     }
     // Replace any previous mode wholesale so a second load cannot leave the
-    // old UI listening on the host element.
+    // old UI listening on the host element. The collection goes too: it was
+    // simply overwritten below, so a second load or a mode switch leaked every
+    // page it held — which for canvas means every decoded image.
     this.ui?.destroy();
     this.render?.stop();
+    this.pages?.destroy();
 
     this.ui = ui;
     this.render = render;
@@ -185,7 +197,15 @@ export class PageFlip extends EventObject {
    * downloads it. Budgets live in `packages/core/package.json`; the enforced
    * one is brotli, which is what a consumer actually pays for.
    */
+  /** Claim the next generation; the caller's continuation must still match it. */
+  private nextGeneration(): number {
+    this.loadGeneration += 1;
+    return this.loadGeneration;
+  }
+
   public loadFromImages(imagesHref: string[]): Promise<void> {
+    const generation = this.nextGeneration();
+
     return import('./canvas-loader')
       .catch((err: unknown) => {
         throw new PageFlipError(
@@ -194,7 +214,7 @@ export class PageFlip extends EventObject {
         );
       })
       .then((m) => {
-        if (this.destroyed) return;
+        if (this.destroyed || generation !== this.loadGeneration) return;
         m.loadFromImages(this, imagesHref);
       });
   }
@@ -205,6 +225,8 @@ export class PageFlip extends EventObject {
    * @param {(NodeListOf<HTMLElement>|HTMLElement[])} items - List of pages as HTML Element
    */
   public loadFromHTML(items: NodeListOf<HTMLElement> | HTMLElement[]): void {
+    this.nextGeneration();
+
     const ui = new HTMLUI(this.block, this, this.setting, items);
     const render = new HTMLRender(this, this.setting, ui.getDistElement());
     const pages = new HTMLPageCollection(this, render, ui.getDistElement(), items);
@@ -217,6 +239,8 @@ export class PageFlip extends EventObject {
    * @param {string[]} imagesHref - List of paths to images
    */
   public updateFromImages(imagesHref: string[]): Promise<void> {
+    const generation = this.nextGeneration();
+
     return import('./canvas-loader')
       .catch((err: unknown) => {
         throw new PageFlipError(
@@ -225,7 +249,7 @@ export class PageFlip extends EventObject {
         );
       })
       .then((m) => {
-        if (this.destroyed) return;
+        if (this.destroyed || generation !== this.loadGeneration) return;
         m.updateFromImages(this, imagesHref);
       });
   }
@@ -236,6 +260,7 @@ export class PageFlip extends EventObject {
    * @param {(NodeListOf<HTMLElement>|HTMLElement[])} items - List of pages as HTML Element
    */
   public updateFromHtml(items: NodeListOf<HTMLElement> | HTMLElement[]): void {
+    this.nextGeneration();
     const render = this.renderOrThrow;
     const ui = this.uiOrThrow;
     const previous = this.pagesOrThrow;
@@ -291,8 +316,14 @@ export class PageFlip extends EventObject {
    * Clear pages from HTML (remove to initinalState)
    */
   public clear(): void {
+    this.nextGeneration();
+    const ui = this.uiOrThrow;
+
     this.pagesOrThrow.destroy();
-    (this.uiOrThrow as HTMLUI).clear();
+    // Was an unconditional `as HTMLUI` cast. `CanvasUI` has no `clear()`, so
+    // this threw a TypeError in canvas mode — a public method that could not be
+    // called in one of the two supported modes.
+    if (ui instanceof HTMLUI) ui.clear();
   }
 
   /**

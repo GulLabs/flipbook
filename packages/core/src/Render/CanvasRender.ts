@@ -37,38 +37,50 @@ export class CanvasRender extends Render {
   }
 
   protected drawFrame(): void {
-    this.clear();
+    // The whole frame is bracketed by save/restore. Upstream applied the
+    // portrait clip at the *end* of this method with no restore, so it could
+    // not affect the frame that set it — it constrained every *later* frame,
+    // including that frame's `clear()`, leaving stale pixels outside the clip.
+    // Correctness rested on a canvas resize happening to reset context state.
+    // `finally` guarantees the balance even if a page's draw throws.
+    this.ctx.save();
+    try {
+      this.clear();
 
-    if (this.orientation !== Orientation.PORTRAIT)
-      if (this.leftPage != null) this.leftPage.simpleDraw(PageOrientation.LEFT);
+      // Portrait shows one leaf, so drawing is clipped to it — before anything
+      // is painted, which is what upstream intended and never achieved.
+      if (this.orientation === Orientation.PORTRAIT) {
+        const rect = this.getRect();
 
-    if (this.rightPage != null) this.rightPage.simpleDraw(PageOrientation.RIGHT);
+        this.ctx.beginPath();
+        this.ctx.rect(rect.left + rect.pageWidth, rect.top, rect.width, rect.height);
+        this.ctx.clip();
+      } else if (this.leftPage != null) {
+        this.leftPage.simpleDraw(PageOrientation.LEFT);
+      }
 
-    // Same guard the HTML renderer uses. `ImagePage.newTemporaryCopy()` returns
-    // `this`, so the mover and the leaf beneath it are routinely the same
-    // object here; painting it twice put an unclipped copy under the turning
-    // page — StPageFlip#44, "the same image is visible under it".
-    if (shouldDrawBottomPage(this.flippingPage, this.bottomPage)) {
-      this.bottomPage?.draw();
-    }
+      if (this.rightPage != null) this.rightPage.simpleDraw(PageOrientation.RIGHT);
 
-    this.drawBookShadow();
+      // Same guard the HTML renderer uses. `ImagePage.newTemporaryCopy()` returns
+      // `this`, so the mover and the leaf beneath it are routinely the same
+      // object here; painting it twice put an unclipped copy under the turning
+      // page — StPageFlip#44, "the same image is visible under it".
+      if (shouldDrawBottomPage(this.flippingPage, this.bottomPage)) {
+        this.bottomPage?.draw();
+      }
 
-    if (this.flippingPage != null) this.flippingPage.draw();
+      this.drawBookShadow();
 
-    const shadow = this.shadow;
+      if (this.flippingPage != null) this.flippingPage.draw();
 
-    if (shadow !== null) {
-      this.drawOuterShadow(shadow);
-      this.drawInnerShadow(shadow);
-    }
+      const shadow = this.shadow;
 
-    const rect = this.getRect();
-
-    if (this.orientation === Orientation.PORTRAIT) {
-      this.ctx.beginPath();
-      this.ctx.rect(rect.left + rect.pageWidth, rect.top, rect.width, rect.height);
-      this.ctx.clip();
+      if (shadow !== null) {
+        this.drawOuterShadow(shadow);
+        this.drawInnerShadow(shadow);
+      }
+    } finally {
+      this.ctx.restore();
     }
   }
 
