@@ -7,7 +7,6 @@ import type { Render } from '../Render/Render';
 import { rotatePoint } from '../Helper';
 import { FlipDirection } from '../Flip/Flip';
 import type { Point } from '../BasicTypes';
-import { foldFill, foldFillCss } from '../Render/pageBackground';
 
 /**
  * Class representing a book page as a HTML Element
@@ -35,7 +34,7 @@ export class HTMLPage extends Page {
 
     if (this.temporaryCopy === null) {
       this.copiedElement = this.element.cloneNode(true) as HTMLElement;
-      this.copiedElement.style.backgroundColor = foldFill(this.render.getSettings().pageBackground);
+      this.copiedElement.style.backgroundColor = this.render.getSettings().pageBackground;
       this.element.parentElement?.appendChild(this.copiedElement);
 
       this.temporaryCopy = new HTMLPage(this.render, this.copiedElement, this.nowDrawingDensity);
@@ -65,7 +64,7 @@ export class HTMLPage extends Page {
 
     this.element.classList.remove('--simple');
 
-    const commonStyle = `display:block;z-index:${this.element.style.zIndex};left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;${foldFillCss(this.render.getSettings().pageBackground)}`;
+    const commonStyle = `display:block;z-index:${this.element.style.zIndex};left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;background-color:${this.render.getSettings().pageBackground};`;
 
     if (density === PageDensity.HARD) {
       this.drawHard(commonStyle);
@@ -134,7 +133,7 @@ export class HTMLPage extends Page {
     // the fold read through at the start / end of a turn.
     this.element.style.cssText =
       `position:absolute;display:block;height:${pageHeight}px;left:${x}px;top:${y}px;` +
-      `width:${pageWidth}px;${foldFillCss(this.render.getSettings().pageBackground)}` +
+      `width:${pageWidth}px;background-color:${this.render.getSettings().pageBackground};` +
       `z-index:${this.render.getSettings().startZIndex + 1};`;
   }
 

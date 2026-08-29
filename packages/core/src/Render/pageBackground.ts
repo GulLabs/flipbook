@@ -78,6 +78,14 @@ export function safePageBackground(pageBackground?: string): string {
 
   if (value.length === 0) return DEFAULT_PAGE_BACKGROUND;
   if (!SAFE_CSS_COLOR.test(value)) return DEFAULT_PAGE_BACKGROUND;
+  // The pattern accepts any short word as a named colour, but only ~148 names
+  // are real. An invented one fails silently everywhere it matters: CSS drops
+  // the declaration (transparent fold — the §4.2 bug) and canvas keeps the
+  // previous `fillStyle`. Ask the platform where it can answer; in Node it
+  // cannot, and the pattern stands alone as it did before.
+  if (typeof CSS !== 'undefined' && !CSS.supports('color', value)) {
+    return DEFAULT_PAGE_BACKGROUND;
+  }
   if (!isOpaquePageBackground(value)) return DEFAULT_PAGE_BACKGROUND;
 
   return value;

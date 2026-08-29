@@ -28,8 +28,6 @@ export type { Curl, CurlCorner } from './geometry';
 export { getPortraitFlippingPage } from './Collection/flippingPage';
 export { shouldDrawBottomPage } from './Render/bottomPage';
 export {
-  foldFill,
-  foldFillCss,
   isOpaquePageBackground,
   safePageBackground,
   DEFAULT_PAGE_BACKGROUND,

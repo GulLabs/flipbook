@@ -872,10 +872,15 @@ describe("engine teardown does not steal React's nodes", () => {
    * deletes those nodes invalidates that, and React throws `NotFoundError` on
    * its next removal or reorder — the failure the portal exists to prevent.
    *
-   * `clear()` is reachable through the handle, and `updateFromHtml` with fewer
-   * pages runs the engine's own removal path. Both are exercised here through
-   * real React reconciliation rather than a hand-built node, so the assertion
-   * is "React can still edit its own children afterwards".
+   * `clear()` is reachable through the handle, so this exercises that guard
+   * through real React reconciliation rather than a hand-built node: the
+   * assertion is "React can still edit its own children afterwards".
+   *
+   * It does *not* cover `updateItems`' removal path — React unmounts the
+   * dropped portal child before the effect calls `updateFromHtml`, so the node
+   * has already left the block by then. That guard matters for callers who
+   * parent their own nodes and shrink the list themselves, and it is pinned in
+   * packages/core/tests/htmlui-update-items.test.ts.
    */
   test('clear() then a children change still reconciles', async () => {
     const handleRef = createRef<FlipBookHandle | null>();

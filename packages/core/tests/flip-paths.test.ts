@@ -208,12 +208,32 @@ describe('programmatic turns ignore click policy (StPageFlip #29)', () => {
    * click policy lives in `PageFlip.userStop` rather than `Flip.flip` — so this
    * pins both against a refactor that reintroduces either.
    */
-  test('flipNext and flipPrev work with disableFlipByClick, at any book offset', () => {
-    const { book: app } = book({
+  test('flipNext and flipPrev work with disableFlipByClick on an offset book', () => {
+    const { book: app, host } = book({
       pageCount: 6,
       flippingTime: 0,
       disableFlipByClick: true,
     });
+
+    // Upstream's synthetic point was in global coordinates, so the corner test
+    // only passed for a book sitting at x=0. Push the book right: with the
+    // policy correctly out of `Flip.flip`, the offset is irrelevant; with it
+    // back in, `x: 0` converts to a negative book coordinate and the corner
+    // test refuses the turn.
+    const rect = host.getBoundingClientRect();
+    host.getBoundingClientRect = () =>
+      ({
+        ...rect.toJSON(),
+        x: 500,
+        left: 500,
+        right: 500 + rect.width,
+        width: rect.width,
+        height: rect.height,
+        top: rect.top,
+        bottom: rect.bottom,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    app.update();
 
     const rejected: unknown[] = [];
     app.on('turnRejected', (e) => rejected.push(e.data));

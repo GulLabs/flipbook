@@ -12,6 +12,14 @@ All notable changes to this monorepo will be documented in this file.
   unclipped copy sat under the turning image and vanished only when the turn
   finished. `HTMLRender` has guarded this since the §4.1 fix; the guard now
   applies to both. ([StPageFlip #44](https://github.com/Nodlik/StPageFlip/issues/44))
+- `pageBackground` is validated against the platform's own colour parser where
+  one exists (`CSS.supports`). The safe-value pattern accepts any short word as
+  a named colour, but only ~148 are real, and an invented one fails silently in
+  exactly the place it matters: CSS drops the declaration, leaving a
+  transparent fold — the §4.2 bug the setting exists to prevent — and canvas
+  keeps whatever `fillStyle` was there before.
+- Validation happens once, in `Settings.getSettings`, instead of on every draw.
+  The renderers were re-sanitising an already-safe value per page per frame.
 - Canvas mode honours `pageBackground`. The setting is this fork's own and was
   wired only into the HTML renderer, so a cream-paper book came out white on
   canvas. ([StPageFlip #56](https://github.com/Nodlik/StPageFlip/issues/56))
