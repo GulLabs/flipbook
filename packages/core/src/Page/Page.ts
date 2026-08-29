@@ -183,6 +183,17 @@ export abstract class Page {
     return this.state.hardAngle;
   }
 
+  /**
+   * Release anything the page owns beyond its own object graph.
+   *
+   * Default is a no-op — an `HTMLPage` borrows a node the host owns. An
+   * `ImagePage` owns a decoded bitmap and pending load callbacks, so it
+   * overrides this.
+   */
+  public dispose(): void {
+    this.hideTemporaryCopy();
+  }
+
   public abstract newTemporaryCopy(): Page;
   public abstract getTemporaryCopy(): Page | null;
   public abstract hideTemporaryCopy(): void;

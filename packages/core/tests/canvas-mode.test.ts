@@ -363,7 +363,7 @@ describe('canvas frame state and paper (r4 defect batch)', () => {
   test('G1: the frame is bracketed, and the portrait clip is set before painting', async () => {
     const ctx = stubCanvas2d();
     const order: string[] = [];
-    for (const name of ['save', 'restore', 'clip', 'fillRect', 'drawImage'] as const) {
+    for (const name of ['save', 'restore', 'clip', 'fillRect', 'drawImage', 'fill'] as const) {
       ctx[name].mockImplementation(() => {
         order.push(name);
       });
@@ -379,14 +379,21 @@ describe('canvas frame state and paper (r4 defect batch)', () => {
       order.filter((c) => c === 'restore').length,
     );
 
-    // A frame opens with save() and the portrait clip is established before any
-    // page paint, rather than after every paint as upstream did.
+    // A frame opens with save(). The portrait clip must precede the FIRST page
+    // paint — asserting "before the last paint" proved nothing, because
+    // drawBookShadow() itself clips and paints after the leaves.
     expect(order[0]).toBe('save');
 
+    // `fill()` is the unambiguous page-paint marker: only the leaf placeholder
+    // uses it. `fillRect` is ambiguous — CanvasRender.clear() legitimately
+    // fillRects the whole canvas BEFORE the clip, which is why an earlier
+    // version of this assertion could not tell the two apart.
     const firstClip = order.indexOf('clip');
-    const lastPaint = Math.max(order.lastIndexOf('fillRect'), order.lastIndexOf('drawImage'));
+    const firstPagePaint = order.indexOf('fill');
+
     expect(firstClip).toBeGreaterThanOrEqual(0);
-    expect(lastPaint).toBeGreaterThan(firstClip);
+    expect(firstPagePaint).toBeGreaterThanOrEqual(0);
+    expect(firstClip).toBeLessThan(firstPagePaint);
 
     book.destroy();
   });
@@ -538,5 +545,140 @@ describe('collection replacement and teardown (G4, G6, G10)', () => {
     // the renderer kept its own left/right/flipping/bottom references, so a
     // retained destroyed engine retained every decoded image.
     expect(pages.getPageCount()).toBe(0);
+  });
+});
+
+describe('review follow-ups (codex task-mtey3c3u-wlsgsc)', () => {
+  let host: HTMLElement;
+
+  beforeEach(() => {
+    stubCanvas2d();
+    host = document.createElement('div');
+    document.body.appendChild(host);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    host.remove();
+  });
+
+  test('clear() stops the loop drawing the pages it just discarded', async () => {
+    const book = new PageFlip(host, { width: 100, height: 150 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    book.clear();
+
+    // Emptying the collection left Render.left/rightPage intact, so the rAF
+    // loop kept painting the old images. "Does not throw" proved nothing.
+    const render = book.getRender() as unknown as { leftPage: unknown; rightPage: unknown };
+    expect(render.rightPage).toBeNull();
+    expect(render.leftPage).toBeNull();
+
+    book.destroy();
+  });
+
+  test('cross-mode updates are refused instead of failing deep in', async () => {
+    const book = new PageFlip(host, { width: 100, height: 150 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    // Was an unconditional `as HTMLUI` cast on a CanvasUI.
+    expect(() => {
+      book.updateFromHtml([document.createElement('div')]);
+    }).toThrow(PageFlipError);
+
+    book.destroy();
+  });
+
+  test('updateFromImages refuses to build image pages on an HTML render', async () => {
+    const book = new PageFlip(host, { width: 100, height: 150 });
+    const nodes = [document.createElement('div'), document.createElement('div')];
+    for (const n of nodes) host.appendChild(n);
+    book.loadFromHTML(nodes);
+
+    // Produced a book whose pages drew into a 2d context that does not exist.
+    await expect(book.updateFromImages(['a.png'])).rejects.toThrow(PageFlipError);
+
+    book.destroy();
+  });
+
+  test('G11/G4: disposing a collection detaches image loads and drops sources', async () => {
+    const book = new PageFlip(host, { width: 100, height: 150 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    const pages = book.getPageCollection();
+    const images = Array.from({ length: pages.getPageCount() }, (_, i) => {
+      return (pages.getPage(i) as unknown as { image: HTMLImageElement }).image;
+    });
+    expect(images.every((img) => img.getAttribute('src') !== null)).toBe(true);
+
+    book.destroy();
+
+    // Dropping the array released nothing the pages themselves owned.
+    expect(images.every((img) => img.onload === null)).toBe(true);
+    expect(images.every((img) => img.getAttribute('src') === null)).toBe(true);
+  });
+
+  test('A5: an image page reports no temporary copy', async () => {
+    const book = new PageFlip(host, { width: 100, height: 150 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    const page = book.getPageCollection().getPage(0);
+    // Returned `this`, so a null-checking caller got a truthy non-copy.
+    expect(page.getTemporaryCopy()).toBeNull();
+
+    book.destroy();
+  });
+});
+
+describe('G2: the TURNING leaf is opaque, not just the static ones', () => {
+  let host: HTMLElement;
+
+  beforeEach(() => {
+    host = document.createElement('div');
+    document.body.appendChild(host);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    host.remove();
+  });
+
+  test('a leaf mid-turn paints its own paper before its bitmap', async () => {
+    const ctx = stubCanvas2d();
+    const book = new PageFlip(host, {
+      width: 100,
+      height: 150,
+      usePortrait: true,
+      flippingTime: 1000,
+      pageBackground: '#f5f0e6',
+    });
+    await book.loadFromImages(['a.png', 'b.png', 'c.png']);
+
+    const rect = book.getBoundsRect();
+    const pageSized: { x: number; y: number }[] = [];
+    ctx.fillRect.mockImplementation((x: number, y: number, w: number, h: number) => {
+      if (Math.abs(w - rect.pageWidth) < 1 && Math.abs(h - rect.height) < 1) {
+        pageSized.push({ x, y });
+      }
+    });
+
+    // Prime the render clock: `startAnimation` derives `startedAt` from the
+    // last frame timestamp, so starting a turn before any frame has run makes
+    // the animation appear already finished.
+    for (let i = 0; i < 2; i++) {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+
+    book.flipNext();
+    pageSized.length = 0;
+    // The mover is not in place on the very first frame after the turn starts,
+    // so sample a few frames rather than assuming frame one.
+    for (let i = 0; i < 1; i++) {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+
+    expect(pageSized.some((f) => f.x === 0 && f.y === 0)).toBe(true);
+
+    book.destroy();
   });
 });

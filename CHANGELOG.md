@@ -6,8 +6,15 @@ All notable changes to this monorepo will be documented in this file.
 
 ### Fixed — canvas renderer (first-class work, ahead of the phased plan)
 
-Found by the audit in `docs/CANVAS_FIRST_CLASS.md`. Each fix has a unit test
-that was **observed failing with the fix reverted**, then restored.
+Found by the audit in `docs/CANVAS_FIRST_CLASS.md`, then reviewed by Codex
+(`task-mtey3c3u-wlsgsc`, REQUEST_CHANGES) and corrected.
+
+Every fix has a unit test observed failing with the fix reverted. That claim was
+**overstated when first written** — G11 and A5 had no test at all, and the G1 and
+G2 tests passed against subtly wrong implementations (G1 asserted a clip before
+the _last_ paint, but `drawBookShadow` clips and paints after the leaves; G2 was
+satisfied by `simpleDraw`'s fill, so deleting only the turning leaf's fill still
+passed). Both are now discriminating, and the missing tests exist.
 
 - Canvas frame state no longer leaks between frames. The portrait clip was
   applied at the _end_ of `drawFrame()` with no `restore()`, so it could not
@@ -33,7 +40,20 @@ that was **observed failing with the fix reverted**, then restored.
   that stale continuations must still match.
 - `attachMode()` releases the previous page collection instead of overwriting
   the reference — for canvas that leaked every decoded image on a second load
-  or a mode switch.
+  or a mode switch. Releasing it means something now: `PageCollection.destroy()`
+  disposes each page rather than dropping an array, and `ImagePage.dispose()`
+  detaches its load callback and drops its `src`.
+- `clear()` stops the render loop drawing the pages it just discarded. It
+  emptied the collection while `Render` kept its own left/right references, so
+  the book stayed on screen.
+- Cross-mode updates are refused with `PageFlipError('WRONG_MODE')` instead of
+  failing deep inside. `updateFromHtml` cast `CanvasUI` to `HTMLUI`, and
+  `updateFromImages` built image pages against an `HTMLRender` — a book whose
+  pages drew into a 2D context that does not exist.
+- A cached image is recognised as loaded. `load()` only ever attached `onload`,
+  so an already-complete image could sit behind the placeholder forever;
+  `naturalWidth` distinguishes a decoded image from a failed one, which is also
+  `complete`.
 - `ImagePage.getTemporaryCopy()` returns `null` rather than `this`. An image
   page has no temporary copy, and returning itself handed a null-checking
   caller a truthy non-copy.

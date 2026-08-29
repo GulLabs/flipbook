@@ -125,10 +125,30 @@ export class ImagePage extends Page {
   }
 
   public load(): void {
-    if (!this.isLoad)
-      this.image.onload = (): void => {
-        this.isLoad = true;
-      };
+    if (this.isLoad) return;
+
+    // A cached image can already be complete by the time we get here. It is
+    // also `complete` when it FAILED, so `naturalWidth` is what distinguishes
+    // "drawable" from "broken" — checking `complete` alone would draw nothing.
+    if (this.image.complete) {
+      this.isLoad = this.image.naturalWidth > 0;
+      if (this.isLoad) return;
+    }
+
+    this.image.onload = (): void => {
+      this.isLoad = true;
+    };
+  }
+
+  /**
+   * Detach the load callback and drop the source so the decoded bitmap can be
+   * collected. A destroyed book used to keep every page it had ever decoded.
+   */
+  public override dispose(): void {
+    super.dispose();
+    this.image.onload = null;
+    this.image.removeAttribute('src');
+    this.isLoad = false;
   }
 
   public newTemporaryCopy(): Page {

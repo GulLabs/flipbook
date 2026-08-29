@@ -51,6 +51,10 @@ export abstract class PageCollection {
    * Clear pages list
    */
   public destroy(): void {
+    // Dropping the array released nothing the pages themselves owned — for
+    // canvas, a decoded bitmap and live load callbacks per page.
+    for (const page of this.pages) page.dispose();
+
     this.pages = [];
   }
 

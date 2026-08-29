@@ -185,6 +185,9 @@ export class PageFlip extends EventObject {
    * minor release. Use `loadFromHTML` / `loadFromImages`.
    */
   public attachMode(ui: UI, render: Render, pages: PageCollection): void {
+    // Mode attachment is the boundary a stale async load must not cross.
+    this.nextGeneration();
+
     if (this.destroyed) {
       ui.destroy();
       render.stop();
@@ -288,9 +291,20 @@ export class PageFlip extends EventObject {
    * @param {(NodeListOf<HTMLElement>|HTMLElement[])} items - List of pages as HTML Element
    */
   public updateFromHtml(items: NodeListOf<HTMLElement> | HTMLElement[]): void {
+    const ui = this.uiOrThrow;
+
+    // Cross-mode updates are not supported and used to fail deep in: this cast
+    // `CanvasUI` to `HTMLUI` and called `updateItems` on it. Load the mode you
+    // want instead of updating across modes.
+    if (!(ui instanceof HTMLUI)) {
+      throw new PageFlipError(
+        'updateFromHtml requires HTML mode; use loadFromHTML to switch modes.',
+        'WRONG_MODE',
+      );
+    }
+
     this.nextGeneration();
     const render = this.renderOrThrow;
-    const ui = this.uiOrThrow;
     const previous = this.pagesOrThrow;
     const current = previous.getCurrentPageIndex();
 
@@ -299,7 +313,7 @@ export class PageFlip extends EventObject {
     const pages = new HTMLPageCollection(this, render, ui.getDistElement(), items);
     this.pages = pages;
     pages.load();
-    (ui as HTMLUI).updateItems(items);
+    ui.updateItems(items);
     render.reload();
 
     pages.show(current);
@@ -348,6 +362,11 @@ export class PageFlip extends EventObject {
     const ui = this.uiOrThrow;
 
     this.pagesOrThrow.destroy();
+    // Emptying the collection is not enough: the renderer holds its own
+    // left/right/flipping/bottom references, so the rAF loop went on painting
+    // the pages that had just been discarded.
+    this.renderOrThrow.releasePages();
+    this.flipController?.abandon();
     // Was an unconditional `as HTMLUI` cast. `CanvasUI` has no `clear()`, so
     // this threw a TypeError in canvas mode — a public method that could not be
     // called in one of the two supported modes.
