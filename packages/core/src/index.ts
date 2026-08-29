@@ -27,7 +27,11 @@ export {
 export type { Curl, CurlCorner } from './geometry';
 export { getPortraitFlippingPage } from './Collection/flippingPage';
 export { shouldDrawBottomPage } from './Render/bottomPage';
-export { safePageBackground, DEFAULT_PAGE_BACKGROUND } from './Render/pageBackground';
+export {
+  safePageBackground,
+  isOpaquePageBackground,
+  DEFAULT_PAGE_BACKGROUND,
+} from './Render/pageBackground';
 export { effectiveFlippingTime, prefersReducedMotion } from './reducedMotion';
 export { ensureFlipbookStyles, FLIPBOOK_CSS } from './styles';
 export type { WidgetEvent, FlipbookEventMap } from './Event/EventObject';

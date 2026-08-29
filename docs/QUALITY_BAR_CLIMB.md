@@ -308,3 +308,40 @@ pnpm typecheck
 pnpm test:coverage
 pnpm test:coverage-areas   # after test:coverage; needs coverage/coverage-final.json
 ```
+
+---
+
+## Bundle size: what the numbers are, and what is still open
+
+The spec (§5) sets **≤ 35 kB minified** for the core. That target is **unmet**:
+the HTML engine is ~45 kB raw / ~11 kB brotli.
+
+Two things are worth separating, because they got conflated and cost real work:
+
+**The gap is features, not sloppiness.** The engine is ~73% larger than upstream
+(~26 kB) because it carries RTL, keyboard and live-region accessibility,
+reduced-motion handling, typed errors, `strictNullChecks` guards, checked index
+access, the interactive-target selector, and `pageBackground` validation.
+Closing the gap to 35 kB means removing some of that. That is an owner
+decision, not something to shave identifiers toward — an earlier attempt golfed
+helper names to `iseg`/`lim`/`ang` and error messages to "Bad page" for a
+measured **19 bytes**.
+
+**The enforced numbers were never the spec's.** The 45 kB raw alarm was reached
+by ratcheting 35→45→47→48→45 to keep builds green, and the brotli budget was
+reverse-engineered from wherever the code happened to sit. A budget pinned to
+"current + 0" is not a budget; it turns every later fix into a negotiation, and
+it did: four correctness fixes cost 13 bytes and a public helper was deleted to
+pay for them.
+
+They are now **52 kB raw / 13 kB brotli**, set with room for a real feature.
+`AGENTS.md` §2 carries the policy: dead code always goes, working code never
+goes to buy bytes, fixes and features may spend the headroom and say so, and an
+alarm that fires is a question about growth rather than a hunt for something to
+delete.
+
+### Open decision for the owner
+
+Either accept that this engine is ~45 kB minified and revise the §5 target, or
+decide which capabilities come out to reach 35 kB. Leaving the spec saying 35
+while CI enforces something else is the state that produced the churn above.

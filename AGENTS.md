@@ -34,10 +34,38 @@ does.
   passes. If you can't make the real assertion pass, say so. _What happened:
   golden e2e "tests" wrote screenshots and asserted nothing; a controlled-page
   test was loosened until it passed without the engine turning at all._
-- **Do not raise a budget to make a gate green.** The size ceiling has been
-  raised twice (35→45→47 kB). It does not move again; shrink the code or ask.
-  The same applies to coverage thresholds and lint severity: gates only ratchet
+- **Do not raise a budget to make a gate green** — but do not delete working
+  code to avoid raising one either. Both are the same mistake: treating the
+  number as the goal. The size ceiling was ratcheted 35→45→47→48 by agents who
+  wanted a green build, and then a later agent removed a public helper to buy
+  back 40 bytes. Neither asked what the number was for.
+
+  What the numbers actually are: the spec (§5) says **≤ 35 kB minified**. The
+  raw alarm is at 52 kB and the brotli budget at 13 kB — set deliberately, with
+  enough headroom for a real feature rather than pinned to wherever the code
+  happened to sit. The 35 kB target is
+  unmet and is an open owner decision: closing it means removing features (RTL,
+  a11y, the index and null guards), not shaving identifiers.
+
+  So, in order:
+
+  1. **Dead code goes, always.** `foldFillCss` had no caller left; removing it
+     is hygiene, not budget management, and needs no justification.
+  2. **Working code never goes to buy bytes.** A public helper someone might
+     reasonably call, a feature, a guard — deleting one of those to fit a
+     number is trading real value for an arbitrary one. `isOpaquePageBackground`
+     was removed for 40 bytes and had to be put back.
+  3. **A correctness fix or a feature may spend the headroom.** Take it, and
+     report the delta in the commit message. That is what headroom is for.
+  4. **If the alarm fires, ask why it grew**, not what can be deleted. An
+     unexplained jump is a bad import or a duplicated dependency — that is the
+     accident this catches. Deliberate growth that needs more room than exists
+     is a budget conversation with the owner (§5), not a reason to abandon the
+     work.
+
+  Coverage thresholds and lint severity are different: those only ratchet
   toward strict.
+
 - **Quality gates must measure something.** A "quality" script that checks
   files exist, or two size-limit entries that both measure brotli while
   claiming one is raw, is theater. If you add a gate, prove it can fail: break

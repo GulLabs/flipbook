@@ -36,14 +36,14 @@
     {
       "name": "html-engine (raw, drift alarm)",
       "path": "size-check/html-engine.js",
-      "limit": "45 kB",
+      "limit": "52 kB",
       "gzip": false,
       "brotli": false
     },
     {
-      "name": "html-engine (brotli, the budget consumers pay)",
+      "name": "html-engine (brotli, what consumers pay)",
       "path": "size-check/html-engine.js",
-      "limit": "11 kB"
+      "limit": "13 kB"
     }
   ],
   "devDependencies": {

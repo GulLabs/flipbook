@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest';
-import { Settings, DEFAULT_PAGE_BACKGROUND, PageFlipError } from '@gullabs/flipbook-core';
-import { foldFill, isOpaquePageBackground } from '../src/Render/pageBackground';
+import {
+  Settings,
+  DEFAULT_PAGE_BACKGROUND,
+  isOpaquePageBackground,
+  PageFlipError,
+} from '@gullabs/flipbook-core';
+import { foldFill } from '../src/Render/pageBackground';
 
 describe('Settings.getSettings (shipped)', () => {
   test('flippingTime: 0 is instant and does not throw', () => {
