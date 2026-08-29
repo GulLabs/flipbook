@@ -4,12 +4,12 @@ message: If you use this software, please cite it as below.
 type: software
 authors:
   - name: Gul Labs
-    website: https://github.com/GulLabs
+    website: https://github.com/gul-labs
   - family-names: Gul
     given-names: Atif
     website: https://github.com/atifgul99
-repository-code: https://github.com/GulLabs/flipbook
-license-url: https://github.com/GulLabs/flipbook/blob/main/LICENSE
+repository-code: https://github.com/gul-labs/flipbook
+license-url: https://github.com/gul-labs/flipbook/blob/main/LICENSE
 abstract: >-
   Realistic page-turning for the web. Vanilla TypeScript core
   and a React wrapper. Maintained fork of StPageFlip / react-pageflip.

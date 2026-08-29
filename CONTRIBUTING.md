@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for looking. This monorepo holds the page-flip core and React wrapper maintained by [Gul Labs](https://github.com/GulLabs).
+Thanks for looking. This monorepo holds the page-flip core and React wrapper maintained by [Gul Labs](https://github.com/gul-labs).
 
 Only [@atifgul99](https://github.com/atifgul99) can push or merge to `main`. Everyone else works on a fork or a feature branch and opens a pull request.
 

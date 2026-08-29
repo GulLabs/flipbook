@@ -140,7 +140,7 @@ tears the book down mid-animation.
   in `tsconfig.base.json` is a shim for tsup hard-coding `baseUrl` into its dts
   build; drop it when tsup stops.
 - **The release path needs an `NPM_TOKEN` secret.** Publishing uses the token +
-  provenance path, matching `GulLabs/any-llm`. Moving to npm trusted publishing
+  provenance path, matching `gul-labs/any-llm`. Moving to npm trusted publishing
   is worthwhile but needs per-package setup on npmjs.com first — see
   `RELEASING.md`.
 - **pnpm is 10.34.5, not 11.** pnpm 11 enables `minimumReleaseAge` by default,

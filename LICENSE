@@ -30,7 +30,7 @@ duties attach, and only to the Covered Software (the engine's own files):
 
 Files you write yourself are Covered only if they contain Covered Software;
 calling the public API does not make them Modifications. See
-https://github.com/GulLabs/flipbook for the Source Code Form.
+https://github.com/gul-labs/flipbook for the Source Code Form.
 
 The React binding is a thin wrapper and stays MIT so it can be vendored or
 adapted without friction.

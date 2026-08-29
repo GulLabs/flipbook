@@ -8,7 +8,7 @@ Security fixes land on `main` and ship with the next release of the affected pac
 
 **Do not open a public issue.**
 
-Report privately through [GitHub Security Advisories](https://github.com/GulLabs/flipbook/security/advisories/new).
+Report privately through [GitHub Security Advisories](https://github.com/gul-labs/flipbook/security/advisories/new).
 
 We aim to acknowledge within a few business days. Please include:
 

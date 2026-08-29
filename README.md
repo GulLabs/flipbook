@@ -6,10 +6,10 @@
   <img src="docs/images/hero.jpg" alt="Hardcover picture book mid-curl: the current leaf peels away and the previous illustration is already there underneath." width="100%">
 </p>
 
-Forked from [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) and [Nodlik/react-pageflip](https://github.com/Nodlik/react-pageflip) (both MIT), merged and maintained by [GulLabs](https://github.com/GulLabs). Upstream notices live in [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
+Forked from [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) and [Nodlik/react-pageflip](https://github.com/Nodlik/react-pageflip) (both MIT), merged and maintained by [GulLabs](https://github.com/gul-labs). Upstream notices live in [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
 
 <p align="center">
-  <a href="https://github.com/GulLabs/flipbook/actions/workflows/ci.yml"><img src="https://github.com/GulLabs/flipbook/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/gul-labs/flipbook/actions/workflows/ci.yml"><img src="https://github.com/gul-labs/flipbook/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="./packages/core/LICENSE"><img src="https://img.shields.io/badge/core-MPL--2.0-blue.svg" alt="core: MPL-2.0"></a>
   <a href="./packages/react/LICENSE"><img src="https://img.shields.io/badge/react-MIT-blue.svg" alt="react: MIT"></a>
   <img src="https://img.shields.io/badge/core-zero%20runtime%20deps-0f172a.svg" alt="Zero runtime dependencies">
@@ -153,7 +153,7 @@ pnpm install
 pnpm quality:ci
 ```
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`AGENTS.md`](./AGENTS.md). Other GulLabs open source: [github.com/GulLabs](https://github.com/GulLabs).
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`AGENTS.md`](./AGENTS.md). Other GulLabs open source: [github.com/gul-labs](https://github.com/gul-labs).
 
 ---
 
@@ -197,12 +197,12 @@ Software — the engine's own files — never to the rest of your application:
 
 In the common case — `npm install`, bundle, deploy, engine unmodified — the
 source-availability half is already met by
-<https://github.com/GulLabs/flipbook>, which is the Source Code Form and is
+<https://github.com/gul-labs/flipbook>, which is the Source Code Form and is
 offered under MPL-2.0. (The npm package is not: it ships `dist` only, so it is
 Executable Form. Point people at the repository, not at the tarball.) What
 remains yours is the notice: carry a line in your licenses/acknowledgements such as “includes
 @gullabs/flipbook-core, MPL-2.0, source at
-https://github.com/GulLabs/flipbook”. Most bundlers' license plugins emit this
+https://github.com/gul-labs/flipbook”. Most bundlers' license plugins emit this
 automatically. Note the notice accompanies each distribution, and it depends on
 that source staying reachable — if this repository ever disappeared you would
 need to make the corresponding source available yourself.

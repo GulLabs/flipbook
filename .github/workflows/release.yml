@@ -1,7 +1,7 @@
 name: Release
 
 # Runs only after CI has gone green on `main`, against that exact commit — the
-# same shape as GulLabs/any-llm, which publishes @gullabs/* today. Re-running
+# same shape as gul-labs/any-llm, which publishes @gullabs/* today. Re-running
 # the whole quality bar here would only repeat what CI just did on this SHA.
 on:
   workflow_run:

@@ -1,7 +1,7 @@
 flipbook
 Copyright 2026 GulLabs
 
-This product includes software developed at Gul Labs (https://github.com/GulLabs).
+This product includes software developed at Gul Labs (https://github.com/gul-labs).
 
 This repository is a maintained fork of:
 
@@ -36,7 +36,7 @@ bundled JavaScript to a browser -- requires both that the corresponding Source
 Code Form be available and that recipients be informed how to obtain it
 (section 3.2).
 
-Source Code Form: https://github.com/GulLabs/flipbook
+Source Code Form: https://github.com/gul-labs/flipbook
 
 "GulLabs" and "@gullabs" are trademarks of GulLabs. The licenses in this
 repository grant rights to the code, not to the marks.

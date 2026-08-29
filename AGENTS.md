@@ -176,7 +176,7 @@ justification in a commit message is not authorisation.
   preflight (`scripts/quality.mjs`) now enforces this; do not delete or bypass
   that check to "unblock" an upgrade.
 - **Release mechanics get verified against a working repo, not reasoned from
-  memory.** The reference is `GulLabs/any-llm` (publishes `@gullabs/*` today).
+  memory.** The reference is `gul-labs/any-llm` (publishes `@gullabs/*` today).
   _What happened: an agent shipped an OIDC-only publish workflow with no
   trusted publisher registered and no token — it would have failed closed after
   tagging. Another flipped a changeset from `major` to `patch` "to keep 3.0.0"

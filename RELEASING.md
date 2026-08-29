@@ -49,7 +49,7 @@ publish` resolves to `pnpm publish` in this workspace, so pnpm must be a version
 that implements OIDC (10+), and each package needs a trusted publisher
 registered on npmjs.com naming this repository and `release.yml` **before** the
 first publish. Until both are done, a token-less workflow fails closed at
-publish time. `GulLabs/any-llm` publishes with the token + provenance path
+publish time. `gul-labs/any-llm` publishes with the token + provenance path
 today; this repo matches it deliberately.
 
 ## Manual release (emergency only)

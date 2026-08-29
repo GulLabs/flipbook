@@ -6,13 +6,13 @@
   "author": "GulLabs",
   "repository": {
     "type": "git",
-    "url": "https://github.com/GulLabs/flipbook.git",
+    "url": "https://github.com/gul-labs/flipbook.git",
     "directory": "packages/react"
   },
   "bugs": {
-    "url": "https://github.com/GulLabs/flipbook/issues"
+    "url": "https://github.com/gul-labs/flipbook/issues"
   },
-  "homepage": "https://github.com/GulLabs/flipbook",
+  "homepage": "https://github.com/gul-labs/flipbook",
   "publishConfig": {
     "access": "public"
   },

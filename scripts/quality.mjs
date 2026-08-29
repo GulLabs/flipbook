@@ -41,13 +41,13 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
-const expected = 'GulLabs/flipbook';
+const expected = 'gul-labs/flipbook';
 for (const dir of ['packages/core', 'packages/react']) {
   const pkg = JSON.parse(readFileSync(join(root, dir, 'package.json'), 'utf8'));
   const url = String(pkg.repository?.url ?? pkg.repository ?? '');
   if (!url.includes(expected)) {
     console.error(
-      `${dir}: repository.url must point at GulLabs/flipbook (got ${url || 'missing'})`,
+      `${dir}: repository.url must point at gul-labs/flipbook (got ${url || 'missing'})`,
     );
     process.exit(1);
   }
