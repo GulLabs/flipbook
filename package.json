@@ -9,11 +9,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/GulLabs/flipbook.git"
+    "url": "https://github.com/gul-labs/flipbook.git"
   },
-  "homepage": "https://github.com/GulLabs/flipbook",
+  "homepage": "https://github.com/gul-labs/flipbook",
   "bugs": {
-    "url": "https://github.com/GulLabs/flipbook/issues"
+    "url": "https://github.com/gul-labs/flipbook/issues"
   },
   "scripts": {
     "lint": "pnpm -r --if-present lint",

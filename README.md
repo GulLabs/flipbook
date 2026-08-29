@@ -5,7 +5,7 @@ Realistic page-turning for the web. Vanilla TypeScript core and a React wrapper.
 This is a Gul Labs maintained fork of [StPageFlip](https://github.com/Nodlik/StPageFlip) and [react-pageflip](https://github.com/Nodlik/react-pageflip). Upstream MIT notices are preserved in [`LICENSE`](./LICENSE) and [`NOTICE`](./NOTICE).
 
 <p align="center">
-  <a href="https://github.com/GulLabs/flipbook/actions/workflows/ci.yml"><img src="https://github.com/GulLabs/flipbook/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/gul-labs/flipbook/actions/workflows/ci.yml"><img src="https://github.com/gul-labs/flipbook/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT"></a>
 </p>
 
@@ -76,4 +76,4 @@ Only [@atifgul99](https://github.com/atifgul99) can push or merge to `main`. Eve
 
 ## License
 
-[MIT](./LICENSE) — Copyright (c) 2026 GulLabs, with upstream MIT notices retained.
+[MIT](./LICENSE) — Copyright (c) 2026 Gul Labs, with upstream MIT notices retained.

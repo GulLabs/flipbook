@@ -4,11 +4,11 @@ message: If you use this software, please cite it as below.
 type: software
 authors:
   - name: Gul Labs
-    website: https://github.com/GulLabs
+    website: https://github.com/gul-labs
   - family-names: Gul
     given-names: Atif
     website: https://github.com/atifgul99
-repository-code: https://github.com/GulLabs/flipbook
+repository-code: https://github.com/gul-labs/flipbook
 license: MIT
 abstract: >-
   Realistic page-turning for the web. Vanilla TypeScript core
