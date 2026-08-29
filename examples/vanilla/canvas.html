@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@gullabs/flipbook-core canvas harness</title>
+    <style>
+      /*
+        A TEST HARNESS, not the public example. Everything here exists to make
+        canvas pixels deterministic: no margins that shift the book, no fonts,
+        no gradients, nothing that resamples.
+      */
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: #202020;
+      }
+      #book {
+        width: 800px;
+        height: 600px;
+      }
+      /* A deliberately fractional box, opted into by ?fractional=1, for B2/B2b. */
+      body[data-fractional='1'] #book {
+        width: 800.5px;
+        height: 600.25px;
+      }
+      body[data-hidden='1'] #book {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="book"></div>
+    <script type="module" src="./canvas.ts"></script>
+  </body>
+</html>

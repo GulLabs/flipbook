@@ -13,6 +13,16 @@ export default defineConfig({
       '@gullabs/flipbook-core': path.resolve(root, '../../packages/core/src'),
     },
   },
+  build: {
+    rollupOptions: {
+      // The canvas e2e harness is a second entry point, not a route of the
+      // showcase — `vite build` only emits HTML it is told about.
+      input: {
+        main: path.resolve(root, 'index.html'),
+        canvas: path.resolve(root, 'canvas.html'),
+      },
+    },
+  },
   server: { port: 5173 },
   preview: { host: '127.0.0.1', port: 4173 },
 });

@@ -43,7 +43,9 @@
     "test:e2e:golden": "playwright test e2e/golden-flip.spec.ts",
     "test:e2e:golden:update": "playwright test e2e/golden-flip.spec.ts --update-snapshots",
     "test:coverage-areas": "node ./scripts/check-coverage-areas.mjs",
-    "test:e2e:golden:update:linux": "bash ./scripts/update-golden-linux.sh"
+    "test:e2e:golden:update:linux": "bash ./scripts/update-golden-linux.sh",
+    "test:e2e:canvas": "playwright test e2e/canvas.spec.ts",
+    "fixtures:canvas": "node ./scripts/gen-canvas-fixtures.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^3.0.1",
