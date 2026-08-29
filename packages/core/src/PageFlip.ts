@@ -79,6 +79,13 @@ export class PageFlip extends EventObject {
     // May be called before create() finishes wiring render/ui.
     this.render?.stop();
     this.ui?.destroy();
+    // Stopping the loop does not release anything. The collection holds every
+    // page — for canvas, every decoded image — and the renderer holds its own
+    // left/right/flipping/bottom references, so both have to be cleared or a
+    // retained destroyed engine retains the whole book.
+    this.render?.releasePages();
+    this.pages?.destroy();
+    this.flipController?.abandon();
     // The host owns `block` (React/SSR). Do not remove it from the DOM.
   }
 
@@ -135,17 +142,38 @@ export class PageFlip extends EventObject {
    */
   public replacePages(pages: PageCollection, current: number): void {
     if (this.destroyed) return;
+
+    const render = this.renderOrThrow;
+
+    // An in-flight turn belongs to the OLD collection. `finishAnimation()`
+    // would COMMIT it — running `onAnimateEnd` against pages that are about to
+    // be destroyed — so it is abandoned instead, along with the fold state and
+    // the renderer's transient page references.
+    render.cancelAnimation();
+    this.flipController?.abandon();
+
     this.pagesOrThrow.destroy();
     this.pages = pages;
     this.pages.load();
-    this.pages.show(current);
+
+    // `show()` silently returns for an out-of-range index, so a shrinking
+    // update used to leave the render holding pages from the old collection
+    // while both events reported the rejected index. Clamp, then report what
+    // the collection actually settled on.
+    const pageCount = pages.getPageCount();
+    const target = pageCount === 0 ? 0 : Math.min(Math.max(current, 0), pageCount - 1);
+
+    this.pages.show(target);
+
+    const resolved = pageCount === 0 ? 0 : this.pages.getCurrentPageIndex();
+
     this.trigger('update', this, {
-      page: current,
-      mode: this.renderOrThrow.getOrientation(),
+      page: resolved,
+      mode: render.getOrientation(),
     });
     this.trigger('collectionRebuild', this, {
-      page: current,
-      pageCount: pages.getPageCount(),
+      page: resolved,
+      pageCount,
     });
   }
 

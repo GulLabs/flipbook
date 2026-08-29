@@ -466,3 +466,77 @@ describe('canvas frame state and paper (r4 defect batch)', () => {
     book.destroy();
   });
 });
+
+describe('collection replacement and teardown (G4, G6, G10)', () => {
+  let host: HTMLElement;
+
+  beforeEach(() => {
+    stubCanvas2d();
+    host = document.createElement('div');
+    document.body.appendChild(host);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    host.remove();
+  });
+
+  test('G6: a shrinking update clamps, and reports where it landed', async () => {
+    const book = new PageFlip(host, { width: 100, height: 150, usePortrait: true });
+    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png', 'e.png']);
+    book.turnToPage(4);
+    expect(book.getCurrentPageIndex()).toBe(4);
+
+    const seen: number[] = [];
+    book.on('collectionRebuild', (e) => {
+      seen.push((e.data as { page: number }).page);
+    });
+
+    await book.updateFromImages(['a.png', 'b.png']);
+
+    // show() silently returns for an out-of-range index, so page 4 used to be
+    // kept and reported while the render still held the old collection's pages.
+    expect(book.getCurrentPageIndex()).toBeLessThanOrEqual(1);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBeLessThanOrEqual(1);
+
+    book.destroy();
+  });
+
+  test('G10: replacing the collection abandons an in-flight turn', async () => {
+    const book = new PageFlip(host, {
+      width: 100,
+      height: 150,
+      usePortrait: true,
+      flippingTime: 1000,
+    });
+    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+
+    book.flipNext();
+    expect(book.getState()).not.toBe('read');
+
+    await book.updateFromImages(['x.png', 'y.png']);
+
+    // The old turn's onAnimateEnd would otherwise commit against the new
+    // collection — turning a page that belongs to a book that no longer exists.
+    expect(book.getState()).toBe('read');
+    expect(book.getCurrentPageIndex()).toBeLessThanOrEqual(1);
+
+    book.destroy();
+  });
+
+  test('G4: destroy releases the pages, not just the render loop', async () => {
+    const book = new PageFlip(host, { width: 100, height: 150 });
+    await book.loadFromImages(['a.png', 'b.png', 'c.png']);
+
+    const pages = book.getPageCollection();
+    expect(pages.getPageCount()).toBe(3);
+
+    book.destroy();
+
+    // Stopping the loop released nothing: the collection kept every page and
+    // the renderer kept its own left/right/flipping/bottom references, so a
+    // retained destroyed engine retained every decoded image.
+    expect(pages.getPageCount()).toBe(0);
+  });
+});

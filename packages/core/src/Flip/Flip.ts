@@ -426,10 +426,29 @@ export class Flip {
     return collection.getCurrentSpreadIndex() >= 1;
   }
 
+  /**
+   * Drop any in-flight fold. Callers inside a turn use this between frames, so
+   * it deliberately does NOT touch `state` — see `abandon()` for the case where
+   * the pages themselves are going away.
+   */
   private reset(): void {
     this.calc = null;
     this.flippingPage = null;
     this.bottomPage = null;
+  }
+
+  /**
+   * Abandon an in-flight fold or turn and return to READ.
+   *
+   * Used when the page collection is replaced underneath an active gesture:
+   * the calculation refers to pages that are about to be destroyed, so the turn
+   * is dropped rather than committed.
+   *
+   * @internal Wiring seam for `PageFlip.replacePages` / `destroy`.
+   */
+  public abandon(): void {
+    this.reset();
+    this.setState(FlippingState.READ);
   }
 
   private getBoundsRect(): PageRect {

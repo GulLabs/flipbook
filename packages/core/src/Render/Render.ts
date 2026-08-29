@@ -323,6 +323,34 @@ export abstract class Render {
   }
 
   /**
+   * Abandon the running animation WITHOUT committing it.
+   *
+   * `finishAnimation()` is a commit: it runs the final frame and invokes
+   * `onAnimateEnd`, which turns the page. When the collection underneath is
+   * being replaced, that callback belongs to pages that no longer exist, so the
+   * turn must be dropped rather than finished.
+   */
+  public cancelAnimation(): void {
+    this.animation = null;
+    this.shadow = null;
+    this.flippingPage = null;
+    this.bottomPage = null;
+  }
+
+  /**
+   * Drop every page reference the renderer holds.
+   *
+   * Emptying the collection is not enough to release pages — and for canvas a
+   * page owns a decoded image — because the renderer keeps its own left/right/
+   * flipping/bottom references.
+   */
+  public releasePages(): void {
+    this.cancelAnimation();
+    this.leftPage = null;
+    this.rightPage = null;
+  }
+
+  /**
    * Get parent block offset width
    */
   public getBlockWidth(): number {
