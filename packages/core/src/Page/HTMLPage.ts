@@ -18,7 +18,16 @@ export class HTMLPage extends Page {
 
   private temporaryCopy: Page | null = null;
 
-  private isLoad = false;
+  /**
+   * True only for the throwaway leaf built by `newTemporaryCopy()`.
+   *
+   * `draw()` rewrites `style.cssText` wholesale, so anything the clone needs in
+   * its inline style has to be re-emitted on every frame rather than set once
+   * at clone time. Private, and set by `newTemporaryCopy` on the *other*
+   * instance — legal because TypeScript's `private` is per-class, not
+   * per-instance.
+   */
+  private isTemporaryCopy = false;
 
   constructor(render: Render, element: HTMLElement, density: PageDensity) {
     super(render, density);
@@ -36,9 +45,40 @@ export class HTMLPage extends Page {
     if (this.temporaryCopy === null) {
       this.copiedElement = this.element.cloneNode(true) as HTMLElement;
       this.copiedElement.style.backgroundColor = foldFill(this.render.getSettings().pageBackground);
+
+      // RB6. `cloneNode(true)` duplicates the CONSUMER's subtree into the live
+      // document for the length of a turn: their ids, their ARIA, their test
+      // ids, and — the part that actually hurts — their focusable controls. A
+      // screen reader read the page twice and a Tab press could land inside a
+      // decoration that is about to be deleted.
+      //
+      // The clone exists for one reason: to show the leaf's front face while
+      // the original shows something else. It is pixels, nothing more, so it is
+      // removed from the accessibility tree AND from the focus/interaction
+      // model. `inert` is the platform's exact primitive for that pairing;
+      // `aria-hidden` on its own would leave the worst of both worlds — content
+      // a keyboard can reach but a screen reader cannot describe.
+      //
+      // What is deliberately NOT done: the ids are left alone. The clone has to
+      // LOOK identical, and `#id` selectors are a normal way for a consumer to
+      // style a page; stripping ids would silently restyle the fold. The
+      // duplicates are harmless here because both `getElementById` and IDREF
+      // resolution (`for`, `aria-labelledby`) take the FIRST match in tree
+      // order, and the clone is appended after the original — so every lookup
+      // still resolves to the real page. `data-stf-clone` is the marker to
+      // filter on when a duplicate would otherwise be ambiguous (a strict-mode
+      // `getByTestId`, say).
+      this.copiedElement.style.pointerEvents = 'none';
+      this.copiedElement.setAttribute('aria-hidden', 'true');
+      this.copiedElement.setAttribute('inert', '');
+      this.copiedElement.setAttribute('data-stf-clone', '');
+
       this.element.parentElement?.appendChild(this.copiedElement);
 
-      this.temporaryCopy = new HTMLPage(this.render, this.copiedElement, this.nowDrawingDensity);
+      const copy = new HTMLPage(this.render, this.copiedElement, this.nowDrawingDensity);
+      copy.isTemporaryCopy = true;
+
+      this.temporaryCopy = copy;
     }
 
     return this.temporaryCopy;
@@ -65,7 +105,16 @@ export class HTMLPage extends Page {
 
     this.element.classList.remove('--simple');
 
-    const commonStyle = `display:block;z-index:${this.element.style.zIndex};left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;background-color:${foldFill(this.render.getSettings().pageBackground)};`;
+    // The clone must not swallow input. `inert` already says so, but hit
+    // testing is the half that matters to this engine: `UI.checkTarget` walks
+    // up from `event.target`, so a cloned `<a>`/`<button>` under the finger
+    // would suppress the drag (and, without `inert`, could be activated).
+    // `pointer-events:none` lets the hit test fall through to the real leaf, so
+    // a pointer landing on the fold still starts a turn. It is set once at
+    // clone time (for the gap before the first frame) and re-emitted here,
+    // because `draw()` replaces `cssText` wholesale on every frame — setting it
+    // only at clone time would last exactly one frame.
+    const commonStyle = `display:block;z-index:${this.element.style.zIndex};left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;background-color:${foldFill(this.render.getSettings().pageBackground)};${this.isTemporaryCopy ? 'pointer-events:none;' : ''}`;
 
     if (density === PageDensity.HARD) {
       this.drawHard(commonStyle);
@@ -173,8 +222,16 @@ export class HTMLPage extends Page {
     return this.element;
   }
 
+  /**
+   * H7. Nothing to do: an HTML leaf is its element, and the element exists
+   * before the page does. `ImagePage.load()` decodes a bitmap and its `isLoad`
+   * genuinely gates drawing; this class carried a field of the same name that
+   * was written here and read nowhere, which reads like a gate and is not one.
+   * The method stays because `Page.load()` is abstract and the collections call
+   * it; the field is gone.
+   */
   public load(): void {
-    this.isLoad = true;
+    //
   }
 
   public setOrientation(orientation: PageOrientation): void {

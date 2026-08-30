@@ -31,6 +31,24 @@ export class Flip {
 
   private state: FlippingState = FlippingState.READ;
 
+  /**
+   * Where an in-flight `flipToPage` intends to land, expressed as the spread
+   * index the one-step commit has to *step off from* (target ∓ 1).
+   *
+   * It lives here rather than in the collection because the collection's index
+   * is public: parking the phantom there for the whole animation is what let a
+   * second `flipToPage` read a spread the book was not on. `null` for every
+   * relative turn — `flipNext`, a drag, a click — which lands one spread over
+   * from wherever the book actually is.
+   */
+  private pendingTarget: number | null = null;
+
+  /**
+   * Pages whose *drawing* density this turn overrode, so it can be put back.
+   * See `applyLandscapeDensity`.
+   */
+  private densityOverrides: Page[] = [];
+
   constructor(render: Render, app: PageFlip) {
     this.render = render;
     this.app = app;
@@ -42,10 +60,18 @@ export class Flip {
    * @param globalPos - Touch Point Coordinates (relative window)
    */
   public fold(globalPos: Point): void {
-    this.setState(FlippingState.USER_FOLD);
+    // The state is entered only once `start()` has agreed to the turn.
+    // Announcing USER_FOLD first meant a *refused* fold — a forward drag on
+    // the last spread, or an ordinary right-edge drag at page 0 under
+    // `direction: 'rtl'` — left `calc` null, so `do()` no-opped and
+    // `stopMove()` returned early. Nothing put the state back, and the book
+    // stayed in USER_FOLD for the rest of its life: `showCorner`'s
+    // READ/FOLD_CORNER guard then failed forever (corner hover dead), and
+    // `UI.onPointerMove`'s `!== READ` test stayed true, so every touchmove
+    // called `preventDefault()` and mobile scrolling over the book stopped.
+    if (this.calc === null && !this.start(globalPos)) return;
 
-    // If the process has not started yet
-    if (this.calc === null) this.start(globalPos);
+    this.setState(FlippingState.USER_FOLD);
 
     this.do(this.render.convertToPage(globalPos));
   }
@@ -60,10 +86,30 @@ export class Flip {
     // clicks, and `PageFlip.userStop` is the only path that has one. Keeping a
     // copy here meant a blocked click returned a bare `false` that nobody
     // could tell apart from "there is no next page".
+    return this.runFlip(globalPos, direction, null);
+  }
 
+  /**
+   * The one turn-starting path. `target` is the absolute spread destination for
+   * `flipToPage` and `null` for every relative turn.
+   *
+   * The order here is load-bearing: an already-running animation is finished
+   * *before* `pendingTarget` is overwritten, so the outgoing turn commits its
+   * own destination rather than the incoming one.
+   */
+  private runFlip(
+    globalPos: Point,
+    direction: FlipDirection | undefined,
+    target: number | null,
+  ): boolean {
     // the flipping process is already running
     if (this.calc !== null) this.render.finishAnimation();
 
+    this.pendingTarget = target;
+
+    // A refusal deliberately leaves `pendingTarget` alone: `flipToPage` uses it
+    // to tell "the turn never started, the phantom index is still mine to put
+    // back" apart from "an instant turn already landed".
     if (!this.start(globalPos, direction)) return false;
 
     const calc = this.calc;
@@ -118,21 +164,41 @@ export class Flip {
 
     // In landscape, the neighbouring page must take the flipped page's density.
     if (this.render.getOrientation() === Orientation.LANDSCAPE) {
-      const neighbour =
-        direction === FlipDirection.BACK
-          ? this.app.getPageCollection().nextBy(this.flippingPage)
-          : this.app.getPageCollection().prevBy(this.flippingPage);
-
-      if (neighbour !== null && this.flippingPage.getDensity() !== neighbour.getDensity()) {
-        this.flippingPage.setDrawingDensity(PageDensity.HARD);
-        neighbour.setDrawingDensity(PageDensity.HARD);
-      }
+      this.applyLandscapeDensity(direction, this.flippingPage);
     }
 
     this.render.setDirection(direction);
     this.calc = new FlipCalculation(direction, flipCorner, rect.pageWidth, rect.height);
 
     return true;
+  }
+
+  /**
+   * A soft page next to a hard one has to be drawn hard for the duration of the
+   * turn, or the two halves of the spread disagree about how they bend.
+   *
+   * The override is recorded and put back by `reset()`. Upstream set it and
+   * walked away: `draw()` reads the *drawing* density, so one landscape turn
+   * left the neighbour permanently hard — drawn by `drawHard`, unable to curl
+   * again for the life of the book, and invisible because nothing ever
+   * inspected the value it had changed.
+   */
+  private applyLandscapeDensity(direction: FlipDirection, flippingPage: Page): void {
+    const collection = this.app.getPageCollection();
+    const neighbour =
+      direction === FlipDirection.BACK
+        ? collection.nextBy(flippingPage)
+        : collection.prevBy(flippingPage);
+
+    // Compared on the *created* density, which is what `getDensity()` returns.
+    // Comparing the drawing density would see the override it just wrote and
+    // stop re-marking on every later turn.
+    if (neighbour === null || flippingPage.getDensity() === neighbour.getDensity()) return;
+
+    for (const page of [flippingPage, neighbour]) {
+      page.setDrawingDensity(PageDensity.HARD);
+      this.densityOverrides.push(page);
+    }
   }
 
   /**
@@ -193,6 +259,16 @@ export class Flip {
    */
   public flipToPage(page: number, corner: FlipCorner): void {
     const collection = this.app.getPageCollection();
+
+    // Finish any turn already in flight *before* reading the index. Policy:
+    // finish-then-restart. A second `flipToPage` used to read the phantom index
+    // the first one had written, compute its direction from a spread the book
+    // was not on, and land somewhere neither call asked for (`flip(5)` then
+    // `flip(2)` landed on 3). Refusing the second call was the alternative, but
+    // the controlled-`page` binding legitimately issues turns faster than they
+    // animate, and §4.6 says the caller must end up where it last asked.
+    if (this.calc !== null) this.render.finishAnimation();
+
     const current = collection.getCurrentSpreadIndex();
     const next = collection.getSpreadIndexByPage(page);
 
@@ -206,23 +282,64 @@ export class Flip {
       return;
     }
 
-    const dir = next > current ? 'next' : 'prev';
-    collection.setCurrentSpreadIndex(dir === 'next' ? next - 1 : next + 1);
+    const dir = next > current ? FlipDirection.FORWARD : FlipDirection.BACK;
+    const phantom = dir === FlipDirection.FORWARD ? next - 1 : next + 1;
+
+    // The collection's spread index is borrowed for the duration of `start()`
+    // only: `getFlippingPage` / `getBottomPage` read it, and pointing it one
+    // spread short of the target is what makes the *destination* pages animate
+    // in rather than the neighbouring ones. It is put back before this call
+    // returns and re-installed for the instant the commit needs it, so no
+    // caller ever observes the phantom — that is what made
+    // `getCurrentPageIndex()` and `getCurrentSpreadIndex()` disagree mid-turn,
+    // and what made the *next* `flipToPage` compute its direction from it.
+    collection.setCurrentSpreadIndex(phantom);
 
     let started = false;
     try {
-      started = dir === 'next' ? this.flipNext(corner) : this.flipPrev(corner);
+      started = this.runFlip(this.cornerPoint(corner), dir, phantom);
     } catch (err: unknown) {
+      this.pendingTarget = null;
       collection.setCurrentSpreadIndex(current);
       throw err;
     }
 
-    // Instant turns (`flippingTime: 0` / reduced motion) reset `calc` in
-    // the animation callback before we return. Do not treat that as failure.
-    if (!started) {
+    // Instant turns (`flippingTime: 0` / reduced motion) run the animation
+    // callback synchronously inside `runFlip`: they have already consumed the
+    // target and landed. Restoring `current` then would undo a real turn — an
+    // unconsumed target is what says the phantom is still ours to put back.
+    if (this.pendingTarget !== null) {
       collection.setCurrentSpreadIndex(current);
+      if (!started) this.pendingTarget = null;
+    }
+
+    if (!started) {
       throw new PageFlipError(`Flip setup failed for page ${page}`, 'FLIP_SETUP');
     }
+  }
+
+  /**
+   * The synthetic point a programmatic turn starts from, in **global**
+   * coordinates.
+   *
+   * `start()` runs it through `convertToBook`, which subtracts `rect.top`, and
+   * re-derives the corner from the reduced y. Passing a book-local y therefore
+   * turned every BOTTOM request into a TOP one on any vertically centred book
+   * — i.e. the normal `size: 'fixed'` layout, where `rect.top` is half the
+   * leftover height. The BOTTOM corner was simply unreachable programmatically.
+   *
+   * `x` is deliberately the book's own left edge and nothing reads it: the
+   * direction is forced, so `getDirectionByPoint` never runs (which is also
+   * what keeps `direction: 'rtl'` from inverting a programmatic page index),
+   * and the corner comes from `y` alone.
+   */
+  private cornerPoint(corner: FlipCorner): Point {
+    const rect = this.getBoundsRect();
+
+    return {
+      x: rect.left,
+      y: corner === FlipCorner.TOP ? rect.top + 1 : rect.top + rect.height - 2,
+    };
   }
 
   /**
@@ -231,17 +348,7 @@ export class Flip {
    * @param {FlipCorner} corner - Active page corner when turning
    */
   public flipNext(corner: FlipCorner): boolean {
-    // `x` is deliberately arbitrary. Forcing the direction means `start` never
-    // calls `getDirectionByPoint`, and the only other thing it reads from this
-    // point is `y`, to pick the corner. The old right-edge arithmetic computed
-    // a coordinate nothing looked at.
-    //
-    // Forcing it also keeps `direction: 'rtl'` from inverting the page index:
-    // a synthetic point must not go through reading-direction hit-testing.
-    return this.flip(
-      { x: 0, y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2 },
-      FlipDirection.FORWARD,
-    );
+    return this.runFlip(this.cornerPoint(corner), FlipDirection.FORWARD, null);
   }
 
   /**
@@ -250,17 +357,22 @@ export class Flip {
    * @param {FlipCorner} corner - Active page corner when turning
    */
   public flipPrev(corner: FlipCorner): boolean {
-    return this.flip(
-      { x: 0, y: corner === FlipCorner.TOP ? 1 : this.render.getRect().height - 2 },
-      FlipDirection.BACK,
-    );
+    return this.runFlip(this.cornerPoint(corner), FlipDirection.BACK, null);
   }
 
   /**
    * Called when the user has stopped flipping
    */
   public stopMove(): void {
-    if (this.calc === null) return;
+    if (this.calc === null) {
+      // A gesture that never opened a calculation — `start()` refused it at a
+      // boundary — still has to hand the state back. Returning silently here
+      // is the second half of the stuck-in-USER_FOLD defect: `fold()` no
+      // longer announces the state early, and the release path no longer
+      // assumes an announced state implies a live calculation.
+      this.setState(FlippingState.READ);
+      return;
+    }
 
     const pos = this.calc.getPosition();
     const rect = this.getBoundsRect();
@@ -338,7 +450,18 @@ export class Flip {
       // callback function
       if (!this.calc) return;
 
+      // Read-and-clear: the intent belongs to *this* turn, whether or not it
+      // ends up committing one.
+      const target = this.pendingTarget;
+      this.pendingTarget = null;
+
       if (isTurned) {
+        // A `flipToPage` re-installs its phantom index for exactly this
+        // instant, so the one-step commit below steps off it and lands on the
+        // requested spread. Between `start()` and here the collection reported
+        // the truth.
+        if (target !== null) this.app.getPageCollection().setCurrentSpreadIndex(target);
+
         if (this.calc.getDirection() === FlipDirection.BACK) this.app.turnToPrevPage();
         else this.app.turnToNextPage();
       }
@@ -435,6 +558,11 @@ export class Flip {
     this.calc = null;
     this.flippingPage = null;
     this.bottomPage = null;
+
+    // Put back every drawing density this turn overrode. `getDensity()` is the
+    // density the page was created with, so this restores rather than freezes.
+    for (const page of this.densityOverrides) page.setDrawingDensity(page.getDensity());
+    this.densityOverrides = [];
   }
 
   /**
@@ -447,6 +575,9 @@ export class Flip {
    * @internal Wiring seam for `PageFlip.replacePages` / `destroy`.
    */
   public abandon(): void {
+    // The destination goes with the turn: the pages it referred to are the ones
+    // being replaced.
+    this.pendingTarget = null;
     this.reset();
     this.setState(FlippingState.READ);
   }

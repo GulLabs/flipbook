@@ -58,6 +58,16 @@ export class HTMLUI extends UI {
     this.adopted.clear();
   }
 
+  /**
+   * `destroy()` is about to remove `.stf__block`, which is where the adopted
+   * leaves physically live. Hand them back to the host first — `clear()` moves
+   * exactly the ones we took and leaves everything else (React's portalled
+   * pages, the render's shadows) where it found them.
+   */
+  protected override releaseNodes(): void {
+    this.clear();
+  }
+
   /** Move a leaf into the block, remembering that we were the one who moved it. */
   private adopt(item: HTMLElement): void {
     const dist = this.distElement;

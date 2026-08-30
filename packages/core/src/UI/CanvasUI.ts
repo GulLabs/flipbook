@@ -25,8 +25,20 @@ function effectiveDevicePixelRatio(cssWidth: number, cssHeight: number): number 
 
   const areaCap = Math.sqrt(MAX_BACKING_PIXELS / (cssWidth * cssHeight));
 
-  return Math.max(1, Math.min(raw, MAX_DEVICE_PIXEL_RATIO, areaCap));
+  // NOT `Math.max(1, ...)`. Flooring at 1 overrides the area cap in exactly the
+  // case the cap exists for: a canvas whose CSS box alone already exceeds the
+  // limit. A 6000x4000 book was allowed 24M backing pixels against a stated
+  // 8.4M ceiling — and on iOS, exceeding the limit does not degrade, the canvas
+  // comes back BLANK. Below 1 is a real and correct answer: render the book at
+  // less than one backing pixel per CSS pixel rather than not at all.
+  //
+  // The lower bound only keeps the scale positive and finite so the transform
+  // and the division in `backingScale()` stay well defined.
+  return Math.min(raw, MAX_DEVICE_PIXEL_RATIO, Math.max(areaCap, MIN_DEVICE_PIXEL_RATIO));
 }
+
+/** Enough to keep a transform invertible; a book this large is unusable anyway. */
+const MIN_DEVICE_PIXEL_RATIO = 0.1;
 
 /** ~2896 squared. Conservative against the smallest documented canvas limits. */
 const MAX_BACKING_PIXELS = 8_388_608;
@@ -71,16 +83,24 @@ export class CanvasUI extends UI {
   public scaleY = 1;
 
   private resizeCanvas(): void {
-    // `getComputedStyle` + `parseInt` was wrong twice over: it forces a style
-    // flush inside a resize callback, and it truncates a fractional layout box.
-    const box = this.canvas.getBoundingClientRect();
-    const cssWidth = box.width;
-    const cssHeight = box.height;
+    // The original bug here was `parseInt`, which TRUNCATED a fractional layout
+    // box. The obvious fix — `getBoundingClientRect()` — is wrong for a
+    // different reason: that box is transform-AWARE, while `Render` measures the
+    // book with `offsetWidth`, which is transform-blind. Inside any
+    // `transform: scale()` ancestor (a zoom-to-fit shell, a responsive wrapper)
+    // the two would disagree and the backing store would be sized for the
+    // visual box while the geometry stayed in layout pixels.
+    //
+    // `parseFloat` on the computed style keeps the LAYOUT box, which is what
+    // `Render` uses, and is fractional, which is what `parseInt` threw away.
+    const cs = getComputedStyle(this.canvas);
+    const cssWidth = parseFloat(cs.getPropertyValue('width'));
+    const cssHeight = parseFloat(cs.getPropertyValue('height'));
 
     // A hidden book measures 0. Treat that as NO OBSERVATION: keep the last
     // scales, allocate nothing, and wait for the ResizeObserver to report a
     // real box when the element is shown again.
-    if (cssWidth <= 0 || cssHeight <= 0) {
+    if (!(cssWidth > 0) || !(cssHeight > 0)) {
       if (this.canvas.width !== 0 || this.canvas.height !== 0) {
         this.canvas.width = 0;
         this.canvas.height = 0;

@@ -129,7 +129,16 @@ export class CanvasRender extends Render {
     const shadowSize = rect.width / 20;
     this.ctx.rect(rect.left, rect.top, rect.width, rect.height);
 
-    const shadowPos = { x: rect.left + rect.width / 2 - shadowSize / 2, y: 0 };
+    // C14, the vertical half of the same bug H6 was in `HTMLPage.drawHard`:
+    // this translated by y = 0 and then filled `rect.height * 2`, i.e. the band
+    // `[0, 2 * height]` in block coordinates — while the book occupies
+    // `[rect.top, rect.top + height]`. The clip trims the overhang at the top,
+    // so the two agree only while `rect.top <= rect.height`; in a block more
+    // than ~3x the book's height the fill ends above the book's bottom edge and
+    // the spine shadow is cut off. Translate to the book's top and fill exactly
+    // its height, the same way the hard page was fixed. The gradient is
+    // horizontal, so the y translation does not disturb it.
+    const shadowPos = { x: rect.left + rect.width / 2 - shadowSize / 2, y: rect.top };
     this.ctx.translate(shadowPos.x, shadowPos.y);
 
     const outerGradient = this.ctx.createLinearGradient(0, 0, shadowSize, 0);
@@ -144,7 +153,7 @@ export class CanvasRender extends Render {
     this.ctx.clip();
 
     this.ctx.fillStyle = outerGradient;
-    this.ctx.fillRect(0, 0, shadowSize, rect.height * 2);
+    this.ctx.fillRect(0, 0, shadowSize, rect.height);
 
     this.ctx.restore();
   }

@@ -1401,21 +1401,27 @@ describe('collection shrink (RB2)', () => {
 
     fireEvent.click(screen.getByText('shrink'));
 
-    // The engine resolved the rebuild to leaf 0; the binding must say so
-    // rather than keep describing leaf 4 (announced as "Page 3 of 3" once
-    // `spreadPages` clamps it, and handed to a consumer `liveRegionText` as a
-    // literal 4 of 3).
+    // The engine CLAMPS the retained index into the new collection, and the
+    // binding must report where it actually landed.
+    //
+    // This assertion used to expect leaf 0, which encoded RB4: `updateFromHtml`
+    // called `show(4)` on a 3-page book, `show()` silently returned for an
+    // out-of-range index, and the collection was left at its constructor
+    // default of 0 while `Render` still held pages from the DESTROYED
+    // collection. Zero was the symptom, not the contract — a reader who was on
+    // the last leaf should stay near the end of the book, not be thrown to the
+    // front.
     await waitFor(() => {
-      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(0);
-      expect(live()).toBe('Page 1 of 3');
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(2);
+      expect(live()).toBe('Page 3 of 3');
     });
 
-    // The inert map follows the same stale index, so the leaf the reader is
-    // actually looking at was the one removed from the tab order.
+    // The inert map follows the resolved index, so the leaf the reader is
+    // actually looking at is the one left in the tab order.
     const inert = ['a', 'b', 'c'].map((label) =>
       container.querySelector(`[data-testid="page-${label}"]`)?.hasAttribute('inert'),
     );
-    expect(inert).toEqual([false, true, true]);
+    expect(inert).toEqual([true, true, false]);
   });
 });
 

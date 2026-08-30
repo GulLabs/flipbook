@@ -163,6 +163,13 @@ export abstract class UI {
     this.removeHandlers();
     this.unobserveResize();
 
+    // `distElement` is `.stf__block` in HTML mode, and it holds the page
+    // elements the engine ADOPTED from the caller. Removing the block with
+    // them still inside deletes the consumer's own DOM: a vanilla book that
+    // is destroyed and re-created (hot reload, mode switch, route remount)
+    // came back empty. Hand the adopted leaves back first.
+    this.releaseNodes();
+
     this.distElement.remove();
     this.wrapper.remove();
 
@@ -173,6 +180,21 @@ export abstract class UI {
     this.parentElement.style.width = this.hostStyles.width;
     this.parentElement.style.maxWidth = this.hostStyles.maxWidth;
     this.parentElement.style.display = this.hostStyles.display;
+  }
+
+  /**
+   * Hand back caller-owned nodes this UI moved into `distElement`, before the
+   * block is removed in `destroy()`.
+   *
+   * The base implementation does nothing: the subclass is the only thing that
+   * knows what it adopted. `HTMLUI` already tracks exactly that (its `adopted`
+   * set) and already has the release routine (`clear()`), so it forwards here
+   * rather than the base class growing a second, parallel notion of ownership
+   * — and a canvas book, which draws its pages instead of adopting them, keeps
+   * a genuine no-op.
+   */
+  protected releaseNodes(): void {
+    // Nothing adopted by default.
   }
 
   public abstract update(): void;
@@ -202,7 +224,12 @@ export abstract class UI {
   }
 
   protected removeHandlers(): void {
-    this.releaseCapturedPointer();
+    // Unbinding can happen in the middle of a gesture — `refreshHandlers` from
+    // `updateSettings({ useMouseEvents })`, and `HTMLUI.updateItems`. The real
+    // `pointerup` then lands on nothing, so the gesture has to be ended here
+    // or the engine stays in `USER_FOLD` with `isUserTouch` set and the fold
+    // follows a button-less cursor forever.
+    this.cancelGesture();
 
     this.distElement.removeEventListener('pointerdown', this.onPointerDown);
     this.distElement.removeEventListener('pointermove', this.onPointerMove);
@@ -285,6 +312,40 @@ export abstract class UI {
     this.activePointerId = null;
   }
 
+  /**
+   * End an in-flight gesture without committing anything.
+   *
+   * Releasing the capture is not enough: `PageFlip.isUserTouch` and the fold
+   * state live in the engine, and only a `pointerup` clears them. `userStop`
+   * with `isSwipe` set unwinds the touch flag while deliberately committing
+   * neither a click-turn nor a snap-back — the gesture is being abandoned, not
+   * finished — and `abandon()` drops the fold and returns the state to READ,
+   * the same pairing `PageFlip.replacePages` uses when pages vanish under a
+   * gesture. Idempotent: a no-op when nothing is in flight.
+   */
+  private cancelGesture(): void {
+    const wasActive = this.touchPoint !== null || this.activePointerId !== null;
+    const lastPos = this.touchPoint?.point ?? { x: 0, y: 0 };
+
+    this.touchPoint = null;
+    this.releaseCapturedPointer();
+
+    if (!wasActive) return;
+
+    // The controller is the witness that a mode is attached: it and the page
+    // collection are wired in the same step, so this also proves `show()`
+    // below has something to draw and cannot throw `NOT_LOADED`.
+    const flip = this.app.getFlipController();
+    if (flip === null) return;
+
+    this.app.userStop(lastPos, true);
+    flip.abandon();
+
+    // Repaint the spread: the last frame drawn was a fold that no longer
+    // exists. Skipped during teardown, where there is nothing left to draw to.
+    if (!this.app.isDestroyed()) this.app.getPageCollection().show();
+  }
+
   private swipeDirection(dx: number): 'prev' | 'next' {
     const rtl = this.app.getSettings().direction === 'rtl';
 
@@ -311,15 +372,36 @@ export abstract class UI {
 
     this.touchPoint = null;
 
+    this.unfoldHoverCorner();
+  };
+
+  /** Put a hover-folded corner back. Only the hover fold — never a drag. */
+  private unfoldHoverCorner(): void {
     const flip = this.app.getFlipController();
 
     if (flip?.getState() === FlippingState.FOLD_CORNER) {
       this.app.getRender().finishAnimation();
       flip.stopMove();
     }
-  };
+  }
+
+  /**
+   * Does this event belong to the gesture in progress?
+   *
+   * With no active pointer there is no gesture to belong to — that is a hover,
+   * which every pointer may drive. Once one pointer owns the gesture, the
+   * others are ignored: a second finger used to overwrite `activePointerId`
+   * (orphaning the first pointer's capture) and then drive the fold, so a
+   * two-finger pinch-zoom over the book folded a page and lifting either
+   * finger ran `userStop` — committing a turn nobody asked for.
+   */
+  private isActivePointer(e: PointerEvent): boolean {
+    return this.activePointerId === null || this.activePointerId === e.pointerId;
+  }
 
   private onPointerDown = (e: PointerEvent): void => {
+    // A gesture is already in progress and belongs to another pointer.
+    if (this.activePointerId !== null) return;
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     if (!this.checkTarget(e.target)) return;
 
@@ -346,6 +428,19 @@ export abstract class UI {
   };
 
   private onPointerMove = (e: PointerEvent): void => {
+    if (!this.isActivePointer(e)) return;
+
+    // The `clickEventForward` guard ran on `pointerdown` only, so the click
+    // was forwarded correctly while the *hover* still folded the corner up
+    // over the link or button the user was reaching for. A hover that lands on
+    // an interactive target unfolds instead — the same thing leaving the book
+    // does. Only hovers: a drag under capture reports the block as its target
+    // and must keep following the finger.
+    if (this.activePointerId === null && !this.checkTarget(e.target)) {
+      this.unfoldHoverCorner();
+      return;
+    }
+
     const pos = this.getMousePos(e.clientX, e.clientY);
     const isTouch = e.pointerType !== 'mouse';
 
@@ -368,6 +463,9 @@ export abstract class UI {
   };
 
   private onPointerUp = (e: PointerEvent): void => {
+    // Lifting a finger that never owned the gesture must not end it.
+    if (!this.isActivePointer(e)) return;
+
     this.releaseCapturedPointer();
     const pos = this.getMousePos(e.clientX, e.clientY);
     let isSwipe = false;
@@ -385,10 +483,15 @@ export abstract class UI {
         distY < swipeDistance * 2 &&
         Date.now() - this.touchPoint.time < this.swipeTimeout
       ) {
+        // `touchPoint.point` is relative to `distElement`; `rect.height` is the
+        // book's. Comparing them directly ignored `rect.top`, so on a book
+        // centred in a taller host every upper-half swipe was classified
+        // BOTTOM. `Flip.start` converts first — this call site was the odd one
+        // out. (`>=` matches `Flip.start`'s split exactly.)
+        const render = this.app.getRender();
+        const bookPos = render.convertToBook(this.touchPoint.point);
         const corner =
-          this.touchPoint.point.y < this.app.getRender().getRect().height / 2
-            ? FlipCorner.TOP
-            : FlipCorner.BOTTOM;
+          bookPos.y >= render.getRect().height / 2 ? FlipCorner.BOTTOM : FlipCorner.TOP;
 
         if (this.swipeDirection(dx) === 'prev') {
           this.app.flipPrev(corner);

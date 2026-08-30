@@ -11,7 +11,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
 import { PageFlip, PageFlipError } from '@gullabs/flipbook-core';
-import { makePages } from './html-book-fixture';
+import { makeHtmlBook, makePages } from './html-book-fixture';
 
 function host(): HTMLElement {
   const el = document.createElement('div');
@@ -191,5 +191,118 @@ describe('a refused click is reported, not swallowed', () => {
     expect(book.getCurrentPageIndex()).toBe(1);
 
     book.destroy();
+  });
+});
+
+/**
+ * RB4 — `updateFromHtml` must clamp the retained index and report where the
+ * book actually landed.
+ *
+ * `PageCollection.show()` silently returns for an out-of-range index, so
+ * `showSpread()` never ran: `Render` kept its left/right references pointing
+ * into the collection `updateFromHtml` had just destroyed, and both `update`
+ * and `collectionRebuild` reported the refused index. The events are the
+ * visible half; the render references are the damage, so both are asserted —
+ * a fix that clamps only the number would pass an events-only test while the
+ * rAF loop went on painting disposed pages.
+ */
+describe('updateFromHtml clamps the retained index (RB4)', () => {
+  /** The renderer's own page references, which outlive a collection swap. */
+  function renderRefs(book: PageFlip): unknown[] {
+    const render = book.getRender() as unknown as {
+      leftPage: unknown;
+      rightPage: unknown;
+    };
+    return [render.leftPage, render.rightPage].filter((p) => p !== null);
+  }
+
+  function expectRenderInsideCollection(book: PageFlip): void {
+    const live = book.getPageCollection().getPages() as unknown[];
+    const refs = renderRefs(book);
+
+    // Something must be shown — an empty render would satisfy "no stale page"
+    // vacuously.
+    expect(refs.length).toBeGreaterThan(0);
+    for (const ref of refs) expect(live).toContain(ref);
+  }
+
+  test('portrait: a shrinking update lands in range, and says so', () => {
+    const { book, destroy } = makeHtmlBook({ pageCount: 6, usePortrait: true });
+    book.turnToPage(5);
+    expect(book.getCurrentPageIndex()).toBe(5);
+
+    const rebuilt: { page: number; pageCount: number }[] = [];
+    const updated: number[] = [];
+    book.on('collectionRebuild', (e) => rebuilt.push(e.data));
+    book.on('update', (e) => updated.push(e.data.page));
+
+    book.updateFromHtml(makePages(2));
+
+    // Render state first: it is the actual damage. A fix that clamps only the
+    // emitted number leaves the rAF loop painting pages from the destroyed
+    // collection, and an assertion ordered after the index check would never
+    // be reached to notice.
+    expectRenderInsideCollection(book);
+    expect(book.getCurrentPageIndex()).toBe(1);
+
+    expect(rebuilt).toEqual([{ page: 1, pageCount: 2 }]);
+    expect(updated).toEqual([1]);
+
+    destroy();
+  });
+
+  test('landscape: the reported index is the spread it resolved to, not the clamped request', () => {
+    // No cover: spreads are [0,1], [2,3], ... so clamping 6 into a 4-page book
+    // gives a *request* of 3, which `show()` resolves to spread [2,3] — index
+    // 2. Reporting the clamped request instead of the resolved index is the
+    // plausible half-fix; these numbers are chosen so the two differ.
+    const { book, destroy } = makeHtmlBook({
+      pageCount: 8,
+      usePortrait: false,
+      showCover: false,
+    });
+    expect(book.getOrientation()).toBe('landscape');
+    book.turnToPage(6);
+    expect(book.getCurrentPageIndex()).toBe(6);
+
+    const rebuilt: { page: number; pageCount: number }[] = [];
+    book.on('collectionRebuild', (e) => rebuilt.push(e.data));
+
+    book.updateFromHtml(makePages(4));
+
+    expectRenderInsideCollection(book);
+    expect(book.getCurrentPageIndex()).toBe(2);
+    expect(rebuilt).toEqual([{ page: 2, pageCount: 4 }]);
+
+    destroy();
+  });
+
+  test('an update that keeps the index in range does not move the book', () => {
+    const { book, destroy } = makeHtmlBook({ pageCount: 6, usePortrait: true });
+    book.turnToPage(2);
+
+    const rebuilt: { page: number; pageCount: number }[] = [];
+    book.on('collectionRebuild', (e) => rebuilt.push(e.data));
+
+    book.updateFromHtml(makePages(6));
+
+    expectRenderInsideCollection(book);
+    expect(book.getCurrentPageIndex()).toBe(2);
+    expect(rebuilt).toEqual([{ page: 2, pageCount: 6 }]);
+
+    destroy();
+  });
+
+  test('updating to an empty book reports 0 and does not throw', () => {
+    const { book, destroy } = makeHtmlBook({ pageCount: 4, usePortrait: true });
+    book.turnToPage(3);
+
+    const rebuilt: { page: number; pageCount: number }[] = [];
+    book.on('collectionRebuild', (e) => rebuilt.push(e.data));
+
+    expect(() => book.updateFromHtml([])).not.toThrow();
+    expect(rebuilt).toEqual([{ page: 0, pageCount: 0 }]);
+
+    destroy();
   });
 });

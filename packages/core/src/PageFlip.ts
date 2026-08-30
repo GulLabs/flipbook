@@ -316,14 +316,27 @@ export class PageFlip extends EventObject {
     ui.updateItems(items);
     render.reload();
 
-    pages.show(current);
+    // Same clamp-then-report-resolved contract as `replacePages`. `show()`
+    // silently returns for an out-of-range index, so a shrinking update used to
+    // leave `Render` holding left/right references into the collection that was
+    // just destroyed, while both events reported the index carried in from it.
+    // Report where the book actually landed — which is not the clamped
+    // *request* either: in landscape `show(3)` settles on spread [2, 3], whose
+    // canonical index is 2.
+    const pageCount = pages.getPageCount();
+    const target = pageCount === 0 ? 0 : Math.min(Math.max(current, 0), pageCount - 1);
+
+    pages.show(target);
+
+    const resolved = pageCount === 0 ? 0 : pages.getCurrentPageIndex();
+
     this.trigger('update', this, {
-      page: current,
+      page: resolved,
       mode: render.getOrientation(),
     });
     this.trigger('collectionRebuild', this, {
-      page: current,
-      pageCount: pages.getPageCount(),
+      page: resolved,
+      pageCount,
     });
   }
 

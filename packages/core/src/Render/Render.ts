@@ -47,8 +47,26 @@ type AnimationProcess = {
   durationFrame: number;
   /** Сallback at the end of the animation */
   onAnimateEnd: AnimationSuccessAction;
-  /** Animation start time (Global Timer) */
-  startedAt: number;
+  /**
+   * Animation start time on the render loop's frame clock, or `null` when no
+   * frame has run yet in this loop generation.
+   *
+   * R5: it must never be a *stale* timestamp. `startAnimation` stamps it from
+   * `this.timer`, which is the timestamp of the frame currently being rendered
+   * — correct while the loop is running, and meaningless before its first tick
+   * (loop not started yet, or restarted after a `stop()`). A stale or zero
+   * stamp makes the first real rAF timestamp — `performance.now()`, which is
+   * milliseconds-since-page-load and can be any number at all — overshoot the
+   * whole frame list, so the turn plays instantly instead of animating.
+   *
+   * So the stamp is deferred rather than guessed: `start()`/`stop()` clear the
+   * frame clock, `startedAt` inherits that `null`, and {@link Render.render}
+   * binds it to the first frame the animation is actually drawn on. That is
+   * the Phase 7 contract — "`startedAt` derives from the resumed frame clock,
+   * never a stale `this.timer`" — and it degrades to today's behaviour exactly
+   * when today's behaviour was already right (a running loop).
+   */
+  startedAt: number | null;
   /**
    * Index of the last frame that actually ran, or -1 before the first one.
    * It enforces one invariant — *every frame action runs at most once per
@@ -98,11 +116,30 @@ export abstract class Render {
   /** Current book area */
   private boundsRect: PageRect | null = null;
 
-  /** Timer started from start of rendering */
-  protected timer = 0;
+  /**
+   * Timestamp of the frame currently being rendered, or `null` when no frame
+   * has run yet in this loop generation. Cleared by `start()`/`stop()` — see
+   * `AnimationProcess.startedAt` (R5).
+   */
+  protected timer: number | null = null;
 
   /** Active requestAnimationFrame id; 0 when the loop is stopped. */
   private rafId = 0;
+
+  /**
+   * Bumped by every `start()` and `stop()`. A scheduled `loop` callback only
+   * runs if its captured generation is still current, so a frame queued by a
+   * loop that has since been stopped (or superseded by a restart) is dropped.
+   *
+   * R7: this replaces comparing a captured rAF *id* against `this.rafId`. That
+   * id was read by the closure before `let id = requestAnimationFrame(loop)`
+   * had initialised it — a temporal dead zone the real rAF never enters
+   * (it is never synchronous), but a synchronous fake, a polyfill, or a test
+   * double does, and it threw `ReferenceError: Cannot access 'id' before
+   * initialization`. A counter owned by the instance is initialised before the
+   * closure exists, so the identity check has no ordering hazard at all.
+   */
+  private loopGeneration = 0;
 
   /**
    * Safari browser definitions for resolving a bug with a css property clip-area
@@ -146,10 +183,15 @@ export abstract class Render {
     this.timer = timer;
 
     if (this.animation !== null) {
+      // R5: an animation started before the loop's first tick has no stamp yet
+      // (`startedAt === null`); it binds here, to the first frame it is
+      // actually drawn on, so it plays from frame 0 instead of arriving
+      // pre-expired. An animation stamped while the loop was running keeps its
+      // stamp — `??=` only fills a hole.
+      const startedAt = (this.animation.startedAt ??= timer);
+
       // Find current frame of animation
-      const frameIndex = Math.round(
-        (timer - this.animation.startedAt) / this.animation.durationFrame,
-      );
+      const frameIndex = Math.round((timer - startedAt) / this.animation.durationFrame);
 
       const lastIndex = this.animation.frames.length - 1;
 
@@ -203,15 +245,18 @@ export abstract class Render {
     this.update();
     this.stop();
 
+    // R7: capture the generation, not the rAF id. `generation` is fully
+    // initialised before `loop` is even created, so a synchronous rAF (a fake,
+    // a polyfill, a test double) cannot observe it in its temporal dead zone.
+    const generation = ++this.loopGeneration;
+
     const loop = (timer: number): void => {
-      if (id !== this.rafId) return;
+      if (generation !== this.loopGeneration) return;
       this.render(timer);
       this.rafId = requestAnimationFrame(loop);
-      id = this.rafId;
     };
 
-    let id = requestAnimationFrame(loop);
-    this.rafId = id;
+    this.rafId = requestAnimationFrame(loop);
   }
 
   /** Cancel the render loop. Safe to call more than once. */
@@ -220,6 +265,15 @@ export abstract class Render {
       cancelAnimationFrame(this.rafId);
     }
     this.rafId = 0;
+
+    // Invalidate any frame already queued: `cancelAnimationFrame` may be
+    // missing (R3) and, more importantly, a callback can already be in flight.
+    this.loopGeneration += 1;
+
+    // R5: the frame clock belongs to a loop generation, not to the object. A
+    // turn started while the loop is parked must not inherit the timestamp of
+    // whatever frame happened to run last — see `AnimationProcess.startedAt`.
+    this.timer = null;
   }
 
   /**
@@ -241,7 +295,17 @@ export abstract class Render {
         at(frames, frames.length - 1)();
       }
       onAnimateEnd();
-      this.animation = null;
+
+      // R4 (same defect, second site): there used to be a `this.animation =
+      // null` here. It was redundant on the ordinary path — `finishAnimation()`
+      // above already nulled it and the instant path never sets one — and
+      // actively wrong on the interesting one: if `onAnimateEnd` chains a turn
+      // (auto-advance, a queued flip, a consumer calling `flipNext()` from
+      // `onFlip`), that nested `startAnimation` installs the new animation and
+      // this line threw it away, leaving the book with no animation and no
+      // pending commit. Instant turns are the *most* likely to chain, since
+      // `flippingTime: 0` and `prefers-reduced-motion` are exactly where
+      // consumers auto-advance.
       return;
     }
 
@@ -259,7 +323,19 @@ export abstract class Render {
    * End the current animation process and call the callback
    */
   public finishAnimation(): void {
-    if (this.animation !== null) {
+    // R4: detach BEFORE running the callback, exactly as the render loop's
+    // overshoot branch does. `onAnimateEnd` is what turns the page, and a
+    // consumer that chains a turn from it (`onFlip` → `flipNext()`,
+    // auto-advance, a queued gesture) reaches `startAnimation`, which installs
+    // the next animation on this same object. A trailing `this.animation =
+    // null` after the callback then discarded that fresh animation: no frames
+    // scheduled, no commit pending, the book frozen mid-turn until the next
+    // pointer event. Read the field once, clear it, then run the callback —
+    // anything the callback installs is nobody else's to clean up.
+    const animation = this.animation;
+    this.animation = null;
+
+    if (animation !== null) {
       // R1: the same "exactly once" rule the render loop's overshoot branch
       // obeys. `lastPlayedIndex` is one invariant — *every frame action runs at
       // most once per animation* — so it cannot have two implementations.
@@ -272,17 +348,15 @@ export abstract class Render {
       // buys nothing. The risk is asymmetric — a redundant idempotent
       // `this.do(p)` is worth zero, while a frame action that ever acquires a
       // side effect runs twice — so the guard is the cheap side of the trade.
-      const lastIndex = this.animation.frames.length - 1;
+      const lastIndex = animation.frames.length - 1;
 
-      if (this.animation.lastPlayedIndex !== lastIndex) {
-        this.animation.lastPlayedIndex = lastIndex;
-        at(this.animation.frames, lastIndex)();
+      if (animation.lastPlayedIndex !== lastIndex) {
+        animation.lastPlayedIndex = lastIndex;
+        at(animation.frames, lastIndex)();
       }
 
-      this.animation.onAnimateEnd();
+      animation.onAnimateEnd();
     }
-
-    this.animation = null;
   }
 
   /**
@@ -661,5 +735,41 @@ function isSafariUserAgent(): boolean {
   if (typeof navigator === 'undefined' || !navigator.userAgent) {
     return false;
   }
-  return /Version\/[\d.]+.*Safari/.test(navigator.userAgent);
+  return isWebKitUserAgent(navigator.userAgent);
+}
+
+/**
+ * R6: does this user agent identify a **WebKit** engine?
+ *
+ * The thing `isSafari()` gates (`HTMLPage`) is the workaround for
+ * webkit#126207, a WebKit rendering bug — so the question is the engine, not
+ * the brand. The old test, `/Version\/[\d.]+.*Safari/`, answered neither:
+ *
+ * - **False positive, the reported defect.** Android System WebView stamps a
+ *   frozen `Version/4.0` and ends `… Chrome/117.0.0.0 Mobile Safari/537.36`.
+ *   It is Blink. Every Capacitor / Cordova / React Native Android book was
+ *   taking a clip-path fallback for a bug its engine does not have.
+ * - **False negative, found alongside it.** iOS Chrome (`CriOS/`), Firefox
+ *   (`FxiOS/`), Edge (`EdgiOS/`) and bare `WKWebView` hosts emit **no**
+ *   `Version/` token at all, yet are all WebKit by App Store policy — so the
+ *   browsers that *do* have the bug were being skipped.
+ *
+ * The order below is the whole logic and is load-bearing:
+ *
+ *  1. A Chromium brand token (`Chrome/`, `Chromium/`, `Edg/`, `OPR/`) means
+ *     Blink — this is what rejects Android WebView, and it must be tested
+ *     before anything else, because that UA also carries `Safari/`.
+ *     `EdgiOS/` and `CriOS/` deliberately do not match `Edg\/` / `Chrome\/`.
+ *  2. Desktop Firefox is Gecko; iOS Firefox (`FxiOS/`) is not.
+ *  3. Any iOS device is WebKit whatever the brand says. This precedes the
+ *     `Safari/` check because an embedded `WKWebView` often omits it.
+ *  4. Otherwise require the real WebKit pair (`AppleWebKit/` + `Safari/`),
+ *     which covers macOS Safari, WebKitGTK/Epiphany and Playwright's WebKit
+ *     build, and rejects jsdom (`AppleWebKit/537.36 … jsdom/26`, no `Safari/`).
+ */
+function isWebKitUserAgent(ua: string): boolean {
+  if (/Chrome\/|Chromium\/|Edg\/|OPR\//.test(ua)) return false;
+  if (/Firefox\//.test(ua) && !/FxiOS\//.test(ua)) return false;
+  if (/iPhone|iPad|iPod/.test(ua)) return true;
+  return /AppleWebKit\//.test(ua) && /Safari\//.test(ua);
 }
