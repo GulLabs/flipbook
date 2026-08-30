@@ -8,7 +8,7 @@
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import { PageFlip, SizeType } from '@gullabs/flipbook-core';
+import { Orientation, PageFlip, SizeType } from '@gullabs/flipbook-core';
 import { makePages, sizeElement } from './html-book-fixture';
 
 function book(overrides: Record<string, unknown> = {}) {
@@ -97,5 +97,52 @@ describe('runtime-updatable settings reach their collaborator', () => {
     expect(engine.flipPrev()).toBe(true);
 
     engine.destroy();
+  });
+});
+
+/**
+ * W2 — `Render` reads settings from its own reference, not through the app.
+ *
+ * `calculateRect` used `this.app.getSettings().usePortrait` while every value
+ * beside it came from `this.setting`. The two are the same object today, so
+ * that was inert; this pins the invariant that makes both correct, because the
+ * moment anyone clones settings on the way in, only one of the two readers
+ * keeps seeing updates — Y5's exact bug class, and `swipeDistance` already
+ * shipped that way once.
+ */
+describe('W2 — Render and PageFlip share one settings object', () => {
+  test('updateSettings({ usePortrait }) reaches the render geometry', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    sizeElement(host, 900, 400);
+
+    const book = new PageFlip(host, { width: 200, height: 300, usePortrait: true });
+    book.loadFromHTML(makePages(6));
+
+    // T1, paid off for this test. `computeBounds` measures
+    // `getUI().getDistElement()` — the engine's own `.stf__block` — and NOT the
+    // host the consumer passed in. jsdom leaves that block 0x0 forever, at
+    // which point `update()` returns early as "not observed" and the
+    // orientation never moves at all. Stubbing the host looks right, changes
+    // nothing, and lets every assertion below pass without reaching the branch
+    // it names; the first two drafts of this test did exactly that.
+    const measured = book.getUI().getDistElement();
+    sizeElement(measured, 250, 400);
+    book.update();
+    expect(book.getOrientation()).toBe(Orientation.PORTRAIT);
+
+    // Now forbid portrait at RUNTIME, on a box narrow enough that the portrait
+    // branch is the one being taken. `updateSettings` mutates the settings
+    // object in place, so a `Render` reading through that shared reference sees
+    // it for free; one holding its own copy would keep reporting portrait.
+    book.updateSettings({ usePortrait: false });
+    expect(book.getOrientation()).toBe(Orientation.LANDSCAPE);
+
+    // …and back, so the test pins a live setting rather than a one-way latch.
+    book.updateSettings({ usePortrait: true });
+    expect(book.getOrientation()).toBe(Orientation.PORTRAIT);
+
+    book.destroy();
+    host.remove();
   });
 });

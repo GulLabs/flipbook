@@ -1028,3 +1028,222 @@ describe('AN2 — the state is true before it is announced', () => {
     expect(app.getState()).toBe(FlippingState.FLIPPING);
   });
 });
+
+describe('V1 — a drag never inherits a fold the renderer was animating', () => {
+  /**
+   * `flippingTime` has to be REAL. With `0` the peel-in and the snap-back both
+   * complete synchronously inside `startAnimation`, `calc` is already null when
+   * the drag arrives, and every assertion below passes against the unfixed
+   * code — the shortcut that skips the path the fix lives on.
+   */
+  function hovered() {
+    const { book: app } = book({
+      pageCount: 8,
+      startPage: 2,
+      width: 200,
+      height: 300,
+      flippingTime: 400,
+    });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+    const leafLeft = rect.left + rect.width - rect.pageWidth;
+
+    // Hover the RIGHT corner: a FORWARD fold peels in.
+    app.userMove({ x: leafLeft + rect.pageWidth - 5, y: rect.top + 5 }, false);
+    expect(app.getState()).toBe(FlippingState.FOLD_CORNER);
+    expect(flip.getCalculation()?.getDirection()).toBe(FlipDirection.FORWARD);
+
+    // Move off the corners: the snap-back starts and `calc` stays live for the
+    // whole of it. This is the window the defect lives in, so assert it exists.
+    app.userMove({ x: leafLeft + rect.pageWidth / 2, y: rect.top + rect.height / 2 }, false);
+    expect(flip.getCalculation()).not.toBeNull();
+    expect(app.getRender().isAnimating()).toBe(true);
+
+    return { app, flip, rect, leafLeft };
+  }
+
+  test('a BACK drag begun during a corner snap-back folds BACK', () => {
+    const { app, flip, rect, leafLeft } = hovered();
+
+    app.startUserTouch({ x: leafLeft + 5, y: rect.top + 5 });
+    app.userMove({ x: leafLeft + 45, y: rect.top + 8 }, false); // > 5px, so `fold()`
+
+    expect(app.getState()).toBe(FlippingState.USER_FOLD);
+
+    // Reverted fix: FORWARD. The reader drags the left edge and the RIGHT edge
+    // peels, because `fold()` reused the hover's calculation rather than
+    // building its own.
+    expect(flip.getCalculation()?.getDirection()).toBe(FlipDirection.BACK);
+  });
+
+  test('the snap-back stops driving the fold, and cannot wipe it mid-drag', () => {
+    const { app, flip, leafLeft, rect } = hovered();
+
+    app.startUserTouch({ x: leafLeft + 5, y: rect.top + 5 });
+    app.userMove({ x: leafLeft + 45, y: rect.top + 8 }, false);
+
+    // The drag owns the leaf now: nothing else is scheduled against it.
+    expect(app.getRender().isAnimating()).toBe(false);
+
+    // Reverted fix: the snap-back is still in flight, so its `needReset`
+    // completion nulls `calc` while the finger is still down — the gesture
+    // dies partway through with no release and no `changeState`.
+    app.getRender().finishAnimation();
+    expect(flip.getCalculation()).not.toBeNull();
+    expect(app.getState()).toBe(FlippingState.USER_FOLD);
+  });
+
+  test('a page grabbed mid-TURN does not commit behind the reader', () => {
+    const { book: app } = book({
+      pageCount: 8,
+      startPage: 2,
+      width: 200,
+      height: 300,
+      flippingTime: 400,
+    });
+    const rect = app.getBoundsRect();
+    const leafLeft = rect.left + rect.width - rect.pageWidth;
+
+    app.flipNext();
+    expect(app.getState()).toBe(FlippingState.FLIPPING);
+    expect(app.getRender().isAnimating()).toBe(true);
+
+    // The reader catches the turning leaf and drags it back towards its edge.
+    app.startUserTouch({ x: leafLeft + rect.pageWidth - 20, y: rect.top + 5 });
+    app.userMove({ x: leafLeft + rect.pageWidth - 8, y: rect.top + 8 }, false);
+    app.userStop({ x: leafLeft + rect.pageWidth - 8, y: rect.top + 8 });
+    app.getRender().finishAnimation();
+
+    // Reverted fix: the turn's own animation was still running with
+    // `isTurned: true`, so its completion committed regardless — the reader
+    // pulled the page back and the book advanced anyway.
+    expect(app.getCurrentPageIndex()).toBe(2);
+  });
+
+  test('a second drag begun during the FIRST drag’s snap-back folds its own way', () => {
+    // The variant this test exists to kill: guarding on
+    // `state !== USER_FOLD` instead of `render.isAnimating()`. It passes every
+    // other assertion in this block, because a hover leaves the state at
+    // FOLD_CORNER — but `stopMove()` does not announce READ until the
+    // snap-back's `onAnimateEnd`, so throughout a RELEASED drag's snap-back the
+    // state is still USER_FOLD and the state guard declines to rebuild.
+    // `isAnimating()` is the property that actually distinguishes a fold the
+    // reader is holding from one the renderer is moving.
+    const { book: app } = book({
+      pageCount: 8,
+      startPage: 2,
+      width: 200,
+      height: 300,
+      flippingTime: 400,
+    });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+    const leafLeft = rect.left + rect.width - rect.pageWidth;
+
+    // A FORWARD drag from the right edge, released short of the spine so it
+    // snaps back rather than committing.
+    app.startUserTouch({ x: leafLeft + rect.pageWidth - 5, y: rect.top + 5 });
+    app.userMove({ x: leafLeft + rect.pageWidth - 45, y: rect.top + 8 }, false);
+    expect(flip.getCalculation()?.getDirection()).toBe(FlipDirection.FORWARD);
+
+    app.userStop({ x: leafLeft + rect.pageWidth - 45, y: rect.top + 8 });
+
+    // The window: the snap-back is in flight, `calc` is live, and the state has
+    // NOT been handed back yet.
+    expect(app.getRender().isAnimating()).toBe(true);
+    expect(flip.getCalculation()).not.toBeNull();
+    expect(app.getState()).toBe(FlippingState.USER_FOLD);
+
+    // A new drag, on the opposite edge.
+    app.startUserTouch({ x: leafLeft + 5, y: rect.top + 5 });
+    app.userMove({ x: leafLeft + 45, y: rect.top + 8 }, false);
+
+    expect(flip.getCalculation()?.getDirection()).toBe(FlipDirection.BACK);
+    expect(app.getRender().isAnimating()).toBe(false);
+  });
+
+  test('an ordinary drag with nothing animating is untouched', () => {
+    const { book: app } = book({ pageCount: 8, startPage: 2, width: 200, height: 300 });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+    const leafLeft = rect.left + rect.width - rect.pageWidth;
+
+    expect(app.getRender().isAnimating()).toBe(false);
+
+    app.startUserTouch({ x: leafLeft + rect.pageWidth - 5, y: rect.top + 5 });
+    app.userMove({ x: leafLeft + rect.pageWidth - 45, y: rect.top + 8 }, false);
+
+    // The control: the guard must not cancel a fold that is the reader's own,
+    // and a drag begun from rest must still build one.
+    expect(app.getState()).toBe(FlippingState.USER_FOLD);
+    expect(flip.getCalculation()?.getDirection()).toBe(FlipDirection.FORWARD);
+
+    // …and it survives being continued, which a guard that fired every move
+    // would break by rebuilding the calculation on each one.
+    const calc = flip.getCalculation();
+    app.userMove({ x: leafLeft + rect.pageWidth - 80, y: rect.top + 12 }, false);
+    expect(flip.getCalculation()).toBe(calc);
+  });
+});
+
+describe('V2 — the corner test and the direction test agree on the boundary', () => {
+  test('the leaf’s own left column is a corner, because it is a BACK click', () => {
+    // `flippingTime: 0` so the turn below lands synchronously and can be read
+    // off the page index — CLAUDE.md's instant-turn rule: nothing may treat a
+    // null `calc` after `flip()` as failure.
+    const { book: app } = book({
+      pageCount: 6,
+      width: 200,
+      height: 300,
+      startPage: 2,
+      flippingTime: 0,
+    });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+
+    expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
+    const visibleLeft = rect.width - rect.pageWidth;
+
+    // Exactly on the boundary in book coordinates — the leaf's first column
+    // and the book's first row.
+    const edge = { x: rect.left + visibleLeft, y: rect.top };
+
+    // The direction test accepts it — asserted through the public surface, by
+    // clicking it and watching which way the book goes: `leafPos >= 0` is BACK,
+    // and `start()` reads `y >= height / 2` for the corner, so y = 0 is a valid
+    // TOP. Reading `getDirectionByPoint` directly would mean widening a private
+    // method for a test, which states the implementation rather than the
+    // contract.
+    expect(flip.flip(edge)).toBe(true);
+    expect(app.getCurrentPageIndex()).toBe(1); // BACK from 2
+    app.turnToPage(2);
+
+    // Reverted fix: `>` on both, so the engine agreed this was a BACK click on
+    // the book and refused it anyway. Under `disableFlipByClick` that is a
+    // click on the very corner of the page that does nothing — and a rounded
+    // touch coordinate lands on that column routinely.
+    expect(flip.isPointOnCorners(edge)).toBe(true);
+  });
+
+  test('the far edges are inclusive too, and beyond them is still outside', () => {
+    const { book: app } = book({ pageCount: 6, width: 200, height: 300, startPage: 2 });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+
+    // The last column and the last row of the book.
+    expect(flip.isPointOnCorners({ x: rect.left + rect.width, y: rect.top })).toBe(true);
+    expect(flip.isPointOnCorners({ x: rect.left + rect.width, y: rect.top + rect.height })).toBe(
+      true,
+    );
+
+    // One pixel past is off the book, and inclusivity must not have widened
+    // that — a `>=`/`<=` pair with the wrong operand would.
+    const visibleLeft = rect.width - rect.pageWidth;
+    expect(flip.isPointOnCorners({ x: rect.left + rect.width + 1, y: rect.top })).toBe(false);
+    expect(flip.isPointOnCorners({ x: rect.left + visibleLeft - 1, y: rect.top })).toBe(false);
+    expect(flip.isPointOnCorners({ x: rect.left + rect.width, y: rect.top - 1 })).toBe(false);
+    expect(
+      flip.isPointOnCorners({ x: rect.left + rect.width, y: rect.top + rect.height + 1 }),
+    ).toBe(false);
+  });
+});

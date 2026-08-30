@@ -164,8 +164,19 @@ describe('a refused click is reported, not swallowed', () => {
     const rejected: { reason: string; code?: string }[] = [];
     book.on('turnRejected', (e) => rejected.push(e.data));
 
-    // Middle of the book: not a corner, so policy refuses it.
-    clickAt(book, 100, 150);
+    // The middle of the VISIBLE LEAF: not a corner, so policy refuses it.
+    //
+    // Derived from the rect rather than hard-coded, and this is T1 test debt
+    // being paid off, not decoration. The literal `(100, 150)` this used to
+    // pass looked like the middle of a 200x300 book and was not: jsdom gives
+    // the host a permanent 0x0 layout, so the engine centres a 400x300 portrait
+    // rect on the origin and that point converts to book coordinates
+    // (400, 300) — the exact bottom-right CORNER of the rect. It only read as
+    // "not a corner" because the bounds test excluded its own boundary, so the
+    // test agreed with the code for a reason neither of them stated.
+    const rect = book.getBoundsRect();
+    const leafMiddleX = rect.left + rect.width - rect.pageWidth / 2;
+    clickAt(book, leafMiddleX, rect.top + rect.height / 2);
 
     expect(rejected).toEqual([{ reason: 'disabled' }]);
     expect(book.getCurrentPageIndex()).toBe(0);

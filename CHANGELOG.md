@@ -18,6 +18,32 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — event dispatch: one listener can no longer alter or abort another
+
+- **`trigger` iterated the live listener array**, so one dispatch had two
+  different mutation semantics and one non-terminating case: a handler calling
+  `on(sameEvent, …)` pushed onto the array being iterated and the new listener
+  ran inside the same emit — a handler that re-registers itself never
+  terminated — while a handler calling `off(sameEvent)` deleted the map entry
+  but left the loop holding the old array, so the rest still ran. The listener
+  set is now snapshotted when the dispatch starts: a listener added during a
+  dispatch runs from the next emit, and one removed during a dispatch still runs
+  for the current one (Node `EventEmitter` semantics).
+- **The first throwing listener aborted every later listener for that event.**
+  Two `flip` handlers meant one consumer defect silently disabled the other
+  handler. Every listener now runs. The first error is still thrown
+  synchronously, so `try { … } catch` at the call site is unchanged; a second or
+  later error is rethrown on a fresh task, reaching `window.onerror` /
+  `uncaughtException` rather than being dropped. Listener errors are never
+  swallowed.
+- **`off(event, callback)` detaches a single listener.** `off(event)` still
+  removes all of them. Matching is by reference, and registering the same
+  function twice then calling `off` once leaves one registration.
+- **A misspelled event name is a compile error.** The permissive
+  `on(eventName: string, …)` overload is gone, so `book.on('flpi', …)` — which
+  used to register against a name nothing emits and never fire — no longer
+  type-checks.
+
 ### Fixed — re-entrancy from the engine's own synchronous events
 
 - **A turn started from an `onFlip` handler could be overwritten by the call

@@ -91,7 +91,33 @@ export class Flip {
    * @param globalPos - Touch Point Coordinates (relative window)
    */
   public fold(globalPos: Point): void {
-    // The state is entered only once `start()` has agreed to the turn.
+    // V1. A fold the RENDERER is animating is machine-driven — a corner peel-in
+    // or a snap-back — and never the reader's. A drag has no animation of its
+    // own, so an animation running when a drag arrives is always somebody
+    // else's fold, and reusing it is the defect:
+    //
+    //  - **The direction is stale.** Leaving a hovered corner starts a
+    //    snap-back that only clears `calc` at `onAnimateEnd`, so for up to
+    //    `flippingTime` afterwards the hover's calculation is still live. A
+    //    drag begun in that window skipped `start()` entirely and folded with
+    //    the HOVERED corner's direction — measured on a 200x300 book, a BACK
+    //    drag on the left edge continued the right corner's FORWARD fold.
+    //  - **Two things drive one fold.** The snap-back keeps firing frames
+    //    against the finger, and its `needReset` then wipes `calc` MID-DRAG,
+    //    so the gesture dies partway through with no release.
+    //
+    // The same rule settles the other machine-driven fold: grabbing a page
+    // mid-TURN. That turn's `onAnimateEnd` commits unconditionally, so the page
+    // used to turn no matter what the finger did with it — the reader caught
+    // the leaf, dragged it back, and the book advanced anyway. Cancelling hands
+    // the leaf over, and `stopMove()` then decides commit-or-return from where
+    // the reader actually left it, which is what it does for every other drag.
+    if (this.render.isAnimating()) {
+      this.render.cancelAnimation();
+      this.reset();
+    }
+
+    // I1. The state is entered only once `start()` has agreed to the turn.
     // Announcing USER_FOLD first meant a *refused* fold — a forward drag on
     // the last spread, or an ordinary right-edge drag at page 0 under
     // `direction: 'rtl'` — left `calc` null, so `do()` no-opped and
@@ -1031,11 +1057,28 @@ export class Flip {
     // exclude the middle of a wide leaf.
     const cornerHeight = Math.min(operatingDistance, rect.height / 2);
 
+    // V2. INCLUSIVE on all four edges, because the direction test is.
+    //
+    // These bounds and `getDirectionByPoint` are the two halves of one
+    // question — is this point on the book, and if so which leaf does it turn —
+    // and they disagreed about the book's own boundary. `getDirectionByPoint`
+    // accepts `leafPos >= 0`, and `start()` reads `bookPos.y >= rect.height / 2`
+    // for the corner, so the leaf's left column and the book's top row are
+    // valid points that produce a real direction; `>` refused them here.
+    //
+    // Under `disableFlipByClick` that is a click which the engine agrees is a
+    // BACK click on the book, and refuses anyway. One-pixel edges are exactly
+    // what a reader hits aiming at the very corner of the page, and on a touch
+    // screen the rounded pointer coordinate lands there routinely.
+    //
+    // The right and bottom edges take the same treatment for the same reason:
+    // `bookPos.x === rect.width` is the last column of the leaf, is FORWARD by
+    // the direction test, and was likewise not a corner.
     return (
-      bookPos.x > visibleLeft &&
-      bookPos.y > 0 &&
-      bookPos.x < rect.width &&
-      bookPos.y < rect.height &&
+      bookPos.x >= visibleLeft &&
+      bookPos.y >= 0 &&
+      bookPos.x <= rect.width &&
+      bookPos.y <= rect.height &&
       (bookPos.x < visibleLeft + leftBand || bookPos.x > rect.width - rightBand) &&
       (bookPos.y < cornerHeight || bookPos.y > rect.height - cornerHeight)
     );

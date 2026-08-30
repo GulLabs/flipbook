@@ -60,6 +60,43 @@ orientation, shadow gradients, hard-page z-order — wanted that already. If you
 were reading it to learn which way a turn was heading, read the `flip` event or
 compare page indices instead.
 
+### `on()` and `off()` only accept real event names
+
+`on(eventName: string, callback)` was a public overload, so any string compiled.
+`on`/`off` are now keyed to `FlipbookEventMap`, and a typo is a type error at
+the call site. Runtime behaviour is unchanged — a name nothing emits never fired
+before either; you now find out at build time instead of never. If you were
+using the engine's emitter for event names of your own, keep your own emitter:
+this one is typed to the events the engine emits.
+
+### `off(name, callback)` detaches one listener
+
+`off(name)` is unchanged and still removes every listener for that event. It now
+takes an optional second argument that removes exactly one registration, so two
+`flip` handlers can be detached independently — previously the only way to drop
+one was to drop both and re-register the survivor.
+
+Matching is by reference, like `removeEventListener`: pass the same function
+object you passed to `on`. A fresh arrow or a new `.bind(this)` will not match
+and is a no-op. Registering the same function twice and calling `off` once
+leaves one registration.
+
+### A throwing event listener no longer silences the listeners after it
+
+Before: the first listener that threw ended the dispatch, and every listener
+registered after it for that event was skipped — silently.
+
+Now: every listener runs. The first error is still thrown synchronously from the
+call that emitted, so existing `try`/`catch` around `updateFromHtml`, `clear`,
+`flipNext` and friends behaves as it did. If more than one listener throws in a
+single dispatch, the first is thrown and the rest are rethrown asynchronously,
+where they surface as uncaught errors instead of disappearing.
+
+Also: the listener set is fixed when a dispatch begins. A listener you register
+from inside a handler will not receive the event being dispatched — it receives
+the next one — and a listener you remove from inside a handler still receives
+the current one.
+
 ### `turnRejected` has a fourth reason: `superseded`
 
 `reason` was `'boundary' | 'setup' | 'disabled'`. It is now
@@ -85,8 +122,9 @@ boolean instead: `flipNext()` / `flipPrev()` still return `false`. If you
 genuinely want the event, register **after** `destroy()`; `EventObject` has no
 notion of a destroyed owner and `on()` still works.
 
-There is no public `offAll()`. `off(name)` is unchanged, and complete unbinding
-is what `destroy()` now does.
+There is no public `offAll()`. `off(name)` still removes every listener for one
+event (and `off(name, callback)` removes just one), while complete unbinding
+across all events is what `destroy()` now does.
 
 ### `clear()` now emits events
 

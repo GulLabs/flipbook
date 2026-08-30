@@ -502,8 +502,17 @@ export abstract class Render {
 
     let left = middlePoint.x - pageWidth;
 
+    // W2. `this.setting` throughout, not `this.app.getSettings()`.
+    //
+    // The two are the same object today — `PageFlip` hands its own settings
+    // reference to the constructor and `updateSettings` mutates it in place —
+    // so this is provably inert, and it is recorded as a consistency fix rather
+    // than dressed up as a defect. What it removes is the Y5 bug class: two
+    // ways to reach one value, latent until somebody clones the settings on the
+    // way in and only ONE of the two readers keeps seeing updates. The test
+    // beside it pins the invariant that makes both correct.
     if (this.setting.size === SizeType.STRETCH) {
-      if (blockWidth < this.setting.minWidth * 2 && this.app.getSettings().usePortrait)
+      if (blockWidth < this.setting.minWidth * 2 && this.setting.usePortrait)
         orientation = Orientation.PORTRAIT;
 
       pageWidth = orientation === Orientation.PORTRAIT ? blockWidth : blockWidth / 2;
@@ -521,7 +530,7 @@ export abstract class Render {
           ? middlePoint.x - pageWidth / 2 - pageWidth
           : middlePoint.x - pageWidth;
     } else {
-      if (blockWidth < pageWidth * 2 && this.app.getSettings().usePortrait) {
+      if (blockWidth < pageWidth * 2 && this.setting.usePortrait) {
         orientation = Orientation.PORTRAIT;
         left = middlePoint.x - pageWidth / 2 - pageWidth;
       }
@@ -600,6 +609,19 @@ export abstract class Render {
    * being replaced, that callback belongs to pages that no longer exist, so the
    * turn must be dropped rather than finished.
    */
+  /**
+   * Is an animation currently in flight?
+   *
+   * `Flip` needs this to tell a machine-driven fold — a corner peel-in, a
+   * snap-back, a turn — from one the reader is dragging, because a drag never
+   * animates. See V1 in {@link Flip.fold}. Deliberately not `getAnimation()`:
+   * the process object is the renderer's, and handing it out invites a caller
+   * to reach into `frames` or `startedAt`.
+   */
+  public isAnimating(): boolean {
+    return this.animation !== null;
+  }
+
   public cancelAnimation(): void {
     // U5, the same slot: abandoning a turn from inside an `onAnimateEnd` —
     // `replacePages` / `destroy` called from an `onFlip` handler — must not
