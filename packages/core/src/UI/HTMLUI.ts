@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { UI } from './UI';
+import { PageFlipError } from '../errors';
 import type { PageFlip } from '../PageFlip';
 import type { FlipSetting } from '../Settings';
 import { ENGINE_LEAF_CLASSES } from '../Page/HTMLPage';
@@ -77,7 +78,7 @@ export class HTMLUI extends UI {
 
     const block = inBlock.querySelector('.stf__block');
     if (!block) {
-      throw new Error('HTML block missing');
+      throw new PageFlipError('HTML block missing', 'RENDER_SETUP');
     }
     const dist = block as HTMLElement;
     this.distElement = dist;

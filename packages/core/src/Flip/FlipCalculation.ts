@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { angleBetweenSegments, distanceBetween, intersectSegments, limitToCircle } from '../Helper';
+import { GeometryAbort, isGeometryAbort } from '../errors';
 import type { Point, Rect, RectPoints, Segment } from '../BasicTypes';
 import { FlipCorner, FlipDirection } from './enums';
 import { at } from '../arrayAccess';
@@ -96,18 +97,27 @@ export class FlipCalculation {
       this.calculateIntersectPoint(this.position);
 
       return true;
-    } catch {
-      // Deliberately broad, and the one place in the engine that is.
+    } catch (error: unknown) {
+      // NARROW, by identity, to the engine's own control-flow signal.
       //
       // `calc` runs on every pointer move of a drag and uses exceptions as
       // control flow: the geometry guards below throw for a position that has
       // no valid fold, and `false` means "not a usable position, do not
-      // advance". Distinguishing those from a genuine fault by type was tried
-      // and measured — a marker class or a tagged error costs bundle bytes on
-      // a hot path to catch something a consumer cannot act on mid-drag.
-      // Elsewhere (`Flip.start`, `PageFlip.requestTurn`, the React navigation
-      // paths) a non-`PageFlipError` propagates.
-      return false;
+      // advance". That part is deliberate and stays.
+      //
+      // What was wrong was the BREADTH. A bare `catch` also swallowed a
+      // genuine `TypeError` — on every frame of every drag, silently — so a
+      // real defect in the fold maths was indistinguishable from "the finger
+      // is somewhere a fold cannot exist", and reported as neither.
+      //
+      // The earlier comment here defended the breadth on bundle size, which
+      // is the wrong trade and was the wrong reason: a defect the engine
+      // cannot see is not cheaper than a few bytes. `isGeometryAbort` compares
+      // a symbol on the instance, so it cannot be spoofed by a look-alike
+      // thrown from consumer code inside a listener.
+      if (isGeometryAbort(error)) return false;
+
+      throw error;
     }
   }
 
@@ -284,7 +294,7 @@ export class FlipCalculation {
     }
 
     if (Math.abs(result.x - this.pageWidth) < 1 && Math.abs(result.y) < 1) {
-      throw new Error('Point is too small');
+      throw new GeometryAbort('Point is too small to compute a fold');
     }
 
     return result;
@@ -305,7 +315,7 @@ export class FlipCalculation {
 
     const da = Math.PI - angle;
     if (!isFinite(angle) || (da >= 0 && da < 0.003))
-      throw new Error('The G point is too small to compute a fold angle');
+      throw new GeometryAbort('The G point is too small to compute a fold angle');
 
     if (this.corner === FlipCorner.BOTTOM) angle = -angle;
 

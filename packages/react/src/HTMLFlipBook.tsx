@@ -759,6 +759,15 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     }, [
       props.width,
       props.height,
+      // B1, and a regression I introduced: `sizing` was dropped from
+      // `remountKeyOf` last round because it IS live and updateSettings
+      // handles it — but it was never added here, so it became a prop that
+      // does nothing at all. Worse than the remount it replaced, and silent:
+      // a consumer toggling fixed <-> responsive at a breakpoint sees width
+      // and height update (those ARE in this list) while the mode does not,
+      // so the book gets a new pixel size in the wrong mode and it reads as a
+      // bug in their own CSS.
+      props.sizing,
       props.usePortrait,
       props.pointerInput,
       props.flippingTime,
@@ -1113,14 +1122,13 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         data-flipbook-kb={useKeyboard ? '' : undefined}
         onKeyDown={useKeyboard ? onKeyDown : undefined}
       >
-        <style>
-          {`[data-flipbook-kb]:focus{outline:none}` +
-            `[data-flipbook-kb]:focus-visible{outline:2px solid #2563eb;outline-offset:2px}` +
-            // The skip-link reveal: clipped until something inside takes focus.
-            `[data-flipbook-controls]:focus-within{position:static!important;width:auto!important;` +
-            `height:auto!important;margin:0!important;overflow:visible!important;` +
-            `clip:auto!important;clip-path:none!important;white-space:normal!important}`}
-        </style>
+        {/*
+          The focus ring and the controls' reveal live in `FLIPBOOK_CSS`, not
+          here. An inline <style> is blocked by a strict CSP without
+          'unsafe-inline' — which took the reveal with it and left a sighted
+          keyboard user focusing a control they could not see — and emitting it
+          per component duplicates the rules once per book on the page.
+        */}
         {pageHost ? createPortal(pages.list, pageHost) : null}
         {/*
           H4. REAL BUTTONS, and this is a defect fix rather than a convenience.
