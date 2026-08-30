@@ -43,7 +43,7 @@ function bookWithPages(
   const book = new PageFlip(host, {
     width,
     height,
-    size: 'fixed',
+    sizing: 'fixed',
     flippingTime: 0,
     usePortrait: true,
     drawShadow: true,
@@ -83,7 +83,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
     const { book: app } = book({
       pageCount: 4,
       flippingTime: 0,
-      startPage: 2,
+      initialPage: 2,
       pageBackground: '#fff',
     });
     const current = app.getPage(2) as HTMLPage;
@@ -152,7 +152,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
   });
 
   test('drawBottomPage skips only when flippingPage === bottomPage (hard cover)', () => {
-    const { book: app } = book({ pageCount: 4, flippingTime: 0, showCover: true });
+    const { book: app } = book({ pageCount: 4, flippingTime: 0, hardCovers: true });
     const render = app.getRender();
     const page = app.getPage(0) as HTMLPage;
 
@@ -254,7 +254,7 @@ describe('HTMLRender drawFrame via rAF (soft + hard shadows)', () => {
       pageCount: pages.length,
       flippingTime: 200,
       drawShadow: true,
-      showCover: true,
+      hardCovers: true,
     });
     books.push({ destroy });
 

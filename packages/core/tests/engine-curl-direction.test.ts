@@ -86,7 +86,7 @@ function finalLocalPoint(app: PageFlip, turn: () => void): Point {
 
 describe('the engine animates the SAME local curl for FORWARD and BACK', () => {
   test('both directions end at local x = -pageWidth', () => {
-    const forwardBook = book({ pageCount: 6, startPage: 0, flippingTime: 400 });
+    const forwardBook = book({ pageCount: 6, initialPage: 0, flippingTime: 400 });
     const rect = forwardBook.book.getBoundsRect();
 
     // FIXTURE CHECK: portrait, and a page width worth asserting against.
@@ -97,7 +97,7 @@ describe('the engine animates the SAME local curl for FORWARD and BACK', () => {
       forwardBook.book.flipNext();
     });
 
-    const backBook = book({ pageCount: 6, startPage: 3, flippingTime: 400 });
+    const backBook = book({ pageCount: 6, initialPage: 3, flippingTime: 400 });
     expect(backBook.book.getCurrentPageIndex()).toBe(3);
 
     const back = finalLocalPoint(backBook.book, () => {
@@ -121,7 +121,7 @@ describe('the engine animates the SAME local curl for FORWARD and BACK', () => {
     // The corner argument is the only thing `runFlip` derives from state before
     // calling `portraitCurlLocal`. If a "smarter" curl ever keyed off direction
     // through the corner, this is where it would show.
-    const b = book({ pageCount: 6, startPage: 3, flippingTime: 400 });
+    const b = book({ pageCount: 6, initialPage: 3, flippingTime: 400 });
     const rect = b.book.getBoundsRect();
 
     const back = finalLocalPoint(b.book, () => {

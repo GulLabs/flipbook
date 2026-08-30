@@ -58,12 +58,12 @@ type DrawableRender = { drawFrame: () => void };
  * `{ left: -110, width: 400, pageWidth: 200 }` and the single visible leaf
  * occupies book-global x ∈ [90, 290] — the rect's RIGHT half.
  */
-function portraitBook(direction: Reading = 'ltr', startPage = 2): PageFlip {
+function portraitBook(readingDirection: Reading = 'ltr', initialPage = 2): PageFlip {
   const b = makeHtmlBook({
     pageCount: 6,
     flippingTime: 0,
-    startPage,
-    direction,
+    initialPage,
+    readingDirection,
     usePortrait: true,
   });
   books.push(b);
@@ -71,12 +71,12 @@ function portraitBook(direction: Reading = 'ltr', startPage = 2): PageFlip {
 }
 
 /** LANDSCAPE, same page size in a 500 px host: two real 200 px halves. */
-function landscapeBook(direction: Reading = 'ltr', startPage = 2): PageFlip {
+function landscapeBook(readingDirection: Reading = 'ltr', initialPage = 2): PageFlip {
   const b = makeHtmlBook({
     pageCount: 6,
     flippingTime: 0,
-    startPage,
-    direction,
+    initialPage,
+    readingDirection,
     usePortrait: false,
     hostWidth: 500,
   });
@@ -471,7 +471,7 @@ describe('X3 — drawShadow: false mid-fold clears the shadow already drawn', ()
     const b = makeHtmlBook({
       pageCount: 6,
       flippingTime: 0,
-      startPage: 2,
+      initialPage: 2,
       usePortrait: true,
       drawShadow: false,
     });

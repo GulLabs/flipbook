@@ -264,7 +264,7 @@ describe('X5 a drag that never captured must still end when it leaves the book',
   });
 
   test('leaving without any gesture still only unfolds a hover', () => {
-    const { book: app } = book({ pageCount: 4, flippingTime: 0, showPageCorners: true });
+    const { book: app } = book({ pageCount: 4, flippingTime: 0, foldCornerOnHover: true });
     const { dist, x, y } = drag(app);
 
     dist.dispatchEvent(
@@ -338,7 +338,7 @@ describe('X6 destroy() hands the pages back where it found them', () => {
     // Sanity: the fixture really does bracket the pages.
     expect(expected).toEqual(['before', 'page-0', 'page-1', 'page-2', 'page-3', 'after']);
 
-    const app = new PageFlip(host, { width: 200, height: 300, size: 'fixed' });
+    const app = new PageFlip(host, { width: 200, height: 300, sizing: 'fixed' });
     app.loadFromHTML(pages);
 
     // Precondition: the engine adopted them, so releasing is meaningful.
@@ -354,7 +354,7 @@ describe('X6 destroy() hands the pages back where it found them', () => {
   test('a page whose original follower is gone falls back without reordering the rest', () => {
     const { host, after, pages } = hostWithSurroundingMarkup(3);
 
-    const app = new PageFlip(host, { width: 200, height: 300, size: 'fixed' });
+    const app = new PageFlip(host, { width: 200, height: 300, sizing: 'fixed' });
     app.loadFromHTML(pages);
 
     // The consumer removed their trailing markup while the book was live, so
@@ -375,7 +375,7 @@ describe('X6 destroy() hands the pages back where it found them', () => {
  * ================================================================== */
 
 /**
- * X7 — `setHandlers()` early-returned on `useMouseEvents: false`, so
+ * X7 — `setHandlers()` early-returned on `pointerInput: []`, so
  * `dragstart` was never bound in that mode. Turning off pointer-driven page
  * turning is not a request to let the browser drag a ghost copy of the artwork
  * out of the page.
@@ -390,24 +390,30 @@ describe('X7 the native drag ghost is suppressed regardless of useMouseEvents', 
     return event.defaultPrevented;
   }
 
-  test('useMouseEvents: false still prevents dragstart', () => {
-    const { book: app } = book({ pageCount: 4, useMouseEvents: false });
+  test('pointerInput: [] still prevents dragstart', () => {
+    const { book: app } = book({ pageCount: 4, pointerInput: [] });
 
     expect(dragStartWasPrevented(app)).toBe(true);
   });
 
-  test('useMouseEvents: true still prevents dragstart (no regression)', () => {
-    const { book: app } = book({ pageCount: 4, useMouseEvents: true });
+  test('pointerInput: full list still prevents dragstart (no regression)', () => {
+    const { book: app } = book({
+      pageCount: 4,
+      pointerInput: ['mouse', 'touch', 'pen'],
+    });
 
     expect(dragStartWasPrevented(app)).toBe(true);
   });
 
-  test('a runtime switch to useMouseEvents: false keeps the suppression', () => {
+  test('a runtime switch to pointerInput: [] keeps the suppression', () => {
     // `refreshHandlers()` unbinds everything and rebinds — the rebind is where
     // the early return used to drop `dragstart` on the floor.
-    const { book: app } = book({ pageCount: 4, useMouseEvents: true });
+    const { book: app } = book({
+      pageCount: 4,
+      pointerInput: ['mouse', 'touch', 'pen'],
+    });
 
-    app.updateSettings({ useMouseEvents: false });
+    app.updateSettings({ pointerInput: [] });
 
     expect(dragStartWasPrevented(app)).toBe(true);
   });
@@ -421,7 +427,7 @@ describe('X7 the native drag ghost is suppressed regardless of useMouseEvents', 
       return { host: h, pages: p };
     })();
 
-    const app = new PageFlip(host, { width: 200, height: 300, useMouseEvents: false });
+    const app = new PageFlip(host, { width: 200, height: 300, pointerInput: [] });
     app.loadFromHTML(pages);
     const dist = app.getUI().getDistElement();
     app.destroy();

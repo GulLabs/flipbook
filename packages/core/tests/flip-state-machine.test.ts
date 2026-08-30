@@ -51,7 +51,7 @@ function centredBook(opts?: Parameters<typeof makeHtmlBook>[0]) {
 
 describe('I1 — a refused fold must not strand the state machine', () => {
   test('a forward drag on the last page ends in READ, not USER_FOLD', () => {
-    const { book: app } = book({ pageCount: 4, startPage: 3, flippingTime: 0 });
+    const { book: app } = book({ pageCount: 4, initialPage: 3, flippingTime: 0 });
     const flip = app.getFlipController()!;
     const rect = app.getBoundsRect();
 
@@ -82,7 +82,7 @@ describe('I1 — a refused fold must not strand the state machine', () => {
   });
 
   test('a refused fold does not kill corner hover for the rest of the session', () => {
-    const { book: app } = book({ pageCount: 4, startPage: 3, flippingTime: 1000 });
+    const { book: app } = book({ pageCount: 4, initialPage: 3, flippingTime: 1000 });
     const flip = app.getFlipController()!;
     const rect = app.getBoundsRect();
 
@@ -104,7 +104,7 @@ describe('I1 — a refused fold must not strand the state machine', () => {
   });
 
   test('rtl: a right-edge drag at page 0 is refused and still returns to READ', () => {
-    const { book: app } = book({ pageCount: 4, flippingTime: 0, direction: 'rtl' });
+    const { book: app } = book({ pageCount: 4, flippingTime: 0, readingDirection: 'rtl' });
     const flip = app.getFlipController()!;
     const rect = app.getBoundsRect();
 
@@ -218,7 +218,7 @@ describe('I5 — a programmatic corner survives the global→book conversion', (
   });
 
   test('flipPrev(BOTTOM) turns the BOTTOM corner on a centred book', () => {
-    const { book: app } = centredBook({ pageCount: 6, flippingTime: 1000, startPage: 3 });
+    const { book: app } = centredBook({ pageCount: 6, flippingTime: 1000, initialPage: 3 });
     const flip = app.getFlipController()!;
 
     expect(app.getBoundsRect().top).toBe(150);
@@ -230,12 +230,12 @@ describe('I5 — a programmatic corner survives the global→book conversion', (
 
 describe('I8 — the landscape density override is temporary', () => {
   function landscapeBook(flippingTime: number) {
-    // showCover + 6 pages: created densities are [hard, soft, soft, soft, soft,
+    // hardCovers + 6 pages: created densities are [hard, soft, soft, soft, soft,
     // hard], so the cover and its neighbour genuinely differ and the fix-up
     // really fires. A fixture where they already matched would pass either way.
     return book({
       pageCount: 6,
-      showCover: true,
+      hardCovers: true,
       usePortrait: false,
       width: 200,
       height: 300,
@@ -322,7 +322,7 @@ describe('R4 (real path): a turn chained from onFlip survives the old callback',
     const seen: number[] = [];
     let chained = false;
     flip.on('flip', (e) => {
-      seen.push(e.data as number);
+      seen.push(e.data.page);
       if (!chained) {
         chained = true;
         // `turnToNextPage()` emits this SYNCHRONOUSLY from inside the old
@@ -352,7 +352,7 @@ describe('I9 — leaving a corner must not announce READ over a live snap-back',
    * genuinely distinct: 200x300 portrait leaf, `operatingDistance` 72.1.
    */
   function hoverBook() {
-    return book({ pageCount: 6, flippingTime: 1000, showPageCorners: true });
+    return book({ pageCount: 6, flippingTime: 1000, foldCornerOnHover: true });
   }
 
   test('the state stays FOLD_CORNER until the snap-back finishes', () => {
@@ -361,7 +361,7 @@ describe('I9 — leaving a corner must not announce READ over a live snap-back',
     const rect = app.getBoundsRect();
 
     const states: string[] = [];
-    app.on('changeState', (e) => states.push(String(e.data)));
+    app.on('changeState', (e) => states.push(e.data.state));
 
     // Hover the top-right corner: the fold peels in.
     app.userMove({ x: rect.left + rect.width - 3, y: rect.top + 3 }, false);
@@ -392,7 +392,7 @@ describe('I9 — leaving a corner must not announce READ over a live snap-back',
     const rect = app.getBoundsRect();
 
     const states: string[] = [];
-    app.on('changeState', (e) => states.push(String(e.data)));
+    app.on('changeState', (e) => states.push(e.data.state));
 
     app.userMove({ x: rect.left + rect.width - 3, y: rect.top + 3 }, false);
     app.userMove({ x: rect.left + rect.width - 100, y: rect.top + rect.height / 2 }, false);
@@ -414,7 +414,7 @@ describe('I9 — leaving a corner must not announce READ over a live snap-back',
     // `stopMove()`'s other path: the fold was refused, so there is no
     // calculation and no animation, and READ has to be handed back at once
     // rather than waiting for an animation that will never run.
-    const { book: app } = book({ pageCount: 4, startPage: 3, flippingTime: 1000 });
+    const { book: app } = book({ pageCount: 4, initialPage: 3, flippingTime: 1000 });
     const flip = app.getFlipController()!;
     const rect = app.getBoundsRect();
 
@@ -601,11 +601,11 @@ describe('I10 — the corner band and the direction split cannot disagree', () =
     // The user-facing half, through the public surface: `PageFlip` gates
     // `disableFlipByClick` on exactly this predicate, so a band that swallows
     // the whole leaf makes the setting silently inert.
-    const { book: app } = tallNarrowPortrait({ disableFlipByClick: true });
+    const { book: app } = tallNarrowPortrait({ flipOnClick: 'corners' });
     const rect = app.getBoundsRect();
 
     const rejected: string[] = [];
-    app.on('turnRejected', (e) => rejected.push((e.data as { reason: string }).reason));
+    app.on('turnRejected', (e) => rejected.push(e.data.reason));
 
     const mid = {
       x: rect.left + rect.width - rect.pageWidth / 2,
@@ -647,8 +647,8 @@ describe('F7 — flipping to a page already on screen is a declared no-op', () =
 
     const events: string[] = [];
     app.on('flip', () => events.push('flip'));
-    app.on('changeState', (e) => events.push(`state:${String(e.data)}`));
-    app.on('turnRejected', (e) => events.push(`rejected:${(e.data as { reason: string }).reason}`));
+    app.on('changeState', (e) => events.push(`state:${e.data.state}`));
+    app.on('turnRejected', (e) => events.push(`rejected:${e.data.reason}`));
 
     expect(() => {
       app.flip(partner);
@@ -695,7 +695,7 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
   const NARROW = { left: -35, top: 0, width: 100, height: 300, pageWidth: 50 } as const;
 
   function narrowBook(opts?: Parameters<typeof makeHtmlBook>[0]) {
-    return book({ width: 50, height: 300, pageCount: 6, startPage: 0, ...opts });
+    return book({ width: 50, height: 300, pageCount: 6, initialPage: 0, ...opts });
   }
 
   /** Inside the FORWARD corner band of the narrow leaf, at the top. */
@@ -876,7 +876,7 @@ describe('AN1 — a turn started from `flip` beats the call that finished it', (
     let chained = false;
 
     app.on('flip', (e) => {
-      seen.push(e.data as number);
+      seen.push(e.data.page);
       // The ordinary auto-advance shape: chain the next turn from `onFlip`.
       if (chained) return;
       chained = true;
@@ -885,7 +885,7 @@ describe('AN1 — a turn started from `flip` beats the call that finished it', (
 
     const rejections: string[] = [];
     app.on('turnRejected', (e) => {
-      rejections.push((e.data as { reason: string }).reason);
+      rejections.push(e.data.reason);
     });
 
     app.flipNext(); // turn A, now animating
@@ -924,7 +924,7 @@ describe('AN1 — a turn started from `flip` beats the call that finished it', (
 
     const rejections: string[] = [];
     app.on('turnRejected', (e) => {
-      rejections.push((e.data as { reason: string }).reason);
+      rejections.push(e.data.reason);
     });
 
     app.flipNext();
@@ -983,7 +983,7 @@ describe('AN2 — the state is true before it is announced', () => {
 
     const observed: string[] = [];
     app.on('changeState', (e) => {
-      observed.push(`${e.data as string}:${app.getState()}`);
+      observed.push(`${e.data.state}:${app.getState()}`);
     });
 
     app.startUserTouch({ x: rect.left + rect.width - 5, y: rect.top + 10 });
@@ -1008,7 +1008,7 @@ describe('AN2 — the state is true before it is announced', () => {
     let nestedStarted: boolean | null = null;
 
     app.on('changeState', (e) => {
-      if ((e.data as string) !== 'read' || chained) return;
+      if (e.data.state !== 'read' || chained) return;
       chained = true;
       // The natural place to chain a turn: the book has just come to rest.
       nestedStarted = app.flipNext();
@@ -1039,7 +1039,7 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
   function hovered() {
     const { book: app } = book({
       pageCount: 8,
-      startPage: 2,
+      initialPage: 2,
       width: 200,
       height: 300,
       flippingTime: 400,
@@ -1096,7 +1096,7 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
   test('a page grabbed mid-TURN does not commit behind the reader', () => {
     const { book: app } = book({
       pageCount: 8,
-      startPage: 2,
+      initialPage: 2,
       width: 200,
       height: 300,
       flippingTime: 400,
@@ -1131,7 +1131,7 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
     // reader is holding from one the renderer is moving.
     const { book: app } = book({
       pageCount: 8,
-      startPage: 2,
+      initialPage: 2,
       width: 200,
       height: 300,
       flippingTime: 400,
@@ -1163,7 +1163,7 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
   });
 
   test('an ordinary drag with nothing animating is untouched', () => {
-    const { book: app } = book({ pageCount: 8, startPage: 2, width: 200, height: 300 });
+    const { book: app } = book({ pageCount: 8, initialPage: 2, width: 200, height: 300 });
     const flip = app.getFlipController()!;
     const rect = app.getBoundsRect();
     const leafLeft = rect.left + rect.width - rect.pageWidth;
@@ -1195,7 +1195,7 @@ describe('V2 — the corner test and the direction test agree on the boundary', 
       pageCount: 6,
       width: 200,
       height: 300,
-      startPage: 2,
+      initialPage: 2,
       flippingTime: 0,
     });
     const flip = app.getFlipController()!;
@@ -1226,7 +1226,7 @@ describe('V2 — the corner test and the direction test agree on the boundary', 
   });
 
   test('the far edges are inclusive too, and beyond them is still outside', () => {
-    const { book: app } = book({ pageCount: 6, width: 200, height: 300, startPage: 2 });
+    const { book: app } = book({ pageCount: 6, width: 200, height: 300, initialPage: 2 });
     const flip = app.getFlipController()!;
     const rect = app.getBoundsRect();
 
@@ -1265,10 +1265,10 @@ describe('AN4 — a turn started from `changeState` cannot be overrun either', (
     let chained = false;
 
     app.on('flip', (e) => {
-      seen.push(e.data as number);
+      seen.push(e.data.page);
     });
     app.on('changeState', (e) => {
-      if ((e.data as string) !== 'flipping' || chained) return;
+      if (e.data.state !== 'flipping' || chained) return;
       chained = true;
       app.flipNext();
     });
@@ -1299,7 +1299,7 @@ describe('AN4 — a turn started from `changeState` cannot be overrun either', (
 
     let chained = false;
     app.on('changeState', (e) => {
-      if ((e.data as string) !== 'flipping' || chained) return;
+      if (e.data.state !== 'flipping' || chained) return;
       chained = true;
       app.flipNext();
     });
@@ -1325,7 +1325,7 @@ describe('AN4 — a turn started from `changeState` cannot be overrun either', (
     const { book: app } = book({ pageCount: 8, flippingTime: 400 });
 
     const states: string[] = [];
-    app.on('changeState', (e) => states.push(e.data as string));
+    app.on('changeState', (e) => states.push(e.data.state));
 
     // The control: the guard must fire on a moved generation, not on the mere
     // presence of a listener.
@@ -1375,7 +1375,7 @@ describe('AN6 — an interrupted turn takes its destination with it', () => {
 
     let chained = false;
     app.on('changeState', (e) => {
-      if ((e.data as string) !== 'flipping' || chained) return;
+      if (e.data.state !== 'flipping' || chained) return;
       chained = true;
       app.flipNext();
     });
@@ -1434,7 +1434,7 @@ describe('AN5 — the last two places turn setup calls out to consumer code', ()
     let nestedPos: string | null = null;
 
     app.on('changeState', (e) => {
-      if ((e.data as string) !== 'user_fold' || chained) return;
+      if (e.data.state !== 'user_fold' || chained) return;
       chained = true;
       app.flipNext();
       nestedPos = JSON.stringify(flip.getCalculation()?.getPosition());
@@ -1453,7 +1453,7 @@ describe('AN5 — the last two places turn setup calls out to consumer code', ()
   test('a `fold_corner` listener’s turn is not force-finished by the hover', () => {
     const { book: app } = book({
       pageCount: 8,
-      startPage: 2,
+      initialPage: 2,
       width: 200,
       height: 300,
       flippingTime: 400,
@@ -1463,7 +1463,7 @@ describe('AN5 — the last two places turn setup calls out to consumer code', ()
 
     let chained = false;
     app.on('changeState', (e) => {
-      if ((e.data as string) !== 'fold_corner' || chained) return;
+      if (e.data.state !== 'fold_corner' || chained) return;
       chained = true;
       app.flipNext();
     });
@@ -1516,7 +1516,7 @@ describe('checkState — a hover arriving mid-turn is a no-op', () => {
   }
 
   test('a hover away from the corners during FLIPPING does not finish the turn', () => {
-    const { book: app } = book({ pageCount: 6, startPage: 0, flippingTime: 400 });
+    const { book: app } = book({ pageCount: 6, initialPage: 0, flippingTime: 400 });
     const rect = app.getBoundsRect();
 
     expect(app.flipNext()).toBe(true);
@@ -1536,7 +1536,7 @@ describe('checkState — a hover arriving mid-turn is a no-op', () => {
   });
 
   test('a hover ON a corner during FLIPPING does not drag the in-flight fold', () => {
-    const { book: app } = book({ pageCount: 6, startPage: 0, flippingTime: 400 });
+    const { book: app } = book({ pageCount: 6, initialPage: 0, flippingTime: 400 });
     const flip = app.getFlipController()!;
     const rect = app.getBoundsRect();
 
@@ -1553,7 +1553,7 @@ describe('checkState — a hover arriving mid-turn is a no-op', () => {
   });
 
   test('a hover during USER_FOLD does not steal the drag', () => {
-    const { book: app } = book({ pageCount: 6, startPage: 0, flippingTime: 400 });
+    const { book: app } = book({ pageCount: 6, initialPage: 0, flippingTime: 400 });
     const flip = app.getFlipController()!;
     const rect = app.getBoundsRect();
 
@@ -1580,7 +1580,7 @@ describe('checkState — a hover arriving mid-turn is a no-op', () => {
   test('…and the guard still lets a hover through from READ', () => {
     // The control. A guard that returned `false` unconditionally would satisfy
     // every assertion above and break the corner affordance entirely.
-    const { book: app } = book({ pageCount: 6, startPage: 0, flippingTime: 400 });
+    const { book: app } = book({ pageCount: 6, initialPage: 0, flippingTime: 400 });
     const rect = app.getBoundsRect();
 
     expect(app.getState()).toBe(FlippingState.READ);

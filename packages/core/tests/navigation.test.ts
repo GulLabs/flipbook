@@ -79,11 +79,11 @@ function makeFlip(options?: { pageCount?: number; currentPage?: number }) {
   const app = {
     getPageCollection: () => collection,
     getSettings: () => ({
-      disableFlipByClick: false,
+      flipOnClick: 'anywhere',
       flippingTime: 0,
       respectReducedMotion: true,
-      direction: 'ltr' as const,
-      showPageCorners: true,
+      readingDirection: 'ltr' as const,
+      foldCornerOnHover: true,
     }),
     getCurrentPageIndex: () => options?.currentPage ?? 0,
     getPageCount: () => options?.pageCount ?? 0,
@@ -123,7 +123,7 @@ describe('flipToPage / turnToPage failure surface (shipped Flip)', () => {
     const { flip } = makeFlip({ pageCount: 8, currentPage: 1 });
     const app = (flip as unknown as { app: { getSettings: () => Record<string, unknown> } }).app;
     const orig = app.getSettings;
-    app.getSettings = () => ({ ...orig(), direction: 'rtl' });
+    app.getSettings = () => ({ ...orig(), readingDirection: 'rtl' });
     const render = (flip as unknown as { render: { setDirection: (d: number) => void } }).render;
     const setDirection = render.setDirection.bind(render);
     render.setDirection = (d: number) => {

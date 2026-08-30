@@ -82,7 +82,7 @@ function foldedBook(): PageFlip {
   const { book, destroy } = makeHtmlBook({
     pageCount: 6,
     usePortrait: false,
-    showCover: false,
+    hardCovers: false,
     hostWidth: 520,
     hostHeight: 460,
     flippingTime: 1000,

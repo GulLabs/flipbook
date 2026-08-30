@@ -18,10 +18,11 @@
  *    the fix divides fails in both directions rather than looking plausible.
  *  - One fixture is non-uniform (`scale(0.5, 0.8)`), so collapsing the two axes
  *    into one ratio fails.
- *  - X8's assertion reads the string that is WRITTEN, not the string the CSSOM
- *    hands back: the whole point of the defect is that the parser silently
- *    discards the malformed declaration, so reading `cssText` back cannot see
- *    it and a test that did would pass against the bug.
+ *  - X8's assertion reads the properties that are WRITTEN via setProperty, not
+ *    the string the CSSOM hands back: the whole point of the defect is that the
+ *    parser silently discards a malformed `z-index:;`, so reading style back
+ *    cannot see it and a test that did would pass against the bug. Draw now
+ *    uses surgical `setProperty` (NF4) rather than wholesale `cssText`.
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -45,7 +46,7 @@ function landscapeBook(opts: Parameters<typeof makeHtmlBook>[0] = {}): PageFlip 
   const b = makeHtmlBook({
     pageCount: 6,
     flippingTime: 0,
-    startPage: 2,
+    initialPage: 2,
     usePortrait: false,
     hostWidth: 500,
     ...opts,
@@ -375,11 +376,11 @@ describe('the dead handler-bound flag is gone (U4)', () => {
     expect(protoNames).not.toContain('handlersBound');
   });
 
-  test('why it was misleading: dragstart is bound even with useMouseEvents:false', () => {
+  test('why it was misleading: dragstart is bound even with pointerInput: []', () => {
     // The flag was only ever set inside the `useMouseEvents` branch, so it read
     // `false` in exactly the configuration where a handler IS bound (X7). A
     // reader added later would have been told the opposite of the truth.
-    const app = landscapeBook({ useMouseEvents: false });
+    const app = landscapeBook({ pointerInput: [] });
     const dist = app.getUI().getDistElement();
 
     const drag = new Event('dragstart', { bubbles: true, cancelable: true });
@@ -394,35 +395,24 @@ describe('the dead handler-bound flag is gone (U4)', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * Record every string ASSIGNED to `element.style.cssText`.
+ * Record every property ASSIGNED via `element.style.setProperty`.
  *
- * Reading `cssText` back is useless here: the CSSOM parses on assignment and
- * silently drops the malformed `z-index:;` declaration, so the getter reports
- * a clean string whether or not the bug is present. Only the written string
- * witnesses it.
+ * Draw applies engine styles surgically (NF4). Reading style back is useless
+ * for X8: the CSSOM silently drops a malformed empty z-index, so only the
+ * write list witnesses whether an empty declaration was emitted.
  */
-function captureCssTextWrites(el: HTMLElement): string[] {
-  const writes: string[] = [];
-
-  // The accessor can sit anywhere on the chain (jsdom puts it on
-  // `CSSStyleDeclaration.prototype`, two hops up from the instance).
-  let desc: PropertyDescriptor | undefined;
-  for (let o: object | null = el.style; o !== null; o = Object.getPrototypeOf(o) as object | null) {
-    desc = Object.getOwnPropertyDescriptor(o, 'cssText');
-    if (desc) break;
-  }
-  if (!desc?.get || !desc.set) throw new Error('cssText is not an accessor here');
-
-  Object.defineProperty(el.style, 'cssText', {
-    configurable: true,
-    get: () => desc.get?.call(el.style) as string,
-    set: (value: string) => {
-      writes.push(value);
-      desc.set?.call(el.style, value);
-    },
-  });
-
+function captureStyleWrites(el: HTMLElement): Array<[string, string]> {
+  const writes: Array<[string, string]> = [];
+  const orig = el.style.setProperty.bind(el.style);
+  el.style.setProperty = (property: string, value: string | null, priority?: string) => {
+    writes.push([property, value ?? '']);
+    return orig(property, value, priority);
+  };
   return writes;
+}
+
+function wrote(writes: Array<[string, string]>, property: string, value?: string): boolean {
+  return writes.some(([p, v]) => p === property && (value === undefined || v === value));
 }
 
 describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
@@ -434,31 +424,31 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
     el.style.removeProperty('z-index');
     expect(el.style.zIndex).toBe('');
 
-    const writes = captureCssTextWrites(el);
+    const writes = captureStyleWrites(el);
     page.draw();
 
-    expect(writes).toHaveLength(1);
-    expect(writes[0]).not.toContain('z-index:;');
-    expect(writes[0]).not.toContain('z-index');
-    // The rest of the declaration block is untouched — this is not "drop the
-    // whole style", it is "drop one empty declaration".
-    expect(writes[0]).toContain('display:block;');
-    expect(writes[0]).toContain('width:200px;');
+    expect(writes.length).toBeGreaterThan(0);
+    expect(wrote(writes, 'z-index')).toBe(false);
+    expect(wrote(writes, 'z-index', '')).toBe(false);
+    // The rest of the engine block is still applied — this is not "drop the
+    // whole style", it is "omit one empty declaration".
+    expect(wrote(writes, 'display', 'block')).toBe(true);
+    expect(wrote(writes, 'width', '200px')).toBe(true);
   });
 
   test('a leaf that DOES have an inline z-index still round-trips it', () => {
-    // The interpolation exists because `draw()` replaces `cssText` wholesale
-    // and would otherwise erase what `HTMLRender` just stamped. Removing the
-    // declaration unconditionally would be the obvious wrong fix.
+    // The re-emit exists because a prior cssText wipe would otherwise erase
+    // what `HTMLRender` just stamped. Removing the declaration unconditionally
+    // would be the obvious wrong fix; under setProperty the same contract holds.
     const app = landscapeBook();
     const page = app.getPage(2) as HTMLPage;
     const el = page.getElement();
 
     el.style.zIndex = '17';
-    const writes = captureCssTextWrites(el);
+    const writes = captureStyleWrites(el);
     page.draw();
 
-    expect(writes[0]).toContain('z-index:17;');
+    expect(wrote(writes, 'z-index', '17')).toBe(true);
     expect(el.style.zIndex).toBe('17');
   });
 
@@ -475,14 +465,14 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
     expect(copy).not.toBe(page);
     expect(copy.getElement().style.zIndex).toBe('');
 
-    const writes = captureCssTextWrites(copy.getElement());
+    const writes = captureStyleWrites(copy.getElement());
     copy.draw();
 
-    expect(writes).toHaveLength(1);
-    expect(writes[0]).not.toContain('z-index');
+    expect(writes.length).toBeGreaterThan(0);
+    expect(wrote(writes, 'z-index')).toBe(false);
     // The clone's own re-emitted declaration is still there — this fix must not
     // take the `pointer-events:none` with it.
-    expect(writes[0]).toContain('pointer-events:none;');
+    expect(wrote(writes, 'pointer-events', 'none')).toBe(true);
 
     page.hideTemporaryCopy();
   });
@@ -501,10 +491,11 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
  *
  * jsdom applies no stylesheet cascade, so the stylesheet cannot be the thing
  * under test here — the assertion is that the ENGINE states it itself, which is
- * what makes the cascade irrelevant in a browser too. Both the written string
- * and the parsed read-back are asserted: the first is what the fix emits, the
- * second proves the declaration is well-formed enough for the CSSOM to keep it
- * (a `position:;` variant is discarded on assignment and would read back `''`).
+ * what makes the cascade irrelevant in a browser too. Both the written
+ * setProperty call and the parsed read-back are asserted: the first is what
+ * the fix emits, the second proves the declaration is well-formed enough for
+ * the CSSOM to keep it (a `position:;` variant is discarded and would read
+ * back `''`).
  */
 describe('drawn leaves state their own position (Y4)', () => {
   test('a static leaf states it inline — the parity this fix restores (precondition)', () => {
@@ -512,10 +503,10 @@ describe('drawn leaves state their own position (Y4)', () => {
     const page = app.getPage(2) as HTMLPage;
     const el = page.getElement();
 
-    const writes = captureCssTextWrites(el);
+    const writes = captureStyleWrites(el);
     page.simpleDraw(PageOrientation.RIGHT);
 
-    expect(writes[0]).toContain('position:absolute;');
+    expect(wrote(writes, 'position', 'absolute')).toBe(true);
     expect(el.style.position).toBe('absolute');
   });
 
@@ -529,16 +520,16 @@ describe('drawn leaves state their own position (Y4)', () => {
     el.style.removeProperty('position');
     expect(el.style.position).toBe('');
 
-    const writes = captureCssTextWrites(el);
+    const writes = captureStyleWrites(el);
     page.draw(PageDensity.SOFT);
 
-    expect(writes).toHaveLength(1);
-    expect(writes[0]).toContain('position:absolute;');
+    expect(writes.length).toBeGreaterThan(0);
+    expect(wrote(writes, 'position', 'absolute')).toBe(true);
     expect(el.style.position).toBe('absolute');
     // The rest of the soft draw is untouched — this is one added declaration,
     // not a rewritten block.
-    expect(writes[0]).toContain('clip-path:');
-    expect(writes[0]).toContain('transform:');
+    expect(wrote(writes, 'clip-path')).toBe(true);
+    expect(wrote(writes, 'transform')).toBe(true);
   });
 
   test('a hard leaf states it too — fixing only drawSoft leaves the cover behind', () => {
@@ -548,13 +539,13 @@ describe('drawn leaves state their own position (Y4)', () => {
 
     el.style.removeProperty('position');
 
-    const writes = captureCssTextWrites(el);
+    const writes = captureStyleWrites(el);
     page.draw(PageDensity.HARD);
 
-    expect(writes).toHaveLength(1);
-    expect(writes[0]).toContain('position:absolute;');
+    expect(writes.length).toBeGreaterThan(0);
+    expect(wrote(writes, 'position', 'absolute')).toBe(true);
     expect(el.style.position).toBe('absolute');
-    expect(writes[0]).toContain('backface-visibility:hidden;');
+    expect(wrote(writes, 'backface-visibility', 'hidden')).toBe(true);
   });
 
   test('the temporary fold copy — the leaf that actually drops out — states it', () => {
@@ -567,13 +558,13 @@ describe('drawn leaves state their own position (Y4)', () => {
     const el = copy.getElement();
     el.style.removeProperty('position');
 
-    const writes = captureCssTextWrites(el);
+    const writes = captureStyleWrites(el);
     copy.draw(PageDensity.SOFT);
 
-    expect(writes[0]).toContain('position:absolute;');
+    expect(wrote(writes, 'position', 'absolute')).toBe(true);
     expect(el.style.position).toBe('absolute');
     // ...without losing the clone's own declaration.
-    expect(writes[0]).toContain('pointer-events:none;');
+    expect(wrote(writes, 'pointer-events', 'none')).toBe(true);
 
     page.hideTemporaryCopy();
   });
@@ -642,7 +633,7 @@ describe('applyHostSize honours the settings object it is given (Y5)', () => {
     const ui = app.getUI();
     const live = app.getSettings();
 
-    const stretched = { ...live, size: 'stretch' as const, minWidth: 111, usePortrait: false };
+    const stretched = { ...live, sizing: 'responsive' as const, minWidth: 111, usePortrait: false };
     ui.applyHostSize(stretched);
     expect(host.style.minWidth).toBe('222px');
 

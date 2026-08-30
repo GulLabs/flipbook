@@ -4,7 +4,7 @@ import { PageFlip, Settings, effectiveFlippingTime } from '@gullabs/flipbook-cor
 describe('SSR / Node import of shipped core', () => {
   test('does not require window at import time', () => {
     expect(typeof window).toBe('undefined');
-    const settings = new Settings().getSettings({
+    const settings = new Settings().resolve({
       width: 320,
       height: 480,
       flippingTime: 0,

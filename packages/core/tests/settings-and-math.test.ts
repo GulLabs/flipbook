@@ -3,13 +3,41 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'vitest';
-import { PageCollection, PageFlipError, Settings, SizeType } from '@gullabs/flipbook-core';
-import type { FlipSetting, Page, PageFlip, Render, Segment } from '@gullabs/flipbook-core';
+import { PageCollection, PageFlipError, Settings, SizeMode } from '@gullabs/flipbook-core';
+import type {
+  FlipOptions,
+  FlipSetting,
+  Page,
+  PageFlip,
+  Render,
+  Segment,
+} from '@gullabs/flipbook-core';
 import { angleBetweenSegments, limitToCircle, pointsBetween } from '../src/Helper';
 
 /* ------------------------------------------------------------------ I12 -- */
 
-const base: Partial<FlipSetting> = { width: 300, height: 400 };
+const base: FlipOptions = { width: 300, height: 400 };
+
+const resolve = (partial: Record<string, unknown> = {}): FlipSetting =>
+  new Settings().resolve({ ...base, ...partial } as FlipOptions);
+
+const codeOf = (setting: Record<string, unknown>): string => {
+  try {
+    resolve(setting);
+  } catch (error) {
+    return (error as PageFlipError).code;
+  }
+  return 'NO_THROW';
+};
+
+const settingOf = (setting: Record<string, unknown>): string | undefined => {
+  try {
+    resolve(setting);
+  } catch (error) {
+    return (error as PageFlipError).setting;
+  }
+  return undefined;
+};
 
 describe('I12 — Settings rejects non-finite numbers instead of leaking NaN', () => {
   // `NaN <= 0` is false, so the shipped comparison accepted NaN and the book
@@ -19,60 +47,61 @@ describe('I12 — Settings rejects non-finite numbers instead of leaking NaN', (
   test.each(['width', 'height', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight'] as const)(
     'NaN %s throws PageFlipError',
     (key) => {
-      expect(() => new Settings().getSettings({ ...base, [key]: NaN })).toThrow(PageFlipError);
+      expect(() => resolve({ [key]: NaN })).toThrow(PageFlipError);
+      expect(codeOf({ [key]: NaN })).toBe('INVALID_SETTING');
+      expect(settingOf({ [key]: NaN })).toBe(key);
     },
   );
 
   test('Infinity width and height are rejected too', () => {
-    expect(() => new Settings().getSettings({ ...base, width: Infinity })).toThrow(PageFlipError);
-    expect(() => new Settings().getSettings({ ...base, height: -Infinity })).toThrow(PageFlipError);
+    expect(() => resolve({ width: Infinity })).toThrow(PageFlipError);
+    expect(() => resolve({ height: -Infinity })).toThrow(PageFlipError);
   });
 
   test('a NaN setting never reaches the returned object', () => {
-    // The proof that matters: whatever getSettings returns must be usable for
+    // The proof that matters: whatever resolve returns must be usable for
     // arithmetic. Belt-and-braces against a fix that only throws for `width`.
-    const settings = new Settings().getSettings(base);
+    const settings = resolve();
     for (const [key, value] of Object.entries(settings)) {
       if (typeof value === 'number') expect(Number.isFinite(value), key).toBe(true);
     }
   });
 
   test('NaN swipeDistance, flippingTime and startZIndex throw', () => {
-    expect(() => new Settings().getSettings({ ...base, swipeDistance: NaN })).toThrow(
-      PageFlipError,
-    );
-    expect(() => new Settings().getSettings({ ...base, flippingTime: NaN })).toThrow(PageFlipError);
-    expect(() => new Settings().getSettings({ ...base, startZIndex: NaN })).toThrow(PageFlipError);
+    expect(() => resolve({ swipeDistance: NaN })).toThrow(PageFlipError);
+    expect(() => resolve({ flippingTime: NaN })).toThrow(PageFlipError);
+    expect(() => resolve({ startZIndex: NaN })).toThrow(PageFlipError);
   });
 
   test('negative swipeDistance throws rather than silently disabling swipes', () => {
     // `distY < -swipeDistance` can never be true for a negative threshold, so
     // upstream accepted a value that made the book unswipeable in silence.
-    expect(() => new Settings().getSettings({ ...base, swipeDistance: -5 })).toThrow(PageFlipError);
-    expect(new Settings().getSettings({ ...base, swipeDistance: 0 }).swipeDistance).toBe(0);
+    expect(() => resolve({ swipeDistance: -5 })).toThrow(PageFlipError);
+    expect(resolve({ swipeDistance: 0 }).swipeDistance).toBe(0);
   });
 
-  test('error codes follow the existing convention', () => {
-    const codeOf = (setting: Partial<FlipSetting>): string => {
-      try {
-        new Settings().getSettings(setting);
-      } catch (error) {
-        return (error as PageFlipError).code;
-      }
-      return 'NO_THROW';
-    };
+  test('error codes collapse to INVALID_SETTING with a .setting key', () => {
+    // D20. The eight `INVALID_*` settings codes collapsed into one
+    // `INVALID_SETTING` carrying a machine-readable `.setting`. That is
+    // strictly MORE information from a smaller union: a consumer wanting to
+    // highlight the offending field no longer has to parse the message.
+    expect(codeOf({ sizing: 'huge' as SizeMode })).toBe('INVALID_SETTING');
+    expect(settingOf({ sizing: 'huge' })).toBe('sizing');
 
-    // S7. These three used to be ONE code, `INVALID_SIZE`, separable only by
-    // reading the human-readable message — the one part of an error a library
-    // is free to reword. A caller that wants to fall back on a bad `size` enum
-    // but surface a bad width to its own developer could not tell them apart.
-    expect(codeOf({ ...base, size: 'huge' as SizeType })).toBe('INVALID_SIZE');
-    expect(codeOf({ ...base, width: NaN })).toBe('INVALID_DIMENSIONS');
-    expect(codeOf({ ...base, minWidth: NaN })).toBe('INVALID_BOUNDS');
+    expect(codeOf({ width: NaN })).toBe('INVALID_SETTING');
+    expect(settingOf({ width: NaN })).toBe('width');
 
-    expect(codeOf({ ...base, flippingTime: NaN })).toBe('INVALID_FLIPPING_TIME');
-    expect(codeOf({ ...base, swipeDistance: -5 })).toBe('INVALID_SWIPE_DISTANCE');
-    expect(codeOf({ ...base, startZIndex: Infinity })).toBe('INVALID_Z_INDEX');
+    expect(codeOf({ minWidth: NaN })).toBe('INVALID_SETTING');
+    expect(settingOf({ minWidth: NaN })).toBe('minWidth');
+
+    expect(codeOf({ flippingTime: NaN })).toBe('INVALID_SETTING');
+    expect(settingOf({ flippingTime: NaN })).toBe('flippingTime');
+
+    expect(codeOf({ swipeDistance: -5 })).toBe('INVALID_SETTING');
+    expect(settingOf({ swipeDistance: -5 })).toBe('swipeDistance');
+
+    expect(codeOf({ startZIndex: Infinity })).toBe('INVALID_SETTING');
+    expect(settingOf({ startZIndex: Infinity })).toBe('startZIndex');
   });
 
   test('an explicit undefined falls back to the default, it does not override it', () => {
@@ -80,34 +109,47 @@ describe('I12 — Settings rejects non-finite numbers instead of leaking NaN', (
     // cast is the point of the test: `exactOptionalPropertyTypes` stops this at
     // compile time, but JS consumers and React bindings that forward an
     // optional prop (`width={props.width}`) hand it over at runtime anyway.
-    const settings = new Settings().getSettings({
+    const settings = new Settings().resolve({
       ...base,
       flippingTime: undefined,
       swipeDistance: undefined,
       startZIndex: undefined,
-      direction: undefined,
-    } as unknown as Partial<FlipSetting>);
+      readingDirection: undefined,
+    } as unknown as FlipOptions);
 
     expect(settings.flippingTime).toBe(1000);
     expect(settings.swipeDistance).toBe(30);
     expect(settings.startZIndex).toBe(0);
-    expect(settings.direction).toBe('ltr');
+    expect(settings.readingDirection).toBe('ltr');
   });
 
   test('an explicit undefined width is a typed error, never a NaN bounds rect', () => {
-    // width has no usable default, so this must surface as INVALID_SIZE rather
-    // than as `min-width: NaNpx` on the host element.
+    // width has no usable default, so this must surface as INVALID_SETTING
+    // rather than as `min-width: NaNpx` on the host element.
     expect(() =>
-      new Settings().getSettings({
+      new Settings().resolve({
         width: undefined,
         height: 400,
-      } as unknown as Partial<FlipSetting>),
+      } as unknown as FlipOptions),
     ).toThrow(PageFlipError);
+    expect(
+      (() => {
+        try {
+          new Settings().resolve({
+            width: undefined,
+            height: 400,
+          } as unknown as FlipOptions);
+        } catch (error) {
+          return (error as PageFlipError).setting;
+        }
+        return undefined;
+      })(),
+    ).toBe('width');
   });
 
   test('valid values still pass, including a negative startZIndex', () => {
-    // Negative z-index is legal CSS: the constraint is finiteness, not sign.
-    const settings = new Settings().getSettings({ ...base, startZIndex: -3, flippingTime: 0 });
+    // Negative z-index is legal CSS: the constraint is integer-ness, not sign.
+    const settings = resolve({ startZIndex: -3, flippingTime: 0 });
     expect(settings.startZIndex).toBe(-3);
     expect(settings.flippingTime).toBe(0);
   });
@@ -118,7 +160,7 @@ describe('I12 — Settings rejects non-finite numbers instead of leaking NaN', (
 /** Minimal concrete collection: the assertions are purely about list lookup. */
 class TestCollection extends PageCollection {
   public constructor(pages: Page[]) {
-    super({ getSettings: () => ({ showCover: false }) } as unknown as PageFlip, {} as Render);
+    super({ getSettings: () => ({ hardCovers: false }) } as unknown as PageFlip, {} as Render);
     this.pages = pages;
   }
 
@@ -304,46 +346,38 @@ describe('validation gaps Codex round 3 found', () => {
   test('a fractional startZIndex is rejected — z-index takes an integer', () => {
     // `z-index:5.5` is discarded by the browser exactly as quietly as
     // `z-index:NaN`, so finiteness alone was not enough.
-    expect(() => new Settings().getSettings({ width: 100, height: 100, startZIndex: 5.5 })).toThrow(
-      PageFlipError,
-    );
-    expect(() =>
-      new Settings().getSettings({ width: 100, height: 100, startZIndex: -3 }),
-    ).not.toThrow();
+    expect(() => resolve({ width: 100, height: 100, startZIndex: 5.5 })).toThrow(PageFlipError);
+    expect(settingOf({ width: 100, height: 100, startZIndex: 5.5 })).toBe('startZIndex');
+    expect(() => resolve({ width: 100, height: 100, startZIndex: -3 })).not.toThrow();
   });
 
-  test('startPage is NOT validated here — the load path reports it better', () => {
-    // Codex asked for this to throw. Declined: the load path already reports a
-    // fractional or NaN startPage as `INVALID_PAGE`, and the React binding
-    // surfaces it through `onNavigationError` with both the requested and the
-    // actual page — a live book plus a precise diagnostic, rather than a
-    // constructor throw and a dead component. A test in the React suite pins it.
-    expect(() =>
-      new Settings().getSettings({ width: 100, height: 100, startPage: 0.5 }),
-    ).not.toThrow();
-    expect(() =>
-      new Settings().getSettings({ width: 100, height: 100, startPage: -4 }),
-    ).not.toThrow();
+  test('initialPage IS validated at resolve — non-negative integer only', () => {
+    // Design tranche: initialPage is now checked here rather than deferred to
+    // the load path. Fractional / negative / NaN throw INVALID_SETTING with
+    // `.setting === 'initialPage'`.
+    expect(() => resolve({ width: 100, height: 100, initialPage: 0.5 })).toThrow(PageFlipError);
+    expect(settingOf({ width: 100, height: 100, initialPage: 0.5 })).toBe('initialPage');
+    expect(() => resolve({ width: 100, height: 100, initialPage: -4 })).toThrow(PageFlipError);
+    expect(settingOf({ width: 100, height: 100, initialPage: -4 })).toBe('initialPage');
+    expect(resolve({ width: 100, height: 100, initialPage: 0 }).initialPage).toBe(0);
+    expect(resolve({ width: 100, height: 100, initialPage: 3 }).initialPage).toBe(3);
   });
 
   test('a non-finite maxShadowOpacity is rejected', () => {
     // It feeds `opacity` and the canvas gradient alpha. A dropped declaration
     // reads as a shadow at FULL opacity rather than as an error.
-    expect(() =>
-      new Settings().getSettings({ width: 100, height: 100, maxShadowOpacity: NaN }),
-    ).toThrow(PageFlipError);
-    expect(() =>
-      new Settings().getSettings({ width: 100, height: 100, maxShadowOpacity: -0.5 }),
-    ).toThrow(PageFlipError);
+    expect(() => resolve({ width: 100, height: 100, maxShadowOpacity: NaN })).toThrow(
+      PageFlipError,
+    );
+    expect(() => resolve({ width: 100, height: 100, maxShadowOpacity: -0.5 })).toThrow(
+      PageFlipError,
+    );
 
     // The declared range is [0, 1]. Rejecting only negatives let `2` through to
     // produce alphas above 1, which browsers clamp silently — so the setting
     // looked inert past 1 rather than invalid.
-    expect(() =>
-      new Settings().getSettings({ width: 100, height: 100, maxShadowOpacity: 2 }),
-    ).toThrow(PageFlipError);
-    expect(() =>
-      new Settings().getSettings({ width: 100, height: 100, maxShadowOpacity: 1 }),
-    ).not.toThrow();
+    expect(() => resolve({ width: 100, height: 100, maxShadowOpacity: 2 })).toThrow(PageFlipError);
+    expect(settingOf({ width: 100, height: 100, maxShadowOpacity: 2 })).toBe('maxShadowOpacity');
+    expect(() => resolve({ width: 100, height: 100, maxShadowOpacity: 1 })).not.toThrow();
   });
 });

@@ -61,8 +61,8 @@ const landscape = { pageCount: 4, hostWidth: 520, hostHeight: 300, width: 200, h
 
 describe('RTL spread layout is mirrored', () => {
   test('landscape: the spread HEAD is drawn on the right, its partner on the left', () => {
-    const ltr = makeHtmlBook({ ...landscape, direction: 'ltr' });
-    const rtl = makeHtmlBook({ ...landscape, direction: 'rtl' });
+    const ltr = makeHtmlBook({ ...landscape, readingDirection: 'ltr' });
+    const rtl = makeHtmlBook({ ...landscape, readingDirection: 'rtl' });
 
     // Spread [0,1] in both. Index order is reading order in both readings; only
     // the side each lands on differs.
@@ -95,7 +95,7 @@ describe('RTL spread layout is mirrored', () => {
     // `--left`/`--right` classes and `drawHard`'s transform-origin. If only the
     // pixel moved and the stamp did not, hard pages would rotate about the
     // wrong edge — visible only on a cover, and only mid-turn.
-    const rtl = makeHtmlBook({ ...landscape, direction: 'rtl' });
+    const rtl = makeHtmlBook({ ...landscape, readingDirection: 'rtl' });
     const render = drawn(rtl);
 
     // `orientation` is protected with no getter, like `leftPage`/`rightPage`.
@@ -108,12 +108,22 @@ describe('RTL spread layout is mirrored', () => {
     rtl.destroy();
   });
 
-  test('landscape showCover: the lone cover mirrors to the LEFT', () => {
+  test('landscape hardCovers: the lone cover mirrors to the LEFT', () => {
     // The cover sits against the spine. Mirroring the binding side mirrors the
     // cover with it — a straight inversion of the PC2 tie-break, not a second
     // rule. Under ltr a lone cover draws on the right half; under rtl, left.
-    const ltr = makeHtmlBook({ ...landscape, pageCount: 5, showCover: true, direction: 'ltr' });
-    const rtl = makeHtmlBook({ ...landscape, pageCount: 5, showCover: true, direction: 'rtl' });
+    const ltr = makeHtmlBook({
+      ...landscape,
+      pageCount: 5,
+      hardCovers: true,
+      readingDirection: 'ltr',
+    });
+    const rtl = makeHtmlBook({
+      ...landscape,
+      pageCount: 5,
+      hardCovers: true,
+      readingDirection: 'rtl',
+    });
 
     expect(drawn(ltr).rightPage).toBe(ltr.book.getPage(0));
     expect(inner(ltr.book.getRender()).leftPage).toBeNull();
@@ -130,8 +140,8 @@ describe('RTL spread layout is mirrored', () => {
     // leaf and no visible spine, and `computeBounds` puts it on the RIGHT half
     // of a double-width rect. Sending it left under rtl moves it onto the
     // phantom half — off-centre and partly off-host.
-    const ltr = makeHtmlBook({ pageCount: 4, direction: 'ltr' });
-    const rtl = makeHtmlBook({ pageCount: 4, direction: 'rtl' });
+    const ltr = makeHtmlBook({ pageCount: 4, readingDirection: 'ltr' });
+    const rtl = makeHtmlBook({ pageCount: 4, readingDirection: 'rtl' });
 
     expect(drawn(ltr).rightPage).not.toBeNull();
     expect(inner(ltr.book.getRender()).leftPage).toBeNull();
@@ -153,8 +163,8 @@ describe('RTL spread layout is mirrored', () => {
     // the opening spread `[0,1]`, and the navigation test below only ever
     // checked the INDEX — so a mirror that fired on the cover spread alone
     // passed the whole file while `turnToPage(2)` rendered left-to-right.
-    const ltr = makeHtmlBook({ ...landscape, direction: 'ltr' });
-    const rtl = makeHtmlBook({ ...landscape, direction: 'rtl' });
+    const ltr = makeHtmlBook({ ...landscape, readingDirection: 'ltr' });
+    const rtl = makeHtmlBook({ ...landscape, readingDirection: 'rtl' });
 
     ltr.book.turnToPage(2);
     rtl.book.turnToPage(2);
@@ -181,8 +191,8 @@ describe('RTL spread layout is mirrored', () => {
     // Five pages, no cover, landscape: spreads are [0,1], [2,3], [4]. The lone
     // leaf 4 is the tail, so it sits away from the spine — left in a
     // left-bound book, right in a right-bound one.
-    const ltr = makeHtmlBook({ ...landscape, pageCount: 5, direction: 'ltr' });
-    const rtl = makeHtmlBook({ ...landscape, pageCount: 5, direction: 'rtl' });
+    const ltr = makeHtmlBook({ ...landscape, pageCount: 5, readingDirection: 'ltr' });
+    const rtl = makeHtmlBook({ ...landscape, pageCount: 5, readingDirection: 'rtl' });
 
     ltr.book.turnToPage(4);
     rtl.book.turnToPage(4);
@@ -197,15 +207,25 @@ describe('RTL spread layout is mirrored', () => {
     rtl.destroy();
   });
 
-  test('showCover: the OFF-PARITY paired spread mirrors too', () => {
+  test('hardCovers: the OFF-PARITY paired spread mirrors too', () => {
     // Codex's third half-fix: mirror only when `headIdx % 2 === 0`. Every
     // paired spread tested so far — [0,1] and [2,3] — has an even head, so
-    // that passes. With `showCover` the cover stands alone and the pairs shift
+    // that passes. With `hardCovers` the cover stands alone and the pairs shift
     // to [1,2], [3,4]: odd heads, which the parity mutant leaves left-to-right.
     //
     // This is why parity is never a safe proxy for "is this a spread head".
-    const ltr = makeHtmlBook({ ...landscape, pageCount: 6, showCover: true, direction: 'ltr' });
-    const rtl = makeHtmlBook({ ...landscape, pageCount: 6, showCover: true, direction: 'rtl' });
+    const ltr = makeHtmlBook({
+      ...landscape,
+      pageCount: 6,
+      hardCovers: true,
+      readingDirection: 'ltr',
+    });
+    const rtl = makeHtmlBook({
+      ...landscape,
+      pageCount: 6,
+      hardCovers: true,
+      readingDirection: 'rtl',
+    });
 
     ltr.book.turnToPage(1);
     rtl.book.turnToPage(1);
@@ -224,16 +244,26 @@ describe('RTL spread layout is mirrored', () => {
     rtl.destroy();
   });
 
-  test('a ONE-page showCover book keeps its cover on the binding side', () => {
-    // The PC2 tie-break exists because for a one-page `showCover` book both
+  test('a ONE-page hardCovers book keeps its cover on the binding side', () => {
+    // The PC2 tie-break exists because for a one-page `hardCovers` book both
     // descriptions are true of the same leaf: index 0 is also index
-    // `length - 1`. Without the `showCover && headIdx === 0` exclusion the
+    // `length - 1`. Without the `hardCovers && headIdx === 0` exclusion the
     // last-leaf test wins and the cover is placed away from the spine.
     //
     // Under `ltr` that puts it left; under `rtl`, right. The RTL half was
     // untested, so dropping the exclusion passed the whole file.
-    const ltr = makeHtmlBook({ ...landscape, pageCount: 1, showCover: true, direction: 'ltr' });
-    const rtl = makeHtmlBook({ ...landscape, pageCount: 1, showCover: true, direction: 'rtl' });
+    const ltr = makeHtmlBook({
+      ...landscape,
+      pageCount: 1,
+      hardCovers: true,
+      readingDirection: 'ltr',
+    });
+    const rtl = makeHtmlBook({
+      ...landscape,
+      pageCount: 1,
+      hardCovers: true,
+      readingDirection: 'rtl',
+    });
 
     expect(drawn(ltr).rightPage).toBe(ltr.book.getPage(0));
     expect(inner(ltr.book.getRender()).leftPage).toBeNull();
@@ -258,13 +288,13 @@ describe('RTL spread layout is mirrored', () => {
     // `cancelAnimation()` + `abandon()` every other state-invalidating path
     // uses. Asserting the STATE rather than a pixel is the point: the split is
     // a disagreement between two subsystems, and only one of them draws.
-    const book = makeHtmlBook({ ...landscape, direction: 'ltr', flippingTime: 400 });
+    const book = makeHtmlBook({ ...landscape, readingDirection: 'ltr', flippingTime: 400 });
 
     book.book.flipNext();
     // Precondition, or the assertion below passes on a book that never turned.
     expect(book.book.getState()).toBe(FlippingState.FLIPPING);
 
-    book.book.updateSettings({ direction: 'rtl' });
+    book.book.updateSettings({ readingDirection: 'rtl' });
 
     expect(book.book.getState()).toBe(FlippingState.READ);
 
@@ -282,12 +312,12 @@ describe('RTL spread layout is mirrored', () => {
     // live animation — a turn that still has frames scheduled against a
     // calculation nobody owns. The pair is `cancelAnimation()` + `abandon()`,
     // and only this asserts the first half.
-    const book = makeHtmlBook({ ...landscape, direction: 'ltr', flippingTime: 400 });
+    const book = makeHtmlBook({ ...landscape, readingDirection: 'ltr', flippingTime: 400 });
 
     book.book.flipNext();
     expect(renderAnimation(book)).not.toBeNull();
 
-    book.book.updateSettings({ direction: 'rtl' });
+    book.book.updateSettings({ readingDirection: 'rtl' });
 
     expect(renderAnimation(book)).toBeNull();
 
@@ -300,7 +330,7 @@ describe('RTL spread layout is mirrored', () => {
     // engine is holding `isUserTouch` / `touchPoint`, and leaving those set
     // means the NEXT pointermove resumes a fold with no fresh pointerdown:
     // the page follows the cursor with no button held.
-    const book = makeHtmlBook({ ...landscape, direction: 'ltr', flippingTime: 400 });
+    const book = makeHtmlBook({ ...landscape, readingDirection: 'ltr', flippingTime: 400 });
     const dist = book.book.getUI().getDistElement();
     const rect = book.book.getBoundsRect();
     const y = rect.top + rect.height / 2;
@@ -342,7 +372,7 @@ describe('RTL spread layout is mirrored', () => {
     pointer('pointermove', startX - 40);
     expect(book.book.getState()).not.toBe(FlippingState.READ);
 
-    book.book.updateSettings({ direction: 'rtl' });
+    book.book.updateSettings({ readingDirection: 'rtl' });
     expect(book.book.getState()).toBe(FlippingState.READ);
 
     // The observable that actually discriminates: corner hover.
@@ -394,12 +424,12 @@ describe('RTL spread layout is mirrored', () => {
     // "updateSettings cancels turns". Pushing a settings object that merely
     // echoes the current direction — which every React binding does on any
     // prop change — must not kill the user's page turn.
-    const book = makeHtmlBook({ ...landscape, direction: 'ltr', flippingTime: 400 });
+    const book = makeHtmlBook({ ...landscape, readingDirection: 'ltr', flippingTime: 400 });
 
     book.book.flipNext();
     expect(book.book.getState()).toBe(FlippingState.FLIPPING);
 
-    book.book.updateSettings({ direction: 'ltr', drawShadow: false });
+    book.book.updateSettings({ readingDirection: 'ltr', drawShadow: false });
 
     expect(book.book.getState()).toBe(FlippingState.FLIPPING);
 
@@ -410,8 +440,8 @@ describe('RTL spread layout is mirrored', () => {
     // "Page 5" must mean the same page whichever way the book binds, or every
     // consumer syncing a URL or React state breaks on a direction change. The
     // spatial side is derived from the index, never the other way round.
-    const ltr = makeHtmlBook({ ...landscape, direction: 'ltr' });
-    const rtl = makeHtmlBook({ ...landscape, direction: 'rtl' });
+    const ltr = makeHtmlBook({ ...landscape, readingDirection: 'ltr' });
+    const rtl = makeHtmlBook({ ...landscape, readingDirection: 'rtl' });
 
     expect(rtl.book.getCurrentPageIndex()).toBe(ltr.book.getCurrentPageIndex());
 
@@ -429,12 +459,12 @@ describe('RTL spread layout is mirrored', () => {
     // read where it is used. Caching it in the collection would repeat the
     // `swipeDistance` mistake — a setting that silently ignores every runtime
     // update.
-    const book = makeHtmlBook({ ...landscape, direction: 'ltr' });
+    const book = makeHtmlBook({ ...landscape, readingDirection: 'ltr' });
 
     drawn(book);
     const before = drawnLeft(book.pages[0]!);
 
-    book.book.updateSettings({ direction: 'rtl' });
+    book.book.updateSettings({ readingDirection: 'rtl' });
     book.book.update();
     drawn(book);
 
@@ -483,8 +513,18 @@ describe('a COMPLETED swipe lands on the right page in both readings', () => {
   }
 
   test('the same finger movement moves the index OPPOSITE ways under ltr and rtl', () => {
-    const ltr = makeHtmlBook({ ...landscape, pageCount: 6, direction: 'ltr', flippingTime: 0 });
-    const rtl = makeHtmlBook({ ...landscape, pageCount: 6, direction: 'rtl', flippingTime: 0 });
+    const ltr = makeHtmlBook({
+      ...landscape,
+      pageCount: 6,
+      readingDirection: 'ltr',
+      flippingTime: 0,
+    });
+    const rtl = makeHtmlBook({
+      ...landscape,
+      pageCount: 6,
+      readingDirection: 'rtl',
+      flippingTime: 0,
+    });
 
     ltr.book.turnToPage(2);
     rtl.book.turnToPage(2);
@@ -504,8 +544,18 @@ describe('a COMPLETED swipe lands on the right page in both readings', () => {
   test('and the mirror image of that drag reverses both', () => {
     // Without this, an engine that simply refuses every rtl forward turn
     // satisfies the test above.
-    const ltr = makeHtmlBook({ ...landscape, pageCount: 6, direction: 'ltr', flippingTime: 0 });
-    const rtl = makeHtmlBook({ ...landscape, pageCount: 6, direction: 'rtl', flippingTime: 0 });
+    const ltr = makeHtmlBook({
+      ...landscape,
+      pageCount: 6,
+      readingDirection: 'ltr',
+      flippingTime: 0,
+    });
+    const rtl = makeHtmlBook({
+      ...landscape,
+      pageCount: 6,
+      readingDirection: 'rtl',
+      flippingTime: 0,
+    });
 
     ltr.book.turnToPage(2);
     rtl.book.turnToPage(2);

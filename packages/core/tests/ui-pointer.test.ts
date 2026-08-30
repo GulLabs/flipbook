@@ -75,7 +75,7 @@ describe('UI pointer paths', () => {
       pageCount: 4,
       flippingTime: 0,
       swipeDistance: 40,
-      direction: 'rtl',
+      readingDirection: 'rtl',
     });
     const dist = app.getUI().getDistElement();
     const rect = app.getBoundsRect();
@@ -89,7 +89,7 @@ describe('UI pointer paths', () => {
   });
 
   test('pointerleave while idle after a corner fold restores READ', () => {
-    const { book: app } = book({ pageCount: 4, flippingTime: 0, showPageCorners: true });
+    const { book: app } = book({ pageCount: 4, flippingTime: 0, foldCornerOnHover: true });
     const dist = app.getUI().getDistElement();
     const rect = app.getBoundsRect();
 
@@ -137,11 +137,11 @@ describe('UI pointer paths', () => {
     expect(app.getState()).toBe(FlippingState.READ);
   });
 
-  test('clickEventForward skips interactive children (button / anchor)', () => {
+  test('respectInteractiveContent skips interactive children (button / anchor)', () => {
     const { book: app, pages } = book({
       pageCount: 3,
       flippingTime: 0,
-      clickEventForward: true,
+      respectInteractiveContent: true,
     });
     const btn = document.createElement('button');
     btn.textContent = 'go';
@@ -165,7 +165,7 @@ describe('UI pointer paths', () => {
     const { book: app } = book({
       pageCount: 3,
       flippingTime: 0,
-      useMouseEvents: false,
+      pointerInput: [],
     });
     const dist = app.getUI().getDistElement();
     const rect = app.getBoundsRect();
@@ -186,10 +186,10 @@ describe('UI pointer paths', () => {
     const { book: app } = book({
       pageCount: 3,
       flippingTime: 0,
-      useMouseEvents: false,
+      pointerInput: [],
     });
 
-    app.updateSettings({ useMouseEvents: true });
+    app.updateSettings({ pointerInput: ['mouse', 'touch', 'pen'] });
 
     const dist = app.getUI().getDistElement();
     const rect = app.getBoundsRect();
@@ -218,7 +218,7 @@ describe('UI pointer paths', () => {
     });
     for (const p of pages) host.appendChild(p);
 
-    const app = new PageFlip(host, { width: 200, height: 300, flippingTime: 0, size: 'fixed' });
+    const app = new PageFlip(host, { width: 200, height: 300, flippingTime: 0, sizing: 'fixed' });
     app.loadFromHTML(pages);
     expect(host.classList.contains('stf__parent')).toBe(true);
 
@@ -230,11 +230,11 @@ describe('UI pointer paths', () => {
     host.remove();
   });
 
-  test('touch pointer with mobileScrollSupport gates preventDefault on move', () => {
+  test('touch pointer with allowTouchScroll gates preventDefault on move', () => {
     const { book: app } = book({
       pageCount: 4,
       flippingTime: 0,
-      mobileScrollSupport: true,
+      allowTouchScroll: true,
     });
     const dist = app.getUI().getDistElement();
     const rect = app.getBoundsRect();
@@ -315,7 +315,7 @@ describe('UI pointer paths', () => {
 describe('W1 — host max-width is the two-page bound', () => {
   const stretch = {
     pageCount: 4,
-    size: 'stretch' as const,
+    sizing: 'responsive' as const,
     autoSize: true,
     usePortrait: true,
     width: 300,

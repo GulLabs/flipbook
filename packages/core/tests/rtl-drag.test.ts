@@ -1,5 +1,5 @@
 /**
- * `direction: 'rtl'` mirrors the TURN DIRECTION and never the pointer
+ * `readingDirection: 'rtl'` mirrors the TURN DIRECTION and never the pointer
  * coordinates (CLAUDE.md). The defect these tests pin (inventory I2) is the
  * second-order version of that rule: `Render.convertToPage` derives local x
  * FROM the direction it is given, so handing it the already-mirrored direction
@@ -36,12 +36,12 @@ type Reading = 'ltr' | 'rtl';
  * Landscape gives both directions a real, symmetric half to be measured on,
  * which is what makes "the same edge behaves the same" a meaningful assertion.
  */
-function landscapeBook(direction: Reading, startPage = 2): PageFlip {
+function landscapeBook(readingDirection: Reading, initialPage = 2): PageFlip {
   const b = makeHtmlBook({
     pageCount: 6,
     flippingTime: 0,
-    startPage,
-    direction,
+    initialPage,
+    readingDirection,
     usePortrait: false,
     hostWidth: 500,
   });
@@ -49,12 +49,12 @@ function landscapeBook(direction: Reading, startPage = 2): PageFlip {
   return b.book;
 }
 
-function portraitBook(direction: Reading, startPage = 2): PageFlip {
+function portraitBook(readingDirection: Reading, initialPage = 2): PageFlip {
   const b = makeHtmlBook({
     pageCount: 6,
     flippingTime: 0,
-    startPage,
-    direction,
+    initialPage,
+    readingDirection,
     usePortrait: true,
   });
   books.push(b);

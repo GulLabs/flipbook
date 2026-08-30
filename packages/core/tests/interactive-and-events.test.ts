@@ -55,7 +55,7 @@ describe('PageFlip.flipNext boolean + turnRejected (shipped)', () => {
       height: 300,
       flippingTime: 0,
       usePortrait: true,
-      showCover: false,
+      hardCovers: false,
     });
     book.loadFromHTML(pages);
     book.turnToPage(1);

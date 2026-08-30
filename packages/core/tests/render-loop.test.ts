@@ -28,7 +28,7 @@ import { PageFlipError } from '../src/errors';
 import { FlipDirection } from '../src/Flip/Flip';
 import { Render, Orientation } from '../src/Render/Render';
 import type { PageFlip } from '../src/PageFlip';
-import { Settings, SizeType, type FlipSetting } from '../src/Settings';
+import { Settings, SizeMode, type FlipSetting } from '../src/Settings';
 
 class TestRender extends Render {
   public frameDraws = 0;
@@ -78,7 +78,7 @@ function makeHarness(
   userSetting: Partial<FlipSetting> = {},
   box = { offsetWidth: 0, offsetHeight: 0 },
 ): Harness {
-  const setting = new Settings().getSettings({ width: 200, height: 300, ...userSetting });
+  const setting = new Settings().resolve({ width: 200, height: 300, ...userSetting });
   const updateOrientation = vi.fn();
 
   const app = {
@@ -279,9 +279,15 @@ describe('C5 — a zero-size container is not an observation', () => {
     expect(render.getRect().pageWidth).toBe(200);
   });
 
-  test('a stretch book behaves the same way', () => {
+  test('a responsive book behaves the same way', () => {
     const { render, box, updateOrientation } = makeHarness(
-      { size: SizeType.STRETCH, minWidth: 150, maxWidth: 2000, minHeight: 100, maxHeight: 2000 },
+      {
+        sizing: SizeMode.RESPONSIVE,
+        minWidth: 150,
+        maxWidth: 2000,
+        minHeight: 100,
+        maxHeight: 2000,
+      },
       { offsetWidth: 600, offsetHeight: 400 },
     );
 

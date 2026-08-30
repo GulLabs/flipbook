@@ -70,7 +70,7 @@ function assertPortraitFixture(app: ReturnType<typeof book>['book'], page: numbe
 
 describe('FL1 (F5) — the BACK corner-hover band belongs to the visible leaf', () => {
   test('the leaf’s own left edge is a corner; the phantom half is not', () => {
-    const { book: app } = book({ pageCount: 6, flippingTime: 0, startPage: 2 });
+    const { book: app } = book({ pageCount: 6, flippingTime: 0, initialPage: 2 });
     const flip = app.getFlipController()!;
     assertPortraitFixture(app, 2);
 
@@ -106,7 +106,7 @@ describe('FL1 (F5) — the BACK corner-hover band belongs to the visible leaf', 
   });
 
   test('hovering that edge actually opens a BACK fold', () => {
-    const { book: app } = book({ pageCount: 6, flippingTime: 1000, startPage: 2 });
+    const { book: app } = book({ pageCount: 6, flippingTime: 1000, initialPage: 2 });
     const flip = app.getFlipController()!;
     assertPortraitFixture(app, 2);
     expect(flip.getState()).toBe(FlippingState.READ);
@@ -126,7 +126,7 @@ describe('FL1 (F5) — the BACK corner-hover band belongs to the visible leaf', 
     const { book: app } = book({
       pageCount: 6,
       flippingTime: 0,
-      startPage: 2,
+      initialPage: 2,
       usePortrait: false,
       hostWidth: 420,
     });
@@ -153,7 +153,7 @@ describe('FL2 — the portrait BACK zone is bounded at both ends', () => {
   }
 
   test('a click in the blank margin beside the leaf does not turn back', () => {
-    const { book: app } = book({ pageCount: 6, flippingTime: 0, startPage: 2 });
+    const { book: app } = book({ pageCount: 6, flippingTime: 0, initialPage: 2 });
     assertPortraitFixture(app, 2);
 
     // Global x = 20 is real host area — the book is centred, so there is 90px
@@ -177,24 +177,24 @@ describe('FL2 — the portrait BACK zone is bounded at both ends', () => {
     {
       // The leaf's own left edge — the first pixel of the book — is inside the
       // zone. The new lower bound is inclusive, not exclusive.
-      const { book: app } = book({ pageCount: 6, flippingTime: 0, startPage: 2 });
+      const { book: app } = book({ pageCount: 6, flippingTime: 0, initialPage: 2 });
       assertPortraitFixture(app, 2);
       click(app, LEAF_LEFT, RECT.top + 150);
       expect(app.getCurrentPageIndex()).toBe(1);
     }
     {
-      const { book: app } = book({ pageCount: 6, flippingTime: 0, startPage: 2 });
+      const { book: app } = book({ pageCount: 6, flippingTime: 0, initialPage: 2 });
       assertPortraitFixture(app, 2);
       click(app, LEAF_LEFT + 2, RECT.top + 150);
       expect(app.getCurrentPageIndex()).toBe(1);
     }
     {
-      const { book: app } = book({ pageCount: 6, flippingTime: 0, startPage: 2 });
+      const { book: app } = book({ pageCount: 6, flippingTime: 0, initialPage: 2 });
       click(app, LEAF_LEFT + zone, RECT.top + 150);
       expect(app.getCurrentPageIndex()).toBe(1);
     }
     {
-      const { book: app } = book({ pageCount: 6, flippingTime: 0, startPage: 2 });
+      const { book: app } = book({ pageCount: 6, flippingTime: 0, initialPage: 2 });
       click(app, LEAF_LEFT + zone + 1, RECT.top + 150);
       expect(app.getCurrentPageIndex()).toBe(3);
     }
@@ -204,7 +204,7 @@ describe('FL2 — the portrait BACK zone is bounded at both ends', () => {
     const { book: app } = book({
       pageCount: 6,
       flippingTime: 0,
-      startPage: 2,
+      initialPage: 2,
       usePortrait: false,
       hostWidth: 420,
     });
@@ -220,7 +220,7 @@ describe('FL2 — the portrait BACK zone is bounded at both ends', () => {
 
 describe('FL3 (F6) — showCorner seeds the corner it actually picked', () => {
   test('a BOTTOM hover’s first pose is at the bottom of the leaf', () => {
-    const { book: app } = book({ pageCount: 6, flippingTime: 1000, startPage: 2 });
+    const { book: app } = book({ pageCount: 6, flippingTime: 1000, initialPage: 2 });
     const flip = app.getFlipController()!;
     assertPortraitFixture(app, 2);
 
@@ -263,7 +263,7 @@ describe('FL3 (F6) — showCorner seeds the corner it actually picked', () => {
   });
 
   test('a TOP hover is unchanged', () => {
-    const { book: app } = book({ pageCount: 6, flippingTime: 1000, startPage: 2 });
+    const { book: app } = book({ pageCount: 6, flippingTime: 1000, initialPage: 2 });
     const flip = app.getFlipController()!;
     assertPortraitFixture(app, 2);
 
@@ -298,7 +298,7 @@ describe('FL4 — a fold with no shadow start clears the shadow it left behind',
     const { book: app } = book({
       pageCount: 6,
       flippingTime: 1000,
-      startPage: 2,
+      initialPage: 2,
       width: 600,
       height: 50,
       drawShadow: true,
@@ -354,7 +354,7 @@ describe('Z2 — the vertical corner band stops at the corner split', () => {
   const WIDE_LEAF_RIGHT = WIDE.left + WIDE.width; // global x = 590
 
   function wideBook(opts?: Parameters<typeof makeHtmlBook>[0]) {
-    return book({ width: 400, height: 100, pageCount: 6, startPage: 0, ...opts });
+    return book({ width: 400, height: 100, pageCount: 6, initialPage: 0, ...opts });
   }
 
   function assertWideFixture(app: ReturnType<typeof book>['book']): void {
@@ -394,7 +394,7 @@ describe('Z2 — the vertical corner band stops at the corner split', () => {
   test('the clamp is inert at ordinary proportions', () => {
     // 200x300: `operatingDistance` is 72.11 against a half-height of 150, so
     // the clamp changes nothing and the middle band is a real gap, not a line.
-    const { book: app } = book({ pageCount: 6, flippingTime: 0, startPage: 2 });
+    const { book: app } = book({ pageCount: 6, flippingTime: 0, initialPage: 2 });
     const flip = app.getFlipController()!;
     assertPortraitFixture(app, 2);
     expect(OPERATING_DISTANCE).toBeLessThan(RECT.height / 2);
@@ -413,7 +413,7 @@ describe('Z2 — the vertical corner band stops at the corner split', () => {
     // this predicate, so an unclamped y band made `disableFlipByClick` accept a
     // click on the split line — which is not a corner by the engine's own
     // definition of one.
-    const { book: app } = wideBook({ flippingTime: 0, disableFlipByClick: true });
+    const { book: app } = wideBook({ flippingTime: 0, flipOnClick: 'corners' });
     assertWideFixture(app);
 
     const reasons: string[] = [];
@@ -428,7 +428,7 @@ describe('Z2 — the vertical corner band stops at the corner split', () => {
   });
 
   test('…and still accepts a real corner of the same book', () => {
-    const { book: app } = wideBook({ flippingTime: 0, disableFlipByClick: true });
+    const { book: app } = wideBook({ flippingTime: 0, flipOnClick: 'corners' });
     assertWideFixture(app);
 
     const pos = { x: WIDE_LEAF_RIGHT - 2, y: WIDE.top + 2 };

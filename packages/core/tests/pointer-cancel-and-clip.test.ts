@@ -336,7 +336,7 @@ describe('U7 drawSoft never emits an invalid clip-path', () => {
 
 describe('U8 newTemporaryCopy refuses a detached page element', () => {
   test('an attached leaf clones next to itself (fixture precondition)', () => {
-    const { book: app } = book({ pageCount: 4, flippingTime: 0, startPage: 2 });
+    const { book: app } = book({ pageCount: 4, flippingTime: 0, initialPage: 2 });
     const page = app.getPage(2) as HTMLPage;
 
     // The HARD branch returns `this` and never appends; this must be the SOFT
@@ -353,7 +353,7 @@ describe('U8 newTemporaryCopy refuses a detached page element', () => {
   });
 
   test('a detached leaf throws PageFlipError instead of animating nothing', () => {
-    const { book: app } = book({ pageCount: 4, flippingTime: 0, startPage: 2 });
+    const { book: app } = book({ pageCount: 4, flippingTime: 0, initialPage: 2 });
     const page = app.getPage(2) as HTMLPage;
     const el = page.getElement();
 
@@ -422,7 +422,7 @@ function dressedBook(): { app: PageFlip; host: HTMLElement; pages: HTMLElement[]
   const app = new PageFlip(host, {
     width,
     height,
-    size: 'fixed',
+    sizing: 'fixed',
     flippingTime: 0,
     usePortrait: false,
     drawShadow: true,
@@ -456,7 +456,9 @@ describe('U1 destroy() returns the consumer’s nodes undressed', () => {
     expect(leaf.style.left).not.toBe('');
     expect(leaf.style.width).toBe('200px');
     expect(leaf.style.height).toBe('300px');
-    expect(leaf.style.borderRadius).toBe(''); // draw() really did wipe it
+    // NF4: draw applies engine props surgically and leaves the consumer's
+    // border-radius alone (the old wholesale cssText wipe is gone).
+    expect(leaf.style.borderRadius).toBe('8px');
 
     // A class the consumer toggles WHILE the book is live. Restoring
     // `className` from the adoption-time snapshot would silently drop this.
@@ -634,7 +636,7 @@ describe('Y3 pointerleave only ends the gesture it belongs to', () => {
     // The filter must pass the no-gesture case through. `activePointerId !==
     // e.pointerId` is the obvious wrong spelling of this fix and it fails here:
     // `null !== 2` would return early and leave the corner folded up forever.
-    const { book: app } = book({ pageCount: 6, flippingTime: 0, showPageCorners: true });
+    const { book: app } = book({ pageCount: 6, flippingTime: 0, foldCornerOnHover: true });
     const dist = app.getUI().getDistElement();
     const rect = app.getBoundsRect();
 

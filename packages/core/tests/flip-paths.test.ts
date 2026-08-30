@@ -45,7 +45,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
   });
 
   test('flipPrev from an interior page restores the previous leaf via BACK', () => {
-    const { book: app } = book({ pageCount: 4, flippingTime: 0, startPage: 2 });
+    const { book: app } = book({ pageCount: 4, flippingTime: 0, initialPage: 2 });
     const flip = app.getFlipController()!;
     expect(app.getCurrentPageIndex()).toBe(2);
 
@@ -95,7 +95,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
   });
 
   test('showCorner peels a corner then leaving the corner restores READ', () => {
-    const { book: app } = book({ pageCount: 4, flippingTime: 0, showPageCorners: true });
+    const { book: app } = book({ pageCount: 4, flippingTime: 0, foldCornerOnHover: true });
     const flip = app.getFlipController()!;
     const rect = app.getBoundsRect();
 
@@ -116,7 +116,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
     const { book: app } = book({
       pageCount: 4,
       flippingTime: 0,
-      disableFlipByClick: true,
+      flipOnClick: 'corners',
     });
     const rect = app.getBoundsRect();
 
@@ -134,7 +134,14 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
     app.userStop(center);
 
     expect(app.getCurrentPageIndex()).toBe(0);
-    expect(rejected).toEqual([{ reason: 'disabled' }]);
+    expect(rejected).toEqual([
+      expect.objectContaining({
+        reason: 'disabled',
+        direction: null,
+        targetPage: null,
+        landedOn: 0,
+      }),
+    ]);
 
     const corner = { x: rect.left + rect.width - 4, y: rect.top + 4 };
     app.startUserTouch(corner);
@@ -155,7 +162,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
   });
 
   test('no forward turn from the last page', () => {
-    const { book: app } = book({ pageCount: 3, flippingTime: 0, startPage: 2 });
+    const { book: app } = book({ pageCount: 3, flippingTime: 0, initialPage: 2 });
     const flip = app.getFlipController()!;
     expect(flip.flipNext(FlipCorner.TOP)).toBe(false);
     expect(app.getCurrentPageIndex()).toBe(2);
@@ -165,7 +172,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
     const { book: app } = book({
       pageCount: 4,
       flippingTime: 0,
-      showCover: true,
+      hardCovers: true,
     });
     const cover = app.getPage(0);
     expect(cover.getDensity()).toBe(PageDensity.HARD);
@@ -182,7 +189,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
 
 describe('Flip direction hit-testing under portrait', () => {
   test('left side of the portrait page starts a BACK fold', () => {
-    const { book: app } = book({ pageCount: 5, flippingTime: 0, startPage: 2 });
+    const { book: app } = book({ pageCount: 5, flippingTime: 0, initialPage: 2 });
     const flip = app.getFlipController()!;
     expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
     const rect = app.getBoundsRect();
@@ -217,7 +224,7 @@ describe('programmatic turns ignore click policy (StPageFlip #29)', () => {
     const { book: app } = book({
       pageCount: 6,
       flippingTime: 0,
-      disableFlipByClick: true,
+      flipOnClick: 'corners',
       hostWidth: 1200,
     });
 

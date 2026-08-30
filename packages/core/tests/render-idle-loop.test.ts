@@ -234,7 +234,7 @@ describe('R8 — every wake-up path', () => {
   });
 
   test('a corner hover wakes it', () => {
-    const book = settledBook({ showPageCorners: true });
+    const book = settledBook({ foldCornerOnHover: true });
     const rect = book.getBoundsRect();
 
     pointer(book, 'pointermove', {
@@ -442,7 +442,7 @@ class ProbeRender extends Render {
 }
 
 function probeOn(dist: HTMLElement): ProbeRender {
-  const setting = new Settings().getSettings({ width: 200, height: 300 });
+  const setting = new Settings().resolve({ width: 200, height: 300 });
   Object.defineProperty(dist, 'offsetWidth', { configurable: true, get: () => 400 });
   Object.defineProperty(dist, 'offsetHeight', { configurable: true, get: () => 300 });
 

@@ -61,7 +61,7 @@ function makeBook(settings: Record<string, unknown> = {}): Book {
   const book = new PageFlip(host, {
     width: 200,
     height: 300,
-    size: 'fixed',
+    sizing: 'fixed',
     usePortrait: false,
     flippingTime: 0,
     ...settings,
@@ -136,7 +136,7 @@ function pointer(b: Book, type: string, x: number, id = 1): void {
 const TEARDOWNS: Array<{ name: string; run: (b: Book) => void }> = [
   {
     name: 'updateSettings — the fold-invalidating settle',
-    run: (b) => b.book.updateSettings({ direction: 'rtl' }),
+    run: (b) => b.book.updateSettings({ readingDirection: 'rtl' }),
   },
   {
     name: 'updateFromHtml — same UI, fresh collection',
@@ -204,7 +204,7 @@ describe('a teardown drops the pointer gesture, whichever path reaches it', () =
 
       const flips: number[] = [];
       const refusals: string[] = [];
-      b.book.on('flip', (e) => flips.push(e.data as number));
+      b.book.on('flip', (e) => flips.push(e.data.page));
       // A refusal proves the turn was ATTEMPTED, which is the defect. Without
       // this the `clear` case passes under a full revert: the swipe branch runs,
       // calls `flipNext`, and an emptied book simply refuses it at the boundary.
@@ -268,7 +268,7 @@ test('POSITIVE CONTROL: with no teardown, that same swipe DOES turn the page', (
   b.book.turnToPage(2);
 
   const flips: number[] = [];
-  b.book.on('flip', (e) => flips.push(e.data as number));
+  b.book.on('flip', (e) => flips.push(e.data.page));
 
   const rect = b.book.getBoundsRect();
   const startX = rect.left + rect.width - 10;

@@ -170,8 +170,8 @@ describe('I10 unbinding handlers mid-gesture cancels the gesture', () => {
     expect(app.getState()).toBe(FlippingState.USER_FOLD);
 
     // refreshHandlers() -> removeHandlers() in the middle of the gesture.
-    app.updateSettings({ useMouseEvents: false });
-    app.updateSettings({ useMouseEvents: true });
+    app.updateSettings({ pointerInput: [] });
+    app.updateSettings({ pointerInput: ['mouse', 'touch', 'pen'] });
 
     expect(app.getState()).toBe(FlippingState.READ);
 

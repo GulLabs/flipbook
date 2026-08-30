@@ -4,7 +4,7 @@ import { Flip, FlipCorner, FlipDirection } from '@gullabs/flipbook-core';
 import type { Render } from '@gullabs/flipbook-core';
 
 type Options = {
-  direction?: 'ltr' | 'rtl';
+  readingDirection?: 'ltr' | 'rtl';
   spreadCount?: number;
   currentSpread?: number;
   orientation?: 'portrait' | 'landscape';
@@ -77,11 +77,11 @@ function makeFlip(options?: Options) {
   const app = {
     getPageCollection: () => collection,
     getSettings: () => ({
-      disableFlipByClick: false,
+      flipOnClick: 'anywhere',
       flippingTime: 0,
       respectReducedMotion: true,
-      direction: options?.direction ?? ('ltr' as const),
-      showPageCorners: true,
+      readingDirection: options?.readingDirection ?? ('ltr' as const),
+      foldCornerOnHover: true,
     }),
     getCurrentPageIndex: () => collection.spread,
     getPageCount: () => options?.spreadCount ?? 8,
@@ -108,23 +108,23 @@ describe('reading direction applies to user-originated points', () => {
   });
 
   test('rtl: the hit test is mirrored, so the left half turns forward', () => {
-    const { flip, directions } = makeFlip({ direction: 'rtl' });
+    const { flip, directions } = makeFlip({ readingDirection: 'rtl' });
     flip.start({ x: 100, y: 10 });
     expect(directions[0]).toBe(FlipDirection.FORWARD);
   });
 
   test('rtl: the right half turns back', () => {
-    const { flip, directions } = makeFlip({ direction: 'rtl' });
+    const { flip, directions } = makeFlip({ readingDirection: 'rtl' });
     flip.start({ x: 700, y: 10 });
     expect(directions[0]).toBe(FlipDirection.BACK);
   });
 
   test('rtl does not invert programmatic turns', () => {
-    const { flip, directions } = makeFlip({ direction: 'rtl' });
+    const { flip, directions } = makeFlip({ readingDirection: 'rtl' });
     flip.flipNext(FlipCorner.TOP);
     expect(directions[0]).toBe(FlipDirection.FORWARD);
 
-    const back = makeFlip({ direction: 'rtl' });
+    const back = makeFlip({ readingDirection: 'rtl' });
     back.flip.flipPrev(FlipCorner.TOP);
     expect(back.directions[0]).toBe(FlipDirection.BACK);
   });

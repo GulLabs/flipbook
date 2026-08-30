@@ -32,7 +32,7 @@ const landscape = { pageCount: 6, hostWidth: 520, hostHeight: 300, width: 200, h
 /** Record every `flip` payload from the moment this is called. */
 function watch(book: ReturnType<typeof makeHtmlBook>['book']): number[] {
   const seen: number[] = [];
-  book.on('flip', (e) => seen.push(e.data as number));
+  book.on('flip', (e) => seen.push(e.data.page));
   return seen;
 }
 
@@ -52,10 +52,10 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     const pages = makePages(6);
     for (const p of pages) host.appendChild(p);
 
-    const book = new PageFlip(host, { width: 200, height: 300, size: 'fixed' });
+    const book = new PageFlip(host, { width: 200, height: 300, sizing: 'fixed' });
 
     const seen: number[] = [];
-    book.on('flip', (e) => seen.push(e.data as number));
+    book.on('flip', (e) => seen.push(e.data.page));
 
     book.loadFromHTML(pages);
 
@@ -70,9 +70,9 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     host.remove();
   });
 
-  test('mounting at a nonzero startPage emits no flip either — and none before init', async () => {
+  test('mounting at a nonzero initialPage emits no flip either — and none before loaded', () => {
     // C2. The sibling above passes because the book opens where the fresh
-    // collection already sits. With `startPage: 4` the head moves 0 -> 4 during
+    // collection already sits. With `initialPage: 4` the head moves 0 -> 4 during
     // the synchronous `pages.show(...)` in `attachMode`, so the ADR 0003 guard
     // announced `flip(4)` — for a book no reader has touched, and BEFORE `init`,
     // which ADR 0003 makes the seeding event. A consumer binding `flip` to
@@ -93,38 +93,33 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     const book = new PageFlip(host, {
       width: 200,
       height: 300,
-      size: 'fixed',
-      startPage: 4,
+      sizing: 'fixed',
+      initialPage: 4,
     });
 
     const order: string[] = [];
     const flips: number[] = [];
     book.on('flip', (e) => {
       order.push('flip');
-      flips.push(e.data as number);
+      flips.push(e.data.page);
     });
-    book.on('init', () => order.push('init'));
+    book.on('loaded', () => order.push('loaded'));
 
     book.loadFromHTML(pages);
 
     expect(flips).toEqual([]);
     expect(book.getCurrentPageIndex()).toBe(4);
 
-    // MUST await the timer. `init` is dispatched from `setTimeout(..., 1)`, so
-    // asserting `order` synchronously can only ever observe an empty array —
-    // the ordering claim was vacuous, and a mutant that moved the spurious
-    // `flip` INTO the init timer, ahead of `init`, passed. Measured.
-    //
-    // `['init']` is strictly stronger than `[]`: it proves the flip is absent
-    // AND that `init` still arrives AND that nothing precedes it.
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(order).toEqual(['init']);
+    // `loaded` is synchronous (replaces the old timer-based `init`).
+    // `['loaded']` is strictly stronger than `[]`: flip absent AND loaded fires
+    // AND nothing precedes it.
+    expect(order).toEqual(['loaded']);
 
     book.destroy();
     host.remove();
   });
 
-  test('clear() then reload at a nonzero startPage is silent too', async () => {
+  test('clear() then reload at a nonzero initialPage is silent too', () => {
     // The gap the engine expert found in the first C2 fix. `isFirstLoad` was
     // `this.pages === null`, and `clear()` does NOT null it — `PageCollection`
     // is emptied in place and keeps the index it held when full. So a reload
@@ -143,8 +138,8 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     const book = new PageFlip(host, {
       width: 200,
       height: 300,
-      size: 'fixed',
-      startPage: 4,
+      sizing: 'fixed',
+      initialPage: 4,
     });
     book.loadFromHTML(pages);
     book.clear();
@@ -152,8 +147,8 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     // Only what happens from HERE is under test; `clear()` announces its own
     // move to an empty book, which is a real change and correctly reported.
     const order: string[] = [];
-    book.on('flip', (e) => order.push(`flip:${String(e.data)}`));
-    book.on('init', () => order.push('init'));
+    book.on('flip', (e) => order.push(`flip:${e.data.page}`));
+    book.on('loaded', () => order.push('loaded'));
 
     const reloaded = makePages(6);
     for (const p of reloaded) host.appendChild(p);
@@ -161,10 +156,8 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
 
     expect(book.getCurrentPageIndex()).toBe(4);
 
-    // Same reason as the sibling: assert AFTER the init timer, or the ordering
-    // half of this test proves nothing.
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(order).toEqual(['init']);
+    // `loaded` is synchronous — no timer to await.
+    expect(order).toEqual(['loaded']);
 
     book.destroy();
     host.remove();
@@ -198,13 +191,13 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     const book = new PageFlip(host, {
       width: landscape.width,
       height: landscape.height,
-      size: 'fixed',
+      sizing: 'fixed',
       usePortrait: false,
-      startPage: 1,
+      initialPage: 1,
     });
 
     const seen: number[] = [];
-    book.on('flip', (e) => seen.push(e.data as number));
+    book.on('flip', (e) => seen.push(e.data.page));
 
     book.loadFromHTML(pages);
 
@@ -476,8 +469,8 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
   test('a RELOAD that moves the page announces, and one that does not stays silent', () => {
     // A reload is a collection replacement as far as the consumer is concerned.
     // Without a baseline it was wrong in both directions: reloading a page-4
-    // book to `startPage: 0` moved the visible index with no event, and
-    // reloading it to `startPage: 4` announced a turn for a book that had not
+    // book to `initialPage: 0` moved the visible index with no event, and
+    // reloading it to `initialPage: 4` announced a turn for a book that had not
     // moved.
     const moved = makeHtmlBook({ ...landscape, flippingTime: 0 });
     moved.book.turnToPage(4);
@@ -491,7 +484,7 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     expect(movedSeen).toEqual([0]);
     moved.destroy();
 
-    const stayed = makeHtmlBook({ ...landscape, flippingTime: 0, startPage: 4 });
+    const stayed = makeHtmlBook({ ...landscape, flippingTime: 0, initialPage: 4 });
     stayed.book.turnToPage(4);
     const stayedSeen = watch(stayed.book);
 
@@ -578,12 +571,12 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     // settles the fold, and the settle repaints the unchanged spread — which
     // used to emit `flip: 0` for a page the reader never reached. Enough to
     // drive controlled state, analytics, or an `onFlip` auto-advance.
-    const book = makeHtmlBook({ ...landscape, direction: 'ltr', flippingTime: 400 });
+    const book = makeHtmlBook({ ...landscape, readingDirection: 'ltr', flippingTime: 400 });
 
     book.book.flipNext();
     const seen = watch(book.book);
 
-    book.book.updateSettings({ direction: 'rtl' });
+    book.book.updateSettings({ readingDirection: 'rtl' });
 
     expect(seen).toEqual([]);
     expect(book.book.getCurrentPageIndex()).toBe(0);

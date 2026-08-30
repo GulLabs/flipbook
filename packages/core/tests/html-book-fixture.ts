@@ -1,11 +1,16 @@
 /**
  * Shared FIXED-size HTML book harness for jsdom integration tests.
  * Coverage is a byproduct — helpers only size the host so geometry is real.
+ *
+ * Uses the post-design-tranche `FlipOptions` names only (`sizing`, `hardCovers`,
+ * `foldCornerOnHover`, `readingDirection`, `flipOnClick`, `pointerInput`, …).
+ * Unknown legacy keys must not be spread into the constructor: `resolve`
+ * ignores them and the suite silently tests the wrong configuration.
  */
 import { PageFlip } from '@gullabs/flipbook-core';
-import type { FlipSetting } from '@gullabs/flipbook-core';
+import type { FlipOptions } from '@gullabs/flipbook-core';
 
-export type BookOpts = Partial<FlipSetting> & {
+export type BookOpts = Partial<FlipOptions> & {
   pageCount?: number;
   hostWidth?: number;
   hostHeight?: number;
@@ -58,19 +63,26 @@ export function makeHtmlBook(opts: BookOpts = {}): {
   document.body.appendChild(host);
   sizeElement(host, hostW, hostH);
 
-  const pages = makePages(pageCount, Boolean(opts.showCover));
+  const pages = makePages(pageCount, Boolean(opts.hardCovers));
   for (const p of pages) host.appendChild(p);
+
+  const {
+    pageCount: _pageCount,
+    hostWidth: _hostWidth,
+    hostHeight: _hostHeight,
+    ...setting
+  } = opts;
 
   const book = new PageFlip(host, {
     width,
     height,
-    size: 'fixed',
+    sizing: 'fixed',
     flippingTime: 0,
     usePortrait: true,
     drawShadow: true,
-    showPageCorners: true,
+    foldCornerOnHover: true,
     pageBackground: '#fff',
-    ...opts,
+    ...setting,
   });
 
   book.loadFromHTML(pages);

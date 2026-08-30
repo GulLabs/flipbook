@@ -3,7 +3,7 @@ import { createRef, StrictMode, useState } from 'react';
 import { act, cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HTMLFlipBook, usePageFlip } from '@gullabs/react-flipbook';
-import type { FlipBookHandle } from '@gullabs/react-flipbook';
+import type { FlipBookHandle, TurnRejected } from '@gullabs/react-flipbook';
 
 afterEach(() => {
   cleanup();
@@ -42,22 +42,22 @@ describe('HTMLFlipBook (shipped binding)', () => {
     });
   });
 
-  test('onUpdate fires on children change', async () => {
-    const onUpdate = vi.fn();
+  test('onPagesChanged fires on children change', async () => {
+    const onPagesChanged = vi.fn();
     const { rerender } = render(
-      <HTMLFlipBook width={200} height={300} flippingTime={0} onUpdate={onUpdate}>
+      <HTMLFlipBook width={200} height={300} flippingTime={0} onPagesChanged={onPagesChanged}>
         {pages('a', 'b')}
       </HTMLFlipBook>,
     );
 
     rerender(
-      <HTMLFlipBook width={200} height={300} flippingTime={0} onUpdate={onUpdate}>
+      <HTMLFlipBook width={200} height={300} flippingTime={0} onPagesChanged={onPagesChanged}>
         {pages('a', 'b', 'c')}
       </HTMLFlipBook>,
     );
 
     await waitFor(() => {
-      expect(onUpdate.mock.calls.length).toBeGreaterThan(0);
+      expect(onPagesChanged.mock.calls.length).toBeGreaterThan(0);
     });
   });
 
@@ -95,7 +95,7 @@ describe('HTMLFlipBook (shipped binding)', () => {
             height={300}
             flippingTime={0}
             page={page}
-            onPageChange={setPage}
+            onPageChange={(snapshot) => setPage(snapshot.page)}
           >
             {pages('a', 'b', 'c')}
           </HTMLFlipBook>
@@ -126,8 +126,8 @@ describe('HTMLFlipBook (shipped binding)', () => {
     expect(live?.style.width).toBe('1px');
   });
 
-  test('an inline onFlip does not rebuild the page collection on every turn', async () => {
-    const onCollectionRebuild = vi.fn();
+  test('an inline onPageChange does not rebuild the page collection on every turn', async () => {
+    const onPagesChanged = vi.fn();
 
     function Harness() {
       const book = usePageFlip();
@@ -141,10 +141,15 @@ describe('HTMLFlipBook (shipped binding)', () => {
             width={200}
             height={300}
             flippingTime={0}
+            {...book.bookProps}
             // Inline identities: new on every render, which is the whole point.
-            onFlip={() => {}}
-            onPageChange={(page) => book.setPage(page)}
-            onCollectionRebuild={onCollectionRebuild}
+            onPageChange={(snapshot) => {
+              book.bookProps.onPageChange?.(snapshot);
+            }}
+            onPagesChanged={(snapshot) => {
+              onPagesChanged(snapshot);
+              book.bookProps.onPagesChanged?.(snapshot);
+            }}
           >
             {pages('a', 'b', 'c')}
           </HTMLFlipBook>
@@ -157,14 +162,14 @@ describe('HTMLFlipBook (shipped binding)', () => {
       expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
     });
 
-    onCollectionRebuild.mockClear();
+    onPagesChanged.mockClear();
     fireEvent.click(screen.getByText('next'));
 
     await waitFor(() => {
       expect(container.querySelector('[data-flipbook-live]')?.textContent).toMatch(/Page 2 of 3/);
     });
 
-    expect(onCollectionRebuild).not.toHaveBeenCalled();
+    expect(onPagesChanged).not.toHaveBeenCalled();
   });
 
   test('removing and reordering children does not throw', async () => {
@@ -285,7 +290,7 @@ test('useKeyboard defaults on and live region has role=status', async () => {
   });
 });
 
-test('startPage opens on the requested index when uncontrolled', async () => {
+test('initialPage opens on the requested index when uncontrolled', async () => {
   const handleRef: { current: import('@gullabs/react-flipbook').FlipBookHandle | null } = {
     current: null,
   };
@@ -297,7 +302,7 @@ test('startPage opens on the requested index when uncontrolled', async () => {
       width={200}
       height={300}
       flippingTime={0}
-      startPage={1}
+      initialPage={1}
       usePortrait
     >
       {pages('a', 'b', 'c')}
@@ -370,8 +375,7 @@ describe('usePageFlip actions + keyboard / error paths', () => {
             width={200}
             height={300}
             flippingTime={0}
-            onPageChange={book.setPage}
-            onInit={() => book.setPageCount(3)}
+            {...book.bookProps}
           >
             {pages('a', 'b', 'c')}
           </HTMLFlipBook>
@@ -462,7 +466,7 @@ describe('usePageFlip actions + keyboard / error paths', () => {
         width={200}
         height={300}
         flippingTime={0}
-        direction="rtl"
+        readingDirection="rtl"
         useKeyboard
       >
         {pages('a', 'b', 'c')}
@@ -507,7 +511,7 @@ describe('usePageFlip actions + keyboard / error paths', () => {
             height={300}
             flippingTime={0}
             page={page}
-            onPageChange={setPage}
+            onPageChange={(snapshot) => setPage(snapshot.page)}
           >
             {pages('a', 'b')}
           </HTMLFlipBook>
@@ -521,7 +525,7 @@ describe('usePageFlip actions + keyboard / error paths', () => {
     });
 
     expect(() => fireEvent.click(screen.getByText('bad'))).not.toThrow();
-    // Binding clamps OOB `page` to the last leaf and reports onNavigationError.
+    // Binding clamps OOB `page` to the last leaf and reports onTurnRejected.
     await waitFor(() => {
       expect(handleRef.current!.pageFlip()!.getCurrentPageIndex()).toBe(1);
     });
@@ -731,65 +735,82 @@ describe('lazy mounting', () => {
   });
 });
 
-describe('startPage out of range', () => {
-  test('reports onNavigationError instead of quietly opening at page 0', async () => {
-    const onNavigationError = vi.fn();
+describe('initialPage out of range', () => {
+  test('out-of-range initialPage clamps to the last leaf rather than opening at 0', async () => {
+    // Opening is not a turn: the engine resolves initialPage via resolveStartPage
+    // and does not emit turnRejected. The contract is "not silently at 0".
+    const handleRef: { current: import('@gullabs/react-flipbook').FlipBookHandle | null } = {
+      current: null,
+    };
+    const onTurnRejected = vi.fn();
 
     render(
       <HTMLFlipBook
+        ref={(h) => {
+          handleRef.current = h;
+        }}
         width={200}
         height={300}
         flippingTime={0}
-        startPage={99}
-        onNavigationError={onNavigationError}
+        initialPage={99}
+        usePortrait
+        onTurnRejected={onTurnRejected}
       >
         {pages('a', 'b')}
       </HTMLFlipBook>,
     );
 
     await waitFor(() => {
-      expect(onNavigationError).toHaveBeenCalledWith({
-        code: 'INVALID_PAGE',
-        requested: 99,
-        actual: 0,
-      });
+      expect(handleRef.current?.pageFlip()?.getPageCount()).toBe(2);
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(1);
     });
+    expect(onTurnRejected).not.toHaveBeenCalled();
   });
 
-  test('a fractional startPage is in range but belongs to no spread', async () => {
-    const onNavigationError = vi.fn();
+  test('a fractional initialPage is rejected at settings construction', async () => {
+    // Settings.require non-negative integer; PAGE_NOT_IN_SPREAD for fractions is
+    // exercised on turnToPage (see design-tranche-critical), not at load.
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let thrown: unknown;
 
-    render(
-      <HTMLFlipBook
-        width={200}
-        height={300}
-        flippingTime={0}
-        startPage={0.5}
-        onNavigationError={onNavigationError}
-      >
-        {pages('a', 'b', 'c')}
-      </HTMLFlipBook>,
-    );
+    try {
+      try {
+        await act(async () => {
+          render(
+            <HTMLFlipBook width={200} height={300} flippingTime={0} initialPage={0.5}>
+              {pages('a', 'b', 'c')}
+            </HTMLFlipBook>,
+          );
+        });
+      } catch (error) {
+        thrown = error;
+      }
+      if (thrown == null) {
+        try {
+          await act(async () => {
+            await Promise.resolve();
+          });
+        } catch (error) {
+          thrown = error;
+        }
+      }
 
-    // 0.5 < pageCount, so a numeric range check would call this reachable.
-    await waitFor(() => {
-      expect(onNavigationError).toHaveBeenCalledWith({
-        code: 'INVALID_PAGE',
-        requested: 0.5,
-        actual: 0,
-      });
-    });
+      expect(thrown).toBeTruthy();
+      expect(String(thrown)).toMatch(/initialPage/);
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
-  test('a valid startPage does not report an error', async () => {
-    const onNavigationError = vi.fn();
+  test('a valid initialPage does not report an error', async () => {
+    const onTurnRejected = vi.fn();
     const { container } = render(
       <HTMLFlipBook
         width={200}
         height={300}
         flippingTime={0}
-        startPage={1}
-        onNavigationError={onNavigationError}
+        initialPage={1}
+        onTurnRejected={onTurnRejected}
       >
         {pages('a', 'b', 'c')}
       </HTMLFlipBook>,
@@ -798,7 +819,7 @@ describe('startPage out of range', () => {
     await waitFor(() => {
       expect(container.querySelector('.stf__block')).toBeTruthy();
     });
-    expect(onNavigationError).not.toHaveBeenCalled();
+    expect(onTurnRejected).not.toHaveBeenCalled();
 
     // The live region stays EMPTY on load. It used to render its text
     // immediately with pageCount 0 ("Book"), then mutate to "Page 2 of 3" once
@@ -876,7 +897,7 @@ describe('explicit navigation on an empty book', () => {
   });
 
   test('a controlled page beyond the end clamps and reports once', async () => {
-    const onNavigationError = vi.fn();
+    const rejected: TurnRejected[] = [];
 
     function Harness() {
       const [page, setPage] = useState(0);
@@ -889,8 +910,12 @@ describe('explicit navigation on an empty book', () => {
             width={200}
             height={300}
             flippingTime={0}
+            usePortrait
             page={page}
-            onNavigationError={onNavigationError}
+            pageTransition="instant"
+            onTurnRejected={(info) => {
+              rejected.push(info);
+            }}
           >
             {pages('a', 'b')}
           </HTMLFlipBook>
@@ -906,10 +931,17 @@ describe('explicit navigation on an empty book', () => {
     fireEvent.click(screen.getByText('jump'));
 
     await waitFor(() => {
-      expect(onNavigationError).toHaveBeenCalledWith(
-        expect.objectContaining({ code: 'INVALID_PAGE', requested: 99 }),
-      );
+      expect(rejected.length).toBeGreaterThan(0);
     });
+    // The controlled effect may report more than once while clamping (INVALID_PAGE
+    // then a follow-up PAGE_NOT_IN_SPREAD). Both map to reason invalidPage; the
+    // useful contract is target + landedOn, not a single code.
+    expect(rejected.some((p) => p.code === 'INVALID_PAGE' && p.targetPage === 99)).toBe(true);
+    const last = rejected[rejected.length - 1]!;
+    expect(last.reason).toBe('invalidPage');
+    expect(last.targetPage).toBe(99);
+    expect(last.landedOn).toBe(1);
+    expect(last.landedOn).not.toBe(99);
   });
 });
 
@@ -1073,10 +1105,10 @@ describe('inert outside the current spread (H2)', () => {
     });
   });
 
-  test('landscape + showCover: the cover is a spread of one, so leaf 1 is inert', async () => {
+  test('landscape + hardCovers: the cover is a spread of one, so leaf 1 is inert', async () => {
     blockSize = LANDSCAPE_BLOCK;
     const { container } = render(
-      <HTMLFlipBook width={200} height={300} flippingTime={0} showCover>
+      <HTMLFlipBook width={200} height={300} flippingTime={0} hardCovers>
         {pages('a', 'b', 'c', 'd')}
       </HTMLFlipBook>,
     );
@@ -1134,11 +1166,11 @@ describe('live region announcement (H5)', () => {
     });
   });
 
-  test('showCover: leaf 0 announces as the front cover, not "Page 1"', async () => {
+  test('hardCovers: leaf 0 announces as the front cover, not "Page 1"', async () => {
     blockSize = PORTRAIT_BLOCK;
     const ref = createRef<FlipBookHandle>();
     const { container } = render(
-      <HTMLFlipBook width={200} height={300} flippingTime={0} usePortrait showCover ref={ref}>
+      <HTMLFlipBook width={200} height={300} flippingTime={0} usePortrait hardCovers ref={ref}>
         {pages('a', 'b', 'c')}
       </HTMLFlipBook>,
     );
@@ -1162,11 +1194,11 @@ describe('live region announcement (H5)', () => {
     });
   });
 
-  test('showCover: the last lone leaf announces as the back cover', async () => {
+  test('hardCovers: the last lone leaf announces as the back cover', async () => {
     blockSize = PORTRAIT_BLOCK;
     const ref = createRef<FlipBookHandle>();
     const { container } = render(
-      <HTMLFlipBook width={200} height={300} flippingTime={0} usePortrait showCover ref={ref}>
+      <HTMLFlipBook width={200} height={300} flippingTime={0} usePortrait hardCovers ref={ref}>
         {pages('a', 'b', 'c')}
       </HTMLFlipBook>,
     );
@@ -1184,7 +1216,7 @@ describe('live region announcement (H5)', () => {
     });
   });
 
-  test('without showCover, leaf 0 is still "Page 1"', async () => {
+  test('without hardCovers, leaf 0 is still "Page 1"', async () => {
     blockSize = PORTRAIT_BLOCK;
     const ref = createRef<FlipBookHandle>();
     const { container } = render(
@@ -1245,7 +1277,7 @@ describe('live region announcement (H5)', () => {
     expect(seen[seen.length - 1]).toEqual({
       pages: [2, 3],
       orientation: 'landscape',
-      showCover: false,
+      hardCovers: false,
     });
   });
 });
@@ -1282,7 +1314,9 @@ describe('controlled page against a two-leaf spread (RB1)', () => {
             height={300}
             flippingTime={0}
             page={page}
-            onPageChange={setPage}
+            pageTransition="instant"
+            usePortrait={false}
+            onPageChange={(snapshot) => setPage(snapshot.page)}
           >
             {pages('a', 'b', 'c', 'd')}
           </HTMLFlipBook>
@@ -1333,9 +1367,11 @@ describe('controlled page against a two-leaf spread (RB1)', () => {
             width={200}
             height={300}
             flippingTime={0}
-            showCover
+            hardCovers
             page={page}
-            onPageChange={setPage}
+            pageTransition="instant"
+            usePortrait={false}
+            onPageChange={(snapshot) => setPage(snapshot.page)}
           >
             {pages('a', 'b', 'c', 'd')}
           </HTMLFlipBook>
@@ -1446,7 +1482,7 @@ describe('lazy mounting keeps page identity (RB3)', () => {
   }
 
   test('crossing the lazy window boundary does not rebuild the collection', async () => {
-    const onCollectionRebuild = vi.fn();
+    const onPagesChanged = vi.fn();
 
     function Harness() {
       const book = usePageFlip();
@@ -1461,7 +1497,11 @@ describe('lazy mounting keeps page identity (RB3)', () => {
             height={300}
             flippingTime={0}
             lazyRadius={1}
-            onCollectionRebuild={onCollectionRebuild}
+            {...book.bookProps}
+            onPagesChanged={(snapshot) => {
+              onPagesChanged(snapshot);
+              book.bookProps.onPagesChanged?.(snapshot);
+            }}
           >
             {sectionPages('a', 'b', 'c', 'd', 'e')}
           </HTMLFlipBook>
@@ -1482,7 +1522,7 @@ describe('lazy mounting keeps page identity (RB3)', () => {
     );
     expect(placeholders.length).toBe(3);
     const leafC = placeholders[0];
-    onCollectionRebuild.mockClear();
+    onPagesChanged.mockClear();
 
     fireEvent.click(screen.getByText('next'));
 
@@ -1495,7 +1535,7 @@ describe('lazy mounting keeps page identity (RB3)', () => {
     // replacement sends the load effect into a full PageCollection rebuild —
     // mid-turn — on every flip.
     expect(container.querySelector('[data-testid="page-c"]')).toBe(leafC);
-    expect(onCollectionRebuild).not.toHaveBeenCalled();
+    expect(onPagesChanged).not.toHaveBeenCalled();
   });
 });
 

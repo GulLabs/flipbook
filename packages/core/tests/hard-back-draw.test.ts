@@ -35,10 +35,10 @@ function hardBook(): PageFlip {
   const book = new PageFlip(host, {
     width: 200,
     height: 300,
-    size: 'fixed',
+    sizing: 'fixed',
     flippingTime: 0,
     drawShadow: true,
-    showCover: true,
+    hardCovers: true,
   });
   book.loadFromHTML(pages);
   sizeElement(book.getUI().getDistElement(), 520, 300);
@@ -213,7 +213,7 @@ describe('the leaf under a BACK fold', () => {
     const book = new PageFlip(host, {
       width: 200,
       height: 300,
-      size: 'fixed',
+      sizing: 'fixed',
       flippingTime: 0,
       drawShadow: true,
     });

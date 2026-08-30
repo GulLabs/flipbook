@@ -8,7 +8,7 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { Orientation, PageFlip, SizeType } from '@gullabs/flipbook-core';
+import { Orientation, PageFlip, SizeMode } from '@gullabs/flipbook-core';
 import {
   installPointerCaptureShims,
   makeHtmlBook,
@@ -118,7 +118,7 @@ describe('runtime-updatable settings reach their collaborator', () => {
 
   test('width / height restyle the host instead of needing a rebuild', () => {
     const { engine, host } = book({
-      size: SizeType.FIXED,
+      sizing: SizeMode.FIXED,
       width: 300,
       height: 400,
       usePortrait: false,
@@ -156,12 +156,12 @@ describe('runtime-updatable settings reach their collaborator', () => {
     engine.destroy();
   });
 
-  test('direction flips the turn resolved for a user point', () => {
+  test('readingDirection flips the turn resolved for a user point', () => {
     const { engine } = book();
 
     engine.turnToPage(1);
-    engine.updateSettings({ direction: 'rtl' });
-    expect(engine.getSettings().direction).toBe('rtl');
+    engine.updateSettings({ readingDirection: 'rtl' });
+    expect(engine.getSettings().readingDirection).toBe('rtl');
 
     // The engine keeps working after the switch; the mapping itself is
     // asserted end-to-end in e2e/flip-invariants.spec.ts, which can measure a
@@ -227,9 +227,9 @@ describe('settings reach Render live, not by value', () => {
 describe('the host sizing invariant U10 now depends on', () => {
   test('a fixed-size book stamps the host from width/height, via minWidth/minHeight', () => {
     // `applyHostSize` used to re-stamp `width * k` / `height` inside a
-    // `size === FIXED` branch, immediately after stamping `minWidth * k` /
+    // `sizing === FIXED` branch, immediately after stamping `minWidth * k` /
     // `minHeight`. That branch was provably inert: `Settings` assigns
-    // `minWidth = width` and `minHeight = height` for EVERY non-stretch size,
+    // `minWidth = width` and `minHeight = height` for EVERY non-responsive size,
     // so it rewrote the two lines above it with identical values.
     //
     // Deleting it makes host sizing depend on that `Settings` assignment. That
@@ -247,7 +247,7 @@ describe('the host sizing invariant U10 now depends on', () => {
     const b = new PageFlip(host, {
       width: 200,
       height: 300,
-      size: 'fixed',
+      sizing: 'fixed',
       usePortrait: false,
     });
     b.loadFromHTML(pages);
