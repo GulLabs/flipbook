@@ -90,6 +90,30 @@ export interface FlipSetting {
   direction: FlipDirectionSetting;
 }
 
+/**
+ * `x > 0` is *false* for `NaN`, so a comparison alone never rejects one; the
+ * NaN then flows into the bounds rect and out as `min-width: NaNpx`.
+ */
+const isPositive = (value: number): boolean => Number.isFinite(value) && value > 0;
+
+const isNonNegative = (value: number): boolean => Number.isFinite(value) && value >= 0;
+
+/**
+ * `Partial<FlipSetting>` permits an *explicit* `undefined`, and a spread copies
+ * that key over the default instead of falling through to it. Dropping the
+ * undefined-valued keys first makes `{ width: undefined }` mean "not supplied".
+ */
+function definedOnly(setting: Partial<FlipSetting>): Partial<FlipSetting> {
+  const out: Record<string, unknown> = {};
+
+  for (const key of Object.keys(setting)) {
+    const value = (setting as Record<string, unknown>)[key];
+    if (value !== undefined) out[key] = value;
+  }
+
+  return out;
+}
+
 export class Settings {
   private readonly _default: FlipSetting = {
     startPage: 0,
@@ -122,19 +146,45 @@ export class Settings {
    * Processing parameters received from the user. Substitution default values
    */
   public getSettings(userSetting: Partial<FlipSetting>): FlipSetting {
-    const result: FlipSetting = { ...this._default, ...userSetting };
+    const result: FlipSetting = { ...this._default, ...definedOnly(userSetting) };
 
     const size = result.size as string;
     if (size !== SizeType.STRETCH && size !== SizeType.FIXED) {
       throw new PageFlipError('Invalid size (fixed|stretch)', 'INVALID_SIZE');
     }
 
-    if (result.width <= 0 || result.height <= 0) {
+    if (!isPositive(result.width) || !isPositive(result.height)) {
       throw new PageFlipError('Invalid width or height', 'INVALID_SIZE');
     }
 
-    if (result.flippingTime < 0) {
+    // `0` is the documented "unset" value for the stretch bounds below, so the
+    // constraint is non-negative-and-finite rather than positive.
+    if (
+      !isNonNegative(result.minWidth) ||
+      !isNonNegative(result.maxWidth) ||
+      !isNonNegative(result.minHeight) ||
+      !isNonNegative(result.maxHeight)
+    ) {
+      throw new PageFlipError('Invalid min/max width or height', 'INVALID_SIZE');
+    }
+
+    // `0` is documented as instant, so only negatives and non-numbers are bad.
+    if (!isNonNegative(result.flippingTime)) {
       throw new PageFlipError('Invalid flipping time', 'INVALID_FLIPPING_TIME');
+    }
+
+    // A negative threshold can never be met (`distY < -swipeDistance` is never
+    // true for a real gesture), so it silently disables swiping. `0` is a
+    // legitimate "no threshold".
+    if (!isNonNegative(result.swipeDistance)) {
+      throw new PageFlipError('Invalid swipe distance', 'INVALID_SWIPE_DISTANCE');
+    }
+
+    // Interpolated straight into `z-index:${startZIndex + n}`. A negative base
+    // is valid CSS and is left alone; `NaN`/`Infinity` produce a declaration
+    // the browser drops, silently losing the whole z-order.
+    if (!Number.isFinite(result.startZIndex)) {
+      throw new PageFlipError('Invalid start z-index', 'INVALID_Z_INDEX');
     }
 
     const direction = result.direction as string;

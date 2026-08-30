@@ -18,9 +18,20 @@ export function angleBetweenSegments(a: Segment, b: Segment): number {
   const A2 = b[0].y - b[1].y;
   const B1 = a[1].x - a[0].x;
   const B2 = b[1].x - b[0].x;
-  return Math.acos(
-    (A1 * A2 + B1 * B2) / (Math.sqrt(A1 * A1 + B1 * B1) * Math.sqrt(A2 * A2 + B2 * B2)),
-  );
+
+  const lenA = Math.sqrt(A1 * A1 + B1 * B1);
+  const lenB = Math.sqrt(A2 * A2 + B2 * B2);
+
+  // A degenerate segment has no direction, so there is no angle to report.
+  // `getSegmentToShadowLine`'s `?? first` can construct exactly that, and
+  // dividing by zero here hands `acos` a `NaN` that then poisons the shadow
+  // transform for the rest of the frame.
+  if (lenA === 0 || lenB === 0) return 0;
+
+  // Rounding can push the cosine a hair outside [-1, 1], where `acos` is NaN.
+  const cos = (A1 * A2 + B1 * B2) / (lenA * lenB);
+
+  return Math.acos(Math.min(1, Math.max(-1, cos)));
 }
 
 /** Return `pos` if inside `rect`, else null. */
@@ -56,11 +67,18 @@ export function limitToCircle(c: Point, radius: number, p: Point): Point {
   const dy = b - m;
   const d2 = dx * dx + dy * dy;
 
+  // Vertical case: `p` is directly above or below `c`, so the slope form below
+  // divides by zero. The upstream guard tested `dx + b === 0` — the wrong
+  // quantity — and substituted `radius` as an absolute y, which is neither the
+  // clamped point nor on the circle. The clamp is unambiguous here.
+  if (dx === 0) {
+    return { x: c.x, y: p.y > c.y ? c.y + radius : c.y - radius };
+  }
+
   let x = Math.sqrt((radius * radius * dx * dx) / d2) + a;
   if (p.x < 0) x *= -1;
 
-  let y = ((x - a) * dy) / dx + b;
-  if (dx + b === 0) y = radius;
+  const y = ((x - a) * dy) / dx + b;
 
   return { x, y };
 }
@@ -94,17 +112,18 @@ export function intersectLines(one: Segment, two: Segment): Point | null {
 export function pointsBetween(a: Point, b: Point): Point[] {
   const sx = Math.abs(a.x - b.x);
   const sy = Math.abs(a.y - b.y);
-  const len = Math.max(sx, sy);
+  // `Math.ceil`, not the raw length: upstream iterated integer `i <= len`, so a
+  // fractional delta stopped one step short and the destination was never
+  // emitted — every animation ended up to 1px shy of its target on each axis.
+  // For an integral delta this is the same count as before, so the animation
+  // duration derived from `points.length` is unchanged there.
+  const steps = Math.ceil(Math.max(sx, sy));
   const out: Point[] = [a];
 
-  const step = (c1: number, c2: number, size: number, i: number): number => {
-    if (c2 > c1) return c1 + i * (size / len);
-    if (c2 < c1) return c1 - i * (size / len);
-    return c1;
-  };
-
-  for (let i = 1; i <= len; i += 1) {
-    out.push({ x: step(a.x, b.x, sx, i), y: step(a.y, b.y, sy, i) });
+  for (let i = 1; i <= steps; i += 1) {
+    // Clamped so the last point is exactly `b` rather than a rounding of it.
+    const t = Math.min(i / steps, 1);
+    out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
   }
   return out;
 }

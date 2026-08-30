@@ -4,6 +4,43 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Fixed — input, pointer and teardown
+
+_These landed inside commit 295fa85, whose message described only part of the
+work it carried. Recorded here rather than left implicit._
+
+- **`destroy()` no longer deletes the caller's pages.** `UI.destroy()` removed
+  `.stf__block`, which holds the page elements the engine ADOPTED from the host —
+  so after `loadFromHTML(pages); destroy()` the consumer's DOM was gone and
+  `host.children.length === 0`. React survived only because its pages are
+  portalled rather than adopted. Release now runs through a `releaseNodes()`
+  hook backed by `HTMLUI`'s existing record of what it adopted, so
+  framework-owned nodes are still never touched.
+- **A refused turn no longer wedges the state machine.** `fold()` entered
+  `USER_FOLD` before `start()` could refuse it; on refusal nothing put it back,
+  so corner hover died for the life of the book and `preventDefault()` fired on
+  every touchmove — which broke mobile scrolling over the book.
+- **Pointer events are filtered by id.** Any pointer could drive a gesture
+  another had started, so a two-finger pinch over the book folded the page and
+  lifting either finger could commit a turn nobody asked for. Hover, which has
+  no active pointer, still works.
+- **A gesture interrupted by `updateSettings` or `updateItems` is cancelled**
+  rather than left half-live. `removeHandlers()` released pointer capture but
+  left the fold state set, so a later button-less hover kept dragging the page.
+- **The swipe corner is computed in book space.** It compared an
+  element-relative y against a book-local midpoint, so every upper-half swipe on
+  a vertically-centred book was mis-classified. `flipNext` / `flipPrev` had the
+  mirror-image error and the two masked each other; both are fixed.
+- **`clickEventForward` applies to hover, not only to press** — the corner used
+  to fold up over the link the reader was reaching for.
+- **`flipToPage` no longer mis-lands.** It pre-mutated the spread index and let
+  the animation commit it, so a second call read a phantom index: `flip(5)` then
+  `flip(2)` landed on page 3.
+- **The landscape density fix-up is restored after a turn.** It marked pages
+  `HARD` and never undid it, and because the getter returned the mutated value
+  it never re-marked — so a page silently became a hard page for the rest of the
+  session and could never curl again.
+
 ### Fixed — canvas renderer (first-class work, ahead of the phased plan)
 
 Found by the audit in `docs/CANVAS_FIRST_CLASS.md`, then reviewed by Codex
