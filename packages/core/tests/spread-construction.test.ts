@@ -27,9 +27,9 @@
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import { FlipDirection, PageDensity } from '@gullabs/flipbook-core';
+import { FlipDirection, PageDensity, PageFlip } from '@gullabs/flipbook-core';
 import type { HTMLPage } from '@gullabs/flipbook-core';
-import { makeHtmlBook } from './html-book-fixture';
+import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -240,5 +240,95 @@ describe('PC3 — a destroyed collection describes an empty book', () => {
 
     pages.destroy();
     expect(copy.getElement().isConnected).toBe(false);
+  });
+});
+
+/**
+ * NF1 — the `--soft` / `--hard` class must agree with the density.
+ *
+ * `setDrawingDensity` synced it and `setDensity` did not, so every
+ * engine-INFERRED hard page (a `showCover` cover, a terminal singleton) carried
+ * a class asserting the opposite of its own density.
+ */
+describe('NF1 — the density class follows the density', () => {
+  /**
+   * Built WITHOUT `makeHtmlBook`, and that is the entire point.
+   *
+   * `makeHtmlBook` calls `makePages(pageCount, Boolean(opts.showCover))`, so
+   * asking it for `showCover: true` also stamps `data-density="hard"` on page 0
+   * — the cover is DECLARED hard, its class is `--hard` from the constructor,
+   * and `createSpread`'s inference never changes anything. Every assertion here
+   * then passes against the unfixed engine. The first draft did exactly that,
+   * and all three of its subtly-wrong variants passed too.
+   *
+   * The defect lives on the INFERENCE path: `showCover` with pages that declare
+   * nothing.
+   */
+  function inferredCoverBook(): { engine: PageFlip; pages: HTMLElement[]; host: HTMLElement } {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    sizeElement(host, 400, 300);
+
+    const pages = makePages(6); // no `data-density` anywhere
+    expect(pages.every((p) => p.dataset.density === undefined)).toBe(true);
+
+    const engine = new PageFlip(host, { width: 200, height: 300, showCover: true });
+    engine.loadFromHTML(pages);
+    return { engine, pages, host };
+  }
+
+  test('an inferred cover is `--hard`, not `--soft`', () => {
+    const { engine, pages, host } = inferredCoverBook();
+
+    expect(engine.getPageCollection().getPage(0).getDensity()).toBe(PageDensity.HARD);
+
+    // Reverted fix, measured: `class="stf__item --soft --right"` on a page the
+    // engine draws through `drawHard`. Consumer CSS on `.stf__item.--hard` never
+    // matches a cover, and `--soft` matches a leaf that is anything but.
+    expect(pages[0]!.classList.contains('--hard')).toBe(true);
+    expect(pages[0]!.classList.contains('--soft')).toBe(false);
+
+    engine.destroy();
+    host.remove();
+  });
+
+  test('a soft page is still `--soft`, and the classes stay exclusive', () => {
+    const { engine, pages, host } = inferredCoverBook();
+
+    expect(engine.getPageCollection().getPage(2).getDensity()).toBe(PageDensity.SOFT);
+
+    // The control: a variant that ADDS `--hard` without removing `--soft`
+    // satisfies the assertion above and fails here.
+    expect(pages[2]!.classList.contains('--soft')).toBe(true);
+    expect(pages[2]!.classList.contains('--hard')).toBe(false);
+    expect(pages[0]!.classList.contains('--soft')).toBe(false);
+
+    engine.destroy();
+    host.remove();
+  });
+
+  test('a consumer’s `data-density` declaration still wins and matches', () => {
+    // Built explicitly, because `hardFirst` is a `makePages` parameter and NOT
+    // a `makeHtmlBook` option — passing it as one is silently ignored, which is
+    // how the first draft of this test asserted `hard` on a page that had never
+    // declared anything.
+    const hostEl = document.createElement('div');
+    document.body.appendChild(hostEl);
+    sizeElement(hostEl, 400, 300);
+
+    const declared = makePages(4, true);
+    expect(declared[0]!.dataset.density).toBe('hard');
+
+    const engine = new PageFlip(hostEl, { width: 200, height: 300, showCover: false });
+    engine.loadFromHTML(declared);
+
+    // `data-density="hard"` is the DECLARED input; the class is engine output.
+    // Both must agree.
+    expect(engine.getPageCollection().getPage(0).getDensity()).toBe(PageDensity.HARD);
+    expect(declared[0]!.classList.contains('--hard')).toBe(true);
+    expect(declared[0]!.classList.contains('--soft')).toBe(false);
+
+    engine.destroy();
+    hostEl.remove();
   });
 });

@@ -329,4 +329,35 @@ export class HTMLPage extends Page {
 
     super.setDrawingDensity(density);
   }
+
+  /**
+   * NF1. The class follows the density, and it only did for ONE of the two
+   * setters.
+   *
+   * `setDrawingDensity` above syncs it; `setDensity` — which writes the page's
+   * PERMANENT density and is what `PageCollection.createSpread` calls to make a
+   * cover hard — did not. So an engine-inferred cover ended up
+   * `getDensity() === 'hard'` while its element still read
+   * `class="stf__item --soft"`. Consumer CSS written against `.stf__item.--hard`
+   * therefore never matched a cover, and `--soft` matched a leaf the engine
+   * draws through `drawHard` — the class asserted the opposite of the truth.
+   *
+   * Safe to overwrite, because this class is engine OUTPUT and not input: the
+   * density a consumer DECLARES is `data-density="hard"`, which
+   * `HTMLPageCollection.load` reads, and nothing anywhere reads `--hard` back.
+   * A consumer who styles against it is reading a value the engine publishes,
+   * so publishing the true one is the fix rather than the risk.
+   *
+   * It is also only safe to do now. Until `updateFromHtml` was reordered to
+   * adopt before loading (NF2), `HTMLUI.adopt` snapshotted its "pre-existing
+   * engine classes" AFTER the engine had already stamped them — so a class
+   * written here would have been recorded as the consumer's and left behind on
+   * their element forever.
+   */
+  public setDensity(density: PageDensity): void {
+    super.setDensity(density);
+
+    this.element.classList.remove('--soft', '--hard');
+    this.element.classList.add(`--${density}`);
+  }
 }

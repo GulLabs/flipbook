@@ -40,6 +40,17 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — the density class contradicted the density
+
+- **An engine-inferred hard page carried `--soft`.** `setDrawingDensity` syncs
+  the `--soft` / `--hard` class on the element; `setDensity` — which writes the
+  page's permanent density and is what makes a `showCover` cover hard — did not.
+  Measured: a cover with `getDensity() === 'hard'` and
+  `class="stf__item --soft --right"`. Consumer CSS on `.stf__item.--hard` never
+  matched a cover, and `--soft` matched a leaf the engine draws through
+  `drawHard`. The class is engine _output_ — `data-density` is the input — so
+  publishing the true value is the fix.
+
 ### Security — the release workflow could be triggered by a fork PR
 
 - **A fork PR whose branch was named `main` could reach the publish job.** The
