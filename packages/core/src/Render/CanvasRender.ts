@@ -45,6 +45,15 @@ export class CanvasRender extends Render {
     // `finally` guarantees the balance even if a page's draw throws.
     this.ctx.save();
     try {
+      // Restate the base transform EVERY frame rather than reapplying it when
+      // the backing store resizes. A resize-time hook is a conditional
+      // invariant split across two objects — `CanvasUI` owns the size,
+      // `CanvasRender` owns the transform — and nothing enforces the pairing,
+      // so it rots. Doing it here also survives a browser-initiated context
+      // reset and any future `resetTransform()`. Cost is one matrix store.
+      const { x, y } = this.backingScale();
+      this.ctx.setTransform(x, 0, 0, y, 0, 0);
+
       this.clear();
 
       // Portrait shows one leaf, so drawing is clipped to it — before anything
@@ -88,6 +97,14 @@ export class CanvasRender extends Render {
   }
 
   private drawBookShadow(): void {
+    // `drawShadow: false` has to mean *no* shadow. `Render.setShadowData` gates
+    // the fold shadows on the setting, but the spine gradient was painted
+    // unconditionally — so the setting only ever turned off half the shadows,
+    // and the flat-colour e2e probes (which run with `drawShadow: false`) were
+    // sampling a gradient. Read the setting here, never cache it: it is
+    // runtime-updatable via `updateSettings`.
+    if (!this.getSettings().drawShadow) return;
+
     const rect = this.getRect();
 
     this.ctx.save();
@@ -201,6 +218,29 @@ export class CanvasRender extends Render {
     // HTML renderer, so a cream-paper book came out white on canvas.
     // Upstream asked for exactly this: https://github.com/Nodlik/StPageFlip/issues/56
     this.ctx.fillStyle = foldFill(this.getSettings().pageBackground);
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    // CSS pixels, not `canvas.width`/`canvas.height` — those are DEVICE pixels
+    // and this runs under a scaled CTM. At DPR 1 the two agree, which is why
+    // the device-pixel version was right by accident; at DPR 2 it over-fills
+    // (harmless overdraw) and at any scale below 1 it UNDER-fills, leaving
+    // stale pixels along the right and bottom edges.
+    const { x, y } = this.backingScale();
+    this.ctx.fillRect(0, 0, this.canvas.width / x, this.canvas.height / y);
+  }
+
+  /**
+   * Backing pixels per CSS pixel, from the UI that owns the canvas.
+   *
+   * Falls back to 1:1 rather than throwing — a renderer that cannot ask still
+   * has to paint something, and 1:1 is exactly the pre-DPR behaviour.
+   */
+  private backingScale(): { x: number; y: number } {
+    const ui = this.app.getUI();
+    const scaleX = (ui as { scaleX?: number }).scaleX;
+    const scaleY = (ui as { scaleY?: number }).scaleY;
+
+    return {
+      x: typeof scaleX === 'number' && scaleX > 0 ? scaleX : 1,
+      y: typeof scaleY === 'number' && scaleY > 0 ? scaleY : 1,
+    };
   }
 }

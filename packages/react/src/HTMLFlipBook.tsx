@@ -26,7 +26,7 @@ import {
   type FlipbookEventMap,
 } from '@gullabs/flipbook-core';
 import { createPortal } from 'react-dom';
-import type { FlipBookHandle, HTMLFlipBookProps } from './types';
+import type { FlipBookHandle, HTMLFlipBookProps, LiveRegionInfo, PageOrientation } from './types';
 
 const ENGINE_SETTING_KEYS = [
   'startPage',
@@ -104,9 +104,64 @@ function sameNodes(previous: HTMLElement[] | null, next: HTMLElement[]): boolean
   return previous.every((node, index) => node === next[index]);
 }
 
-function defaultLiveText(page: number, pageCount: number): string {
+/**
+ * Leaf indices of the spread whose first leaf is `head`.
+ *
+ * This mirrors `PageCollection.createSpread` exactly: portrait is one leaf per
+ * spread; landscape pairs leaves, with the cover (and a trailing odd leaf)
+ * standing alone. It is derived rather than read because the collection's
+ * spread table is `protected` — `getSpreadIndexByPage` / `getCurrentSpreadIndex`
+ * are the only public windows onto it and neither hands back the members.
+ * `head` must be the engine's `getCurrentPageIndex()`, which is `spread[0]`.
+ */
+function spreadPages(
+  head: number,
+  pageCount: number,
+  orientation: PageOrientation,
+  showCover: boolean,
+): number[] {
+  if (pageCount <= 0) return [];
+
+  const first = Math.min(Math.max(head, 0), pageCount - 1);
+
+  if (orientation === 'portrait') return [first];
+  // The cover is a spread of its own, so it never pairs with leaf 1.
+  if (showCover && first === 0) return [0];
+
+  return first + 1 <= pageCount - 1 ? [first, first + 1] : [first];
+}
+
+/**
+ * Human label for a leaf.
+ *
+ * This is the leaf index plus one, which is the printed page number only for a
+ * book with no front matter (H5.3). The seam for real labels is here: when the
+ * owner decides on a public page-label API, this is the one place that has to
+ * consult it — `defaultLiveText` never does the arithmetic itself.
+ */
+function pageLabel(index: number): string {
+  return String(index + 1);
+}
+
+function defaultLiveText(page: number, pageCount: number, info?: LiveRegionInfo): string {
   if (pageCount <= 0) return 'Book';
-  return `Page ${page + 1} of ${pageCount}`;
+
+  const visible = info && info.pages.length > 0 ? info.pages : [page];
+  const first = visible[0] ?? page;
+  const second = visible[1];
+
+  // With a cover, leaf 0 is not "page 1" — it is the front of the book, and the
+  // final lone leaf is its back.
+  if (info?.showCover === true && second === undefined) {
+    if (first === 0) return 'Front cover';
+    if (pageCount > 1 && first === pageCount - 1) return 'Back cover';
+  }
+
+  if (second !== undefined) {
+    return `Pages ${pageLabel(first)} and ${pageLabel(second)} of ${pageCount}`;
+  }
+
+  return `Page ${pageLabel(first)} of ${pageCount}`;
 }
 
 type PageRef = ((el: HTMLElement | null) => void) | { current: HTMLElement | null } | null;
@@ -219,8 +274,24 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     // it can stay empty until a turn actually commits.
     const [announced, setAnnounced] = useState('');
     const didAnnounce = useRef(false);
+    /**
+     * Landscape shows two leaves, portrait one, and the engine decides which —
+     * so both the announcement and the inert set have to follow the engine's
+     * orientation rather than a prop. Seeded to the engine's value at load and
+     * kept current by `changeOrientation`.
+     */
+    const [orientation, setOrientation] = useState<PageOrientation>('landscape');
 
     const currentPage = controlledPage ?? enginePage;
+    const showCover = props.showCover === true;
+    // `enginePage`, not `currentPage`: the engine's index is always the FIRST
+    // leaf of the spread, while a controlled `page` may name either leaf of it.
+    // Memoised so both the live region and the inert effect can depend on it by
+    // identity; recomputed on every render it would re-announce constantly.
+    const visiblePages = useMemo(
+      () => spreadPages(enginePage, pageCount, orientation, showCover),
+      [enginePage, pageCount, orientation, showCover],
+    );
 
     useEffect(() => {
       // Skip the first settled render: announcing the spread the reader has not
@@ -229,8 +300,10 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         didAnnounce.current = pageCount > 0;
         return;
       }
-      setAnnounced(liveRegionText(currentPage, pageCount));
-    }, [currentPage, pageCount, liveRegionText]);
+      setAnnounced(
+        liveRegionText(currentPage, pageCount, { pages: visiblePages, orientation, showCover }),
+      );
+    }, [currentPage, pageCount, liveRegionText, visiblePages, orientation, showCover]);
     const settings = pickSettings(props);
     const remountKey = remountKeyOf(props);
 
@@ -327,6 +400,8 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         eventHandlersRef.current.onFlip?.(e);
       });
       flip.on('changeOrientation', (e: WidgetEvent<FlipbookEventMap['changeOrientation']>) => {
+        // Drives how many leaves count as "on screen" — see `spreadPages`.
+        setOrientation(e.data === 'portrait' ? 'portrait' : 'landscape');
         eventHandlersRef.current.onChangeOrientation?.(e);
       });
       flip.on('changeState', (e: WidgetEvent<FlipbookEventMap['changeState']>) => {
@@ -432,6 +507,9 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       engine.updateFromHtml(nodes);
       loadedNodes.current = nodes.slice();
       setPageCount(engine.getPageCount());
+      // Seed from the engine: `changeOrientation` only fires on a CHANGE, so a
+      // book that is landscape from the first layout never emits one.
+      setOrientation(engine.getOrientation() === 'portrait' ? 'portrait' : 'landscape');
 
       // Honor startPage once after the first real collection (FE-001).
       if (controlledPage === undefined && !startPageAppliedRef.current) {
@@ -471,6 +549,51 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         }
       }
     }, [pages, pageHost, bindHandlers, remountKey, controlledPage, props.startPage]);
+
+    /*
+     * Every leaf is in the DOM at all times, stacked, so a link or button on a
+     * page behind the current spread must not be in the tab order: a keyboard
+     * user would tab off the book onto a control they cannot see, on a page
+     * they are not reading — WCAG 2.4.3 (Focus Order).
+     *
+     * Be honest about what this buys: `HTMLRender.clear()` already stamps
+     * `display:none` onto every off-spread leaf on each frame, and a
+     * `display:none` subtree is untabbable, so a settled book was already safe.
+     * `inert` covers what that does not: the mid-flip window, where the
+     * outgoing leaf, the fold and the bottom page are all `display:block` at
+     * once, and any consumer stylesheet that forces its own display onto
+     * `.stf__item`. It is also declarative rather than a side effect of the
+     * render loop, so it holds whenever the loop is stopped.
+     *
+     * `inert` is set on the DOM node rather than rendered as a JSX prop
+     * deliberately: React only started passing a boolean `inert` through to the
+     * DOM in 19, and `react` here is a peer dependency of `>=18`. On React 18 a
+     * boolean `inert` prop is dropped with a warning, so the fix would silently
+     * not apply for a large share of consumers. The attribute is the same thing
+     * the browser reads, and React never manages it here.
+     *
+     * Accepted cost: `inert` also removes those pages from find-in-page. A
+     * focus-order failure outranks a search convenience — and the pages are
+     * visually hidden anyway, so finding text on them was already misleading.
+     */
+    useEffect(() => {
+      const nodes = childNodes.current;
+      // Before the collection loads there is no spread yet, and inerting every
+      // leaf for that one commit would blank the tab order of a mounting book.
+      if (nodes.length === 0 || pageCount <= 0) return;
+
+      const visible = new Set(visiblePages);
+
+      nodes.forEach((node, index) => {
+        if (visible.has(index)) node.removeAttribute('inert');
+        else node.setAttribute('inert', '');
+      });
+
+      return () => {
+        // The nodes belong to the consumer; leave none of ours behind.
+        for (const node of nodes) node.removeAttribute('inert');
+      };
+    }, [pages, visiblePages, pageCount]);
 
     useEffect(() => {
       const engine = engineRef.current;

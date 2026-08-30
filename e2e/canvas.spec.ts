@@ -260,3 +260,63 @@ test.describe('canvas mode renders real pixels', () => {
     await expectPixel(page, p.right, PAGE[1]);
   });
 });
+
+test.describe('device pixel ratio (B1) and sizing (B2)', () => {
+  test.use({ deviceScaleFactor: 2 });
+
+  test('the backing store is sized for the display, not for CSS pixels', async ({ page }) => {
+    await open(page);
+
+    const m = await page.evaluate(() => {
+      const canvas = document.querySelector('canvas');
+      if (!(canvas instanceof HTMLCanvasElement)) throw new Error('no canvas');
+      const box = canvas.getBoundingClientRect();
+      const ctx = canvas.getContext('2d');
+      const t = ctx?.getTransform();
+      return {
+        backingW: canvas.width,
+        backingH: canvas.height,
+        cssW: box.width,
+        cssH: box.height,
+        a: t?.a ?? 0,
+        d: t?.d ?? 0,
+      };
+    });
+
+    // One backing pixel per CSS pixel is linearly HALF resolution on a 2x
+    // display — the most visible defect in the canvas renderer.
+    expect(m.backingW).toBe(Math.ceil(m.cssW * 2));
+    expect(m.backingH).toBe(Math.ceil(m.cssH * 2));
+
+    // The CTM is deliberately NOT asserted here. The frame is bracketed by
+    // save()/restore(), so the base transform is transient by design and reads
+    // back as identity between frames. Restating it per frame is the point:
+    // it cannot drift out of sync with a resize, a context reset, or a throw.
+    //
+    // The transform is proven by the test below instead: at 2x with no
+    // setTransform, every leaf would paint into the top-left quarter of the
+    // canvas and the CSS-coordinate probes would miss entirely.
+    expect(m.a).toBeGreaterThan(0);
+  });
+
+  test('pages still land in the right place at 2x', async ({ page }) => {
+    await open(page);
+    const p = await probes(page);
+
+    // Geometry stays in CSS pixels: `getBoundsRect` is public API and pointer
+    // input arrives in CSS px, so the ONLY conversion point is the context CTM.
+    await expectPixel(page, p.left, PAGE[0]);
+    await expectPixel(page, p.right, PAGE[1]);
+    await expectPixel(page, p.farEdge, dim(PAGE[1]));
+  });
+
+  test('the far edge is painted at 2x — no stale strip from an under-fill', async ({ page }) => {
+    await open(page, '?fractional=1');
+    const p = await probes(page);
+
+    // `clear()` used to fill `canvas.width/height` (DEVICE px) through a scaled
+    // CTM. Right by accident at 1x; below 1x it under-fills and leaves stale
+    // pixels along the right and bottom edges.
+    await expectPixel(page, p.farEdge, dim(PAGE[1]));
+  });
+});

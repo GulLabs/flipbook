@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createRef, StrictMode, useState } from 'react';
 import { act, cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -964,6 +964,288 @@ describe("engine teardown does not steal React's nodes", () => {
     await waitFor(() => {
       expect(container.querySelector('[data-testid="page-b"]')).toBeNull();
       expect(container.querySelector('[data-testid="page-c"]')).toBeTruthy();
+    });
+  });
+});
+
+/**
+ * jsdom reports every element as 0×0, so the engine cannot observe a layout and
+ * the orientation it picks is an accident of that. These suites need a KNOWN
+ * orientation, so they give the block a real measured size: narrower than two
+ * pages selects portrait, wider selects landscape, in exactly the way a browser
+ * would.
+ */
+let blockSize: { width: number; height: number } | null = null;
+
+function useMeasuredLayout(): void {
+  const original = {
+    width: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth'),
+    height: Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight'),
+  };
+
+  beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
+      configurable: true,
+      get: () => blockSize?.width ?? 0,
+    });
+    Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
+      configurable: true,
+      get: () => blockSize?.height ?? 0,
+    });
+  });
+
+  afterEach(() => {
+    blockSize = null;
+    if (original.width) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', original.width);
+    if (original.height) {
+      Object.defineProperty(HTMLElement.prototype, 'offsetHeight', original.height);
+    }
+  });
+}
+
+/** One page is 200 wide, so 300 cannot fit a spread and 900 can. */
+const PORTRAIT_BLOCK = { width: 300, height: 300 };
+const LANDSCAPE_BLOCK = { width: 900, height: 300 };
+
+/**
+ * H2 — off-screen leaves must leave the tab order.
+ *
+ * Every leaf is in the DOM at all times, stacked. A link on a page behind the
+ * current spread was still tabbable, so a keyboard user tabbed off the book
+ * onto a control they could not see (WCAG 2.4.3).
+ *
+ * These assert the WHOLE inert map, not "some leaf is inert": inerting the
+ * wrong leaves — or every leaf but `currentPage` in landscape, where two are
+ * visible — has to fail.
+ */
+describe('inert outside the current spread (H2)', () => {
+  useMeasuredLayout();
+
+  function inertMap(container: HTMLElement, labels: string[]): boolean[] {
+    return labels.map((label) => {
+      const node = container.querySelector(`[data-testid="page-${label}"]`);
+      expect(node).toBeTruthy();
+      return node?.hasAttribute('inert') === true;
+    });
+  }
+
+  test('portrait: only the single visible leaf is tabbable, and it moves on a turn', async () => {
+    blockSize = PORTRAIT_BLOCK;
+    const ref = createRef<FlipBookHandle>();
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} usePortrait ref={ref}>
+        {pages('a', 'b', 'c', 'd')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(inertMap(container, ['a', 'b', 'c', 'd'])).toEqual([false, true, true, true]);
+    });
+
+    act(() => {
+      ref.current?.flipNext();
+    });
+
+    await waitFor(() => {
+      expect(inertMap(container, ['a', 'b', 'c', 'd'])).toEqual([true, false, true, true]);
+    });
+  });
+
+  test('landscape: BOTH leaves of the spread stay tabbable', async () => {
+    blockSize = LANDSCAPE_BLOCK;
+    const ref = createRef<FlipBookHandle>();
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} ref={ref}>
+        {pages('a', 'b', 'c', 'd')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(inertMap(container, ['a', 'b', 'c', 'd'])).toEqual([false, false, true, true]);
+    });
+
+    act(() => {
+      ref.current?.flipNext();
+    });
+
+    await waitFor(() => {
+      expect(inertMap(container, ['a', 'b', 'c', 'd'])).toEqual([true, true, false, false]);
+    });
+  });
+
+  test('landscape + showCover: the cover is a spread of one, so leaf 1 is inert', async () => {
+    blockSize = LANDSCAPE_BLOCK;
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} showCover>
+        {pages('a', 'b', 'c', 'd')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
+    });
+    await waitFor(() => {
+      expect(inertMap(container, ['a', 'b', 'c', 'd'])).toEqual([false, true, true, true]);
+    });
+  });
+
+  /*
+   * There is deliberately NO "tab past the book and never reach the hidden
+   * link" test here. It would pass with this whole fix reverted, because
+   * `HTMLRender.clear()` stamps `display:none` onto every off-spread leaf on
+   * each frame and a `display:none` subtree is already untabbable — so the
+   * assertion would prove nothing about `inert`. See the report accompanying
+   * this change: `inert` is defence in depth (the mid-flip window where several
+   * leaves are `display:block` at once, and consumer CSS that forces its own
+   * display on `.stf__item`), not the thing that removes a fully hidden leaf
+   * from the tab order today. The attribute maps above are the discriminating
+   * assertions; focus behaviour belongs in a real browser (e2e).
+   */
+});
+
+/**
+ * H5 — the announcement has to describe what is actually on screen.
+ */
+describe('live region announcement (H5)', () => {
+  useMeasuredLayout();
+
+  const live = (container: HTMLElement) =>
+    container.querySelector('[data-flipbook-live]')?.textContent;
+
+  test('landscape announces BOTH pages of the spread', async () => {
+    blockSize = LANDSCAPE_BLOCK;
+    const ref = createRef<FlipBookHandle>();
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} ref={ref}>
+        {pages('a', 'b', 'c', 'd')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.stf__block')).toBeTruthy();
+    });
+
+    act(() => {
+      ref.current?.flipNext();
+    });
+
+    await waitFor(() => {
+      expect(live(container)).toBe('Pages 3 and 4 of 4');
+    });
+  });
+
+  test('showCover: leaf 0 announces as the front cover, not "Page 1"', async () => {
+    blockSize = PORTRAIT_BLOCK;
+    const ref = createRef<FlipBookHandle>();
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} usePortrait showCover ref={ref}>
+        {pages('a', 'b', 'c')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.stf__block')).toBeTruthy();
+    });
+
+    act(() => {
+      ref.current?.flipNext();
+    });
+    await waitFor(() => {
+      expect(live(container)).toBe('Page 2 of 3');
+    });
+
+    act(() => {
+      ref.current?.flipPrev();
+    });
+    await waitFor(() => {
+      expect(live(container)).toBe('Front cover');
+    });
+  });
+
+  test('showCover: the last lone leaf announces as the back cover', async () => {
+    blockSize = PORTRAIT_BLOCK;
+    const ref = createRef<FlipBookHandle>();
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} usePortrait showCover ref={ref}>
+        {pages('a', 'b', 'c')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.stf__block')).toBeTruthy();
+    });
+
+    act(() => {
+      ref.current?.turnToPage(2);
+    });
+
+    await waitFor(() => {
+      expect(live(container)).toBe('Back cover');
+    });
+  });
+
+  test('without showCover, leaf 0 is still "Page 1"', async () => {
+    blockSize = PORTRAIT_BLOCK;
+    const ref = createRef<FlipBookHandle>();
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} usePortrait ref={ref}>
+        {pages('a', 'b', 'c')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.stf__block')).toBeTruthy();
+    });
+
+    act(() => {
+      ref.current?.flipNext();
+    });
+    await waitFor(() => {
+      expect(live(container)).toBe('Page 2 of 3');
+    });
+
+    act(() => {
+      ref.current?.flipPrev();
+    });
+    await waitFor(() => {
+      expect(live(container)).toBe('Page 1 of 3');
+    });
+  });
+
+  test('a consumer liveRegionText override still wins, and is handed the spread', async () => {
+    blockSize = LANDSCAPE_BLOCK;
+    const ref = createRef<FlipBookHandle>();
+    const seen: unknown[] = [];
+    const { container } = render(
+      <HTMLFlipBook
+        width={200}
+        height={300}
+        flippingTime={0}
+        ref={ref}
+        liveRegionText={(page, count, info) => {
+          seen.push(info);
+          return `custom ${page}/${count}`;
+        }}
+      >
+        {pages('a', 'b', 'c', 'd')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.stf__block')).toBeTruthy();
+    });
+
+    act(() => {
+      ref.current?.flipNext();
+    });
+
+    await waitFor(() => {
+      expect(live(container)).toBe('custom 2/4');
+    });
+    expect(seen[seen.length - 1]).toEqual({
+      pages: [2, 3],
+      orientation: 'landscape',
+      showCover: false,
     });
   });
 });

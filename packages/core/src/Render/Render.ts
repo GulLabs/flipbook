@@ -11,7 +11,6 @@ import { PageOrientation } from '../Page/Page';
 import type { FlipSetting } from '../Settings';
 import { SizeType } from '../Settings';
 import { convertPageToGlobal } from '../geometry';
-import { PageFlipError } from '../errors';
 
 type FrameAction = () => void;
 type AnimationSuccessAction = () => void;
@@ -49,6 +48,13 @@ type AnimationProcess = {
   onAnimateEnd: AnimationSuccessAction;
   /** Animation start time (Global Timer) */
   startedAt: number;
+  /**
+   * Index of the last frame the render loop actually played, or -1 before the
+   * first one. Used to guarantee the final frame runs exactly once when the
+   * loop overshoots the end of the list (a dropped rAF), without re-running it
+   * when the loop landed on it normally.
+   */
+  lastPlayedIndex: number;
 };
 
 /**
@@ -133,11 +139,26 @@ export abstract class Render {
         (timer - this.animation.startedAt) / this.animation.durationFrame,
       );
 
+      const lastIndex = this.animation.frames.length - 1;
+
       if (frameIndex < this.animation.frames.length) {
+        this.animation.lastPlayedIndex = frameIndex;
         at(this.animation.frames, frameIndex)();
       } else {
-        this.animation.onAnimateEnd();
+        // The clock overshot the end of the list — under load rAF skips
+        // frames, and the last one carries the turn's final geometry. Play it
+        // before committing, exactly as `finishAnimation()` does; the
+        // `lastPlayedIndex` guard keeps it from running twice when the loop
+        // already landed on it on the previous tick.
+        const animation = this.animation;
         this.animation = null;
+
+        if (animation.lastPlayedIndex !== lastIndex) {
+          animation.lastPlayedIndex = lastIndex;
+          at(animation.frames, lastIndex)();
+        }
+
+        animation.onAnimateEnd();
       }
     }
 
@@ -200,6 +221,7 @@ export abstract class Render {
       durationFrame: duration / frames.length,
       onAnimateEnd,
       startedAt: this.timer,
+      lastPlayedIndex: -1,
     };
   }
 
@@ -220,8 +242,25 @@ export abstract class Render {
    * Recalculate the size of the displayed area, and update the page orientation
    */
   public update(): void {
-    this.boundsRect = null;
-    const orientation = this.calculateBoundsRect();
+    const { rect, orientation, observed } = this.computeBounds();
+
+    // C5: a container with no box is not an observation of a portrait book —
+    // it is the absence of an observation (`display: none`, a collapsed tab, a
+    // detached node). At width 0 the portrait test (`0 < minWidth * 2`) is
+    // trivially true, which is how hiding a book emitted a bogus
+    // `changeOrientation` and showing it again emitted the opposite one. Keep
+    // the last measured bounds and orientation and stay quiet; the
+    // ResizeObserver fires again with a real box when the element becomes
+    // visible, and that pass emits only if the orientation really changed.
+    //
+    // The exception is a book that has never been measured at all: there is no
+    // previous observation to retain, and refusing to have an orientation is
+    // its own defect (it would leave the book landscape-by-default and rebuild
+    // the collection on first paint). So the first pass still establishes one,
+    // and only subsequent zero measurements are ignored.
+    if (!observed && this.orientation !== null) return;
+
+    this.boundsRect = rect;
 
     if (this.orientation !== orientation) {
       this.orientation = orientation;
@@ -231,14 +270,23 @@ export abstract class Render {
 
   /**
    * Calculate the size and position of the book depending on the parent element and configuration parameters
+   *
+   * `observed` is false when the container has no measurable box; the rect is
+   * still computed (it collapses to the container's zeros) so that geometry
+   * callers keep working on a book nobody can see, but callers must not treat
+   * it — or the orientation that falls out of it — as a measurement. See
+   * {@link update}.
    */
-  private calculateBoundsRect(): Orientation {
+  private computeBounds(): { rect: PageRect; orientation: Orientation; observed: boolean } {
     let orientation: Orientation = Orientation.LANDSCAPE;
 
     const blockWidth = this.getBlockWidth();
+    const blockHeight = this.getBlockHeight();
+    const observed = blockWidth > 0 && blockHeight > 0;
+
     const middlePoint: Point = {
       x: blockWidth / 2,
-      y: this.getBlockHeight() / 2,
+      y: blockHeight / 2,
     };
 
     const ratio = this.setting.width / this.setting.height;
@@ -252,14 +300,13 @@ export abstract class Render {
       if (blockWidth < this.setting.minWidth * 2 && this.app.getSettings().usePortrait)
         orientation = Orientation.PORTRAIT;
 
-      pageWidth =
-        orientation === Orientation.PORTRAIT ? this.getBlockWidth() : this.getBlockWidth() / 2;
+      pageWidth = orientation === Orientation.PORTRAIT ? blockWidth : blockWidth / 2;
 
       if (pageWidth > this.setting.maxWidth) pageWidth = this.setting.maxWidth;
 
       pageHeight = pageWidth / ratio;
-      if (pageHeight > this.getBlockHeight()) {
-        pageHeight = this.getBlockHeight();
+      if (pageHeight > blockHeight) {
+        pageHeight = blockHeight;
         pageWidth = pageHeight * ratio;
       }
 
@@ -268,23 +315,23 @@ export abstract class Render {
           ? middlePoint.x - pageWidth / 2 - pageWidth
           : middlePoint.x - pageWidth;
     } else {
-      if (blockWidth < pageWidth * 2) {
-        if (this.app.getSettings().usePortrait) {
-          orientation = Orientation.PORTRAIT;
-          left = middlePoint.x - pageWidth / 2 - pageWidth;
-        }
+      if (blockWidth < pageWidth * 2 && this.app.getSettings().usePortrait) {
+        orientation = Orientation.PORTRAIT;
+        left = middlePoint.x - pageWidth / 2 - pageWidth;
       }
     }
 
-    this.boundsRect = {
-      left,
-      top: middlePoint.y - pageHeight / 2,
-      width: pageWidth * 2,
-      height: pageHeight,
-      pageWidth,
+    return {
+      rect: {
+        left,
+        top: middlePoint.y - pageHeight / 2,
+        width: pageWidth * 2,
+        height: pageHeight,
+        pageWidth,
+      },
+      orientation,
+      observed,
     };
-
-    return orientation;
   }
 
   /**
@@ -375,13 +422,24 @@ export abstract class Render {
    * Сurrent size and position of the book
    */
   public getRect(): PageRect {
-    if (this.boundsRect === null) this.calculateBoundsRect();
+    // C11: the `RENDER_NOT_READY` throw that used to live here was dead code —
+    // `calculateBoundsRect` always assigned `boundsRect`, so the branch could
+    // not fire, and an unreachable error is a lie in the published surface.
+    //
+    // It is deleted rather than made reachable. The candidate for making it
+    // real was the unmeasured-container case (C5), but bounds are always
+    // derivable — the settings carry width/height and the container carries
+    // whatever box it has, including none. Turning "you cannot see this book
+    // yet" into a thrown error would mean a book mounted inside `display: none`
+    // crashes the rAF loop and every programmatic turn, which is a worse defect
+    // than the one being fixed. So geometry is always answerable; what a
+    // zero-size container is not allowed to do is *claim an orientation*, and
+    // that is where C5's fix lives (see `update`).
+    const bounds = this.boundsRect ?? this.computeBounds().rect;
 
-    if (this.boundsRect === null) {
-      throw new PageFlipError('Bounds not ready', 'RENDER_NOT_READY');
-    }
+    this.boundsRect = bounds;
 
-    return this.boundsRect;
+    return bounds;
   }
 
   /**

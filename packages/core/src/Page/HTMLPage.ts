@@ -75,14 +75,33 @@ export class HTMLPage extends Page {
   }
 
   private drawHard(commonStyle = ''): void {
-    const pos = this.render.getRect().left + this.render.getRect().width / 2;
+    const rect = this.render.getRect();
+
+    // The spine in block coordinates. The element itself is laid out at
+    // left:0 with width = pageWidth, so every hard page has to be translated
+    // into place and rotated about the spine.
+    //
+    // `transform-origin` is expressed in the element's own (untranslated) box
+    // and travels with the translation, so the rotation axis ends up at
+    //   translateX + originX
+    // and that sum has to equal the spine for both orientations:
+    //   RIGHT: origin 0            → translateX = spine
+    //   LEFT:  origin pageWidth    → translateX = spine - pageWidth
+    // which also puts the left page's right edge exactly on the spine.
+    //
+    // Upstream anchored LEFT at origin `pageWidth` with no translation, i.e.
+    // an axis at block-local pageWidth. That equals the spine only when
+    // rect.left === 0 (a book filling its block); with `size: 'stretch'` +
+    // maxWidth, rect.left is routinely non-zero and the cover rotated about
+    // the wrong axis and drew in the wrong place.
+    const spine = rect.left + rect.width / 2;
 
     const angle = this.state.hardDrawingAngle;
 
     const transform =
       this.orientation === PageOrientation.LEFT
-        ? `transform-origin:${this.render.getRect().pageWidth}px 0;transform:translate3d(0,0,0) rotateY(${angle}deg);`
-        : `transform-origin:0 0;transform:translate3d(${pos}px,0,0) rotateY(${angle}deg);`;
+        ? `transform-origin:${rect.pageWidth}px 0;transform:translate3d(${spine - rect.pageWidth}px,0,0) rotateY(${angle}deg);`
+        : `transform-origin:0 0;transform:translate3d(${spine}px,0,0) rotateY(${angle}deg);`;
 
     this.element.style.cssText =
       `${commonStyle}backface-visibility:hidden;-webkit-backface-visibility:hidden;` +

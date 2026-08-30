@@ -9,6 +9,22 @@ import type { Render } from '../Render/Render';
 import type { Point } from '../BasicTypes';
 import { foldFill } from '../Render/pageBackground';
 
+/** Radians per second for the loader spinner. */
+const LOADER_SPEED = 4.2;
+
+/**
+ * Monotonic-ish clock for the loader spinner.
+ *
+ * Never read at module scope — `performance` is absent in some SSR runtimes,
+ * and even where it exists the value must be sampled at draw time.
+ */
+function nowMs(): number {
+  if (typeof performance !== 'undefined' && typeof performance.now === 'function') {
+    return performance.now();
+  }
+  return Date.now();
+}
+
 /**
  * Class representing a book page as an image on Canvas
  */
@@ -16,7 +32,13 @@ export class ImagePage extends Page {
   private readonly image: HTMLImageElement;
   private isLoad = false;
 
-  private loadingAngle = 0;
+  /**
+   * Set by `dispose()`. A disposed page has given up its bitmap, but the
+   * renderer may still hold a reference to it for a frame or two, so it has to
+   * keep drawing *something* — plain paper, never a spinner for an image that
+   * is never coming.
+   */
+  private disposed = false;
 
   constructor(render: Render, href: string, density: PageDensity) {
     super(render, density);
@@ -54,10 +76,14 @@ export class ImagePage extends Page {
     ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
     ctx.fillRect(0, 0, pageWidth, pageHeight);
 
-    if (!this.isLoad) {
-      this.drawLoader(ctx, { x: 0, y: 0 }, pageWidth, pageHeight);
-    } else {
-      ctx.drawImage(this.image, 0, 0, pageWidth, pageHeight);
+    // A disposed page is paper and nothing else: the bitmap is gone and no
+    // load is pending, so a loader here would spin forever.
+    if (!this.disposed) {
+      if (!this.isLoad) {
+        this.drawLoader(ctx, { x: 0, y: 0 }, pageWidth, pageHeight);
+      } else {
+        ctx.drawImage(this.image, 0, 0, pageWidth, pageHeight);
+      }
     }
 
     ctx.restore();
@@ -78,10 +104,13 @@ export class ImagePage extends Page {
     ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
     ctx.fillRect(x, y, pageWidth, pageHeight);
 
-    if (!this.isLoad) {
-      this.drawLoader(ctx, { x, y }, pageWidth, pageHeight);
-    } else {
-      ctx.drawImage(this.image, x, y, pageWidth, pageHeight);
+    // Same reason as `draw()` — see the comment there.
+    if (!this.disposed) {
+      if (!this.isLoad) {
+        this.drawLoader(ctx, { x, y }, pageWidth, pageHeight);
+      } else {
+        ctx.drawImage(this.image, x, y, pageWidth, pageHeight);
+      }
     }
   }
 
@@ -106,26 +135,25 @@ export class ImagePage extends Page {
       y: shiftPos.y + pageHeight / 2,
     };
 
+    // Derived from the clock, not advanced per call. It used to be `+= 0.07`
+    // at the end of this method, which is (a) the wrong rate whenever a page is
+    // drawn more than once per frame — and `newTemporaryCopy()` returns `this`,
+    // so the mover and the leaf beneath it are routinely the same object, i.e.
+    // twice a frame, i.e. double speed — and (b) state mutation inside a draw
+    // method, which stops being replayable the moment drawing is scheduled off
+    // a dirty flag rather than once per rAF tick.
+    const angle = ((nowMs() / 1000) * LOADER_SPEED) % (2 * Math.PI);
+
     ctx.beginPath();
     ctx.lineWidth = 10;
-    ctx.arc(
-      middlePoint.x,
-      middlePoint.y,
-      20,
-      this.loadingAngle,
-      (3 * Math.PI) / 2 + this.loadingAngle,
-    );
+    ctx.arc(middlePoint.x, middlePoint.y, 20, angle, (3 * Math.PI) / 2 + angle);
     ctx.stroke();
     ctx.closePath();
-
-    this.loadingAngle += 0.07;
-    if (this.loadingAngle >= 2 * Math.PI) {
-      this.loadingAngle = 0;
-    }
   }
 
   public load(): void {
-    if (this.isLoad) return;
+    // Re-arming a disposed page would resurrect the bitmap it just dropped.
+    if (this.isLoad || this.disposed) return;
 
     // A cached image can already be complete by the time we get here. It is
     // also `complete` when it FAILED, so `naturalWidth` is what distinguishes
@@ -149,6 +177,7 @@ export class ImagePage extends Page {
     this.image.onload = null;
     this.image.removeAttribute('src');
     this.isLoad = false;
+    this.disposed = true;
   }
 
   public newTemporaryCopy(): Page {

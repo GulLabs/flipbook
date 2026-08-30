@@ -25,6 +25,10 @@ function stubCanvas2d() {
     rotate: vi.fn(),
     scale: vi.fn(),
     drawImage: vi.fn(),
+    // The renderer restates its base transform every frame (DPR), so a stub
+    // without this throws before any assertion runs.
+    setTransform: vi.fn(),
+    getTransform: vi.fn(() => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 })),
     createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
     fillStyle: '',
     strokeStyle: '',
