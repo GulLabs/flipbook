@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Render } from '../Render/Render';
-import { Orientation } from '../Render/Render';
+import { foldSide, Orientation } from '../Render/Render';
 import type { PageFlip } from '../PageFlip';
 import { pointsBetween } from '../Helper';
 import type { PageRect, Point } from '../BasicTypes';
@@ -38,6 +38,18 @@ export class Flip {
   private turnGeneration = 0;
 
   private state: FlippingState = FlippingState.READ;
+
+  /**
+   * The **semantic** direction of the turn in flight: which way the page index
+   * moves, i.e. which of `turnToNextPage` / `turnToPrevPage` commits it.
+   *
+   * It cannot be read back off `calc`, because `FlipCalculation` is handed the
+   * *geometric* side instead (`foldSide`) so the fold follows the finger under
+   * `direction: 'rtl'`. Under `ltr` the two are always equal; under `rtl` they
+   * are always opposites, and taking the commit from the geometric one would
+   * turn RTL drags the wrong way round.
+   */
+  private turnDirection: FlipDirection = FlipDirection.FORWARD;
 
   /**
    * Where an in-flight `flipToPage` intends to land, expressed as the spread
@@ -175,8 +187,22 @@ export class Flip {
       this.applyLandscapeDensity(direction, this.flippingPage);
     }
 
+    // `direction` is semantic from here down to `setDirection`, which is the
+    // one place the `rtl` mirror is applied (see `foldSide`). Everything above
+    // — the boundary check, the page selection, the density neighbour — is
+    // page-order arithmetic and must stay on the semantic value.
     this.render.setDirection(direction);
-    this.calc = new FlipCalculation(direction, flipCorner, rect.pageWidth, rect.height);
+    this.turnDirection = direction;
+
+    // ...and the calculation is geometry, so it takes the mirrored side. This
+    // is what stops the RTL mirror from being applied a second time inside
+    // `convertToPage`, which derives local x FROM the direction it is given.
+    this.calc = new FlipCalculation(
+      foldSide(direction, this.app.getSettings().direction === 'rtl'),
+      flipCorner,
+      rect.pageWidth,
+      rect.height,
+    );
     this.turnGeneration += 1;
 
     return true;
@@ -457,6 +483,12 @@ export class Flip {
 
     const generation = this.turnGeneration;
 
+    // Captured with the generation, and for the same reason: `onAnimateEnd`
+    // emits `flip` synchronously, a listener may start the next turn from it,
+    // and that turn restamps `this.turnDirection`. The commit below belongs to
+    // *this* turn.
+    const turnDirection = this.turnDirection;
+
     this.render.startAnimation(frames, duration, () => {
       // callback function
       if (!this.calc) return;
@@ -473,7 +505,9 @@ export class Flip {
         // the truth.
         if (target !== null) this.app.getPageCollection().setCurrentSpreadIndex(target);
 
-        if (this.calc.getDirection() === FlipDirection.BACK) this.app.turnToPrevPage();
+        // The SEMANTIC direction, not `calc.getDirection()` — that one is the
+        // geometric side and is inverted under `direction: 'rtl'`.
+        if (turnDirection === FlipDirection.BACK) this.app.turnToPrevPage();
         else this.app.turnToNextPage();
       }
 

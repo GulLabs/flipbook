@@ -87,6 +87,27 @@ export const Orientation = {
 export type Orientation = (typeof Orientation)[keyof typeof Orientation];
 
 /**
+ * Which physical half of the book a turn folds — the *geometry* of a turn, as
+ * opposed to the direction the book is heading in page order.
+ *
+ * They are the same thing under `ltr`. Under `rtl` they are opposites: turning
+ * FORWARD (towards a higher page index) is performed by pulling the leaf on the
+ * left, which is geometrically a BACK fold. Splitting them is what lets the fold
+ * follow the finger while the turn still lands on the right page — the two
+ * halves of CLAUDE.md's rule that `rtl` mirrors the turn direction and never the
+ * pointer coordinates.
+ *
+ * Pure and total so the two callers that need it — {@link Render.setDirection}
+ * for everything downstream of the renderer, and `Flip.start` for the
+ * `FlipCalculation` it constructs — cannot drift apart.
+ */
+export function foldSide(direction: FlipDirection, rtl: boolean): FlipDirection {
+  if (!rtl) return direction;
+
+  return direction === FlipDirection.FORWARD ? FlipDirection.BACK : FlipDirection.FORWARD;
+}
+
+/**
  * Class responsible for rendering the book
  */
 export abstract class Render {
@@ -103,7 +124,17 @@ export abstract class Render {
   /** Next page at the time of flipping */
   protected bottomPage: Page | null = null;
 
-  /** Current flipping direction. Restamped by `setDirection` before every turn. */
+  /**
+   * The **geometric side** the current fold lives on, not the semantic turn
+   * direction. Restamped by `setDirection` before every turn, which applies the
+   * `direction: 'rtl'` mirror exactly once — see {@link foldSide}.
+   *
+   * Everything downstream of this field is geometry: local↔global conversion,
+   * `PageOrientation` for the mover and the page under it, shadow gradient
+   * sense, and the hard-page z-order in `HTMLRender`. None of them care which
+   * page index the book is heading for; all of them care which half of the book
+   * the leaf is being pulled off.
+   */
   protected direction: FlipDirection = FlipDirection.FORWARD;
   /** Current book orientation */
   protected orientation: Orientation | null = null;
@@ -533,7 +564,11 @@ export abstract class Render {
   }
 
   /**
-   * Get current flipping direction
+   * The geometric side of the current fold — see {@link Render.direction}.
+   *
+   * Under `direction: 'ltr'` this is identical to the direction the turn was
+   * started with. Under `'rtl'` it is its mirror, because the mirrored *turn*
+   * is performed by folding the *other* half of the book.
    */
   public getDirection(): FlipDirection {
     return this.direction;
@@ -589,12 +624,26 @@ export abstract class Render {
   }
 
   /**
-   * Set flipping direction
+   * Announce the **semantic** direction of the turn that is starting; the
+   * renderer stores the geometric side that turn folds on.
    *
-   * @param direction
+   * The mirror lives here, and only here, on purpose. `direction: 'rtl'`
+   * mirrors the turn direction (`Flip.getDirectionByPoint`, `UI.swipeDirection`)
+   * — but every geometric consumer of {@link Render.direction} then read that
+   * already-mirrored value and mirrored the *coordinates* with it, which is the
+   * thing CLAUDE.md forbids: `convertToPage` derives local x from the direction,
+   * so an RTL drag was measured against the half of the book the finger was not
+   * on. A 30 px drag reported 92.5% progress instead of 7.5% and committed a
+   * turn on release.
+   *
+   * Deriving the side inside the setter, rather than at the call site, is what
+   * makes that unrepeatable: a future caller cannot forget the mirror, because
+   * there is no un-mirrored way to reach the field.
+   *
+   * @param direction - where the book is heading in page order
    */
   public setDirection(direction: FlipDirection): void {
-    this.direction = direction;
+    this.direction = foldSide(direction, this.getSettings().direction === 'rtl');
   }
 
   /**
