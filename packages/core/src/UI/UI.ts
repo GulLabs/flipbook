@@ -69,6 +69,9 @@ export abstract class UI {
     this.update();
   };
 
+  /** Did the caller's host already carry `stf__parent` before we touched it? */
+  private hostHadParentClass = false;
+
   protected constructor(inBlock: HTMLElement, app: PageFlip, setting: FlipSetting) {
     ensureFlipbookStyles();
 
@@ -84,6 +87,13 @@ export abstract class UI {
       display: inBlock.style.display,
     };
 
+    // Record whether the caller already had it, for the same reason the styles
+    // above are recorded: `destroy()` promises to hand the host back UNCHANGED,
+    // and it used to remove this class unconditionally. A consumer who styles
+    // their own container with `stf__parent` — or who mounts two books through
+    // one wrapper — had a class they own stripped by a teardown that was only
+    // supposed to undo its own work.
+    this.hostHadParentClass = inBlock.classList.contains('stf__parent');
     inBlock.classList.add('stf__parent');
     inBlock.insertAdjacentHTML('afterbegin', '<div class="stf__wrapper"></div>');
 
@@ -156,7 +166,19 @@ export abstract class UI {
 
     this.autoSizeOwnsHost = setting.autoSize;
 
-    host.style.display = 'block';
+    // U9. `host.style.display = 'block'` used to run here, on construction AND
+    // on every `updateSettings`. It was redundant and actively harmful:
+    // `.stf__parent` already declares `display:block` (styles.ts), so the class
+    // does the job — while the INLINE write outranks the consumer's own
+    // stylesheet, which the class does not. A consumer styling their host
+    // `display: flex` for their own toolbar or caption layout was silently
+    // reset, and reset again on every runtime settings change, with no way to
+    // win: `width` and `maxWidth` are guarded by `autoSizeOwnsHost` precisely
+    // so a caller-set value survives, and `display` had no such guard.
+    //
+    // `hostStyles.display` is still recorded and still restored by `destroy()`.
+    // Nothing writes it today, so the restore is a no-op — it stays so that
+    // re-adding a write cannot land without its matching restore.
 
     this.applyWrapperRatio();
   }
@@ -215,7 +237,7 @@ export abstract class UI {
     this.wrapper.remove();
 
     // Hand the host element back the way we found it.
-    this.parentElement.classList.remove('stf__parent');
+    if (!this.hostHadParentClass) this.parentElement.classList.remove('stf__parent');
     this.parentElement.style.minWidth = this.hostStyles.minWidth;
     this.parentElement.style.minHeight = this.hostStyles.minHeight;
     this.parentElement.style.width = this.hostStyles.width;

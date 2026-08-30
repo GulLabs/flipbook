@@ -18,6 +18,29 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — host ownership and redundant frames
+
+- **`destroy()` stripped a `stf__parent` class the caller owned.** The teardown
+  promises to hand the host back unchanged and records its inline styles to do
+  so, but removed the class unconditionally — so a consumer who styles their own
+  container with it, or mounts two books through one wrapper, lost it. Only the
+  class the engine added is removed now.
+- **The engine wrote `display: block` inline on the host**, at construction and
+  again on every `updateSettings`. It was redundant — `.stf__parent` already
+  declares it — and unbeatable, because an inline style outranks the consumer's
+  own stylesheet where the class does not. A host styled `display: flex` for the
+  consumer's own layout was silently reset with no way to win, while `width` and
+  `maxWidth` were guarded against exactly that. The write is gone; the class
+  does the job.
+- **A frame action could run more than once for the same frame.** The
+  at-most-once guarantee its own type documents was enforced only on the
+  overshoot and forced-commit paths, so several ticks landing on one index
+  replayed it — measured, two frames over 1000 ms ticked at 0 ms and 100 ms
+  played `[0, 0]`. Output was unaffected (a frame action is idempotent) but each
+  replay re-ran the fold maths and forced another draw of identical pixels,
+  which under the parked loop is the difference between one draw per frame and
+  one per tick.
+
 ### Fixed — an interrupted turn no longer leaves its destination behind
 
 - **A drag that grabs a `flip(page)` mid-flight landed on that page instead of

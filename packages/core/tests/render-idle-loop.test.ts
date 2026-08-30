@@ -28,7 +28,12 @@ import { PageFlip } from '@gullabs/flipbook-core';
 import { Render } from '../src/Render/Render';
 import type { PageFlip as PageFlipType } from '../src/PageFlip';
 import { Settings, type FlipSetting } from '../src/Settings';
-import { installPointerCaptureShims, makeHtmlBook, makePages } from './html-book-fixture';
+import {
+  installPointerCaptureShims,
+  makeHtmlBook,
+  makePages,
+  sizeElement,
+} from './html-book-fixture';
 
 /* ------------------------------------------------------------------ *
  * A hand-driven requestAnimationFrame
@@ -476,5 +481,96 @@ describe('R8 — a canvas renderer keeps its loop', () => {
 
     expect(ran).toBe(1);
     expect(scheduled()).toBe(false);
+  });
+});
+
+/**
+ * Codex round 8 fresh findings — one frame action per frame index, and a
+ * teardown that only undoes its own work.
+ */
+describe('a frame action runs at most once per frame index', () => {
+  test('several ticks landing on the same index replay nothing', () => {
+    const book = settledBook();
+    const render = book.getRender();
+    const played: number[] = [];
+
+    render.startAnimation([() => played.push(0), () => played.push(1)], 1000, () => {
+      /* no commit */
+    });
+
+    // Two frames over 1000 ms is a 500 ms frame, so 0 ms and 100 ms both round
+    // to index 0. Reverted fix: [0, 0] — `lastPlayedIndex` guarded the
+    // overshoot and forced-commit paths and not the ordinary one, so the
+    // invariant its own docblock states was only half true.
+    runFrames();
+    clock += 100;
+    runFrames();
+    expect(played).toEqual([0]);
+
+    // …and a later index still plays, so this is a dedupe and not a freeze.
+    clock += 400;
+    runFrames();
+    expect(played).toEqual([0, 1]);
+
+    book.destroy();
+  });
+});
+
+describe('destroy() hands the host back unchanged', () => {
+  function hostEl(): HTMLElement {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    sizeElement(host, 400, 300);
+    return host;
+  }
+
+  test('a caller-owned `stf__parent` class survives teardown', () => {
+    const host = hostEl();
+    // The consumer styles their own container with the class — or mounts two
+    // books through one wrapper.
+    host.classList.add('stf__parent');
+
+    const engine = new PageFlip(host, { width: 200, height: 300 });
+    engine.loadFromHTML(makePages(4));
+    engine.destroy();
+
+    // Reverted fix: removed unconditionally, so a teardown that is only
+    // supposed to undo its OWN work stripped a class the caller owns.
+    expect(host.classList.contains('stf__parent')).toBe(true);
+    host.remove();
+  });
+
+  test('the class the engine added is still removed', () => {
+    const host = hostEl();
+    const engine = new PageFlip(host, { width: 200, height: 300 });
+    engine.loadFromHTML(makePages(4));
+    expect(host.classList.contains('stf__parent')).toBe(true);
+
+    engine.destroy();
+
+    // The control: a guard that never removes would satisfy the test above.
+    expect(host.classList.contains('stf__parent')).toBe(false);
+    host.remove();
+  });
+
+  test('the consumer\u2019s `display` is not clobbered, at construction or on update', () => {
+    const host = hostEl();
+    host.style.display = 'flex';
+
+    const engine = new PageFlip(host, { width: 200, height: 300 });
+    engine.loadFromHTML(makePages(4));
+
+    // Reverted fix: `applyHostSize` wrote `display: block` inline — redundant,
+    // since `.stf__parent` already declares it, and unbeatable, since an inline
+    // style outranks the consumer's own stylesheet where the class does not.
+    expect(host.style.display).toBe('flex');
+
+    // …and again on every runtime settings change, which is what made it
+    // impossible to set afterwards either.
+    engine.updateSettings({ width: 250 });
+    expect(host.style.display).toBe('flex');
+
+    engine.destroy();
+    host.remove();
   });
 });

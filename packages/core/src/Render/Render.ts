@@ -305,8 +305,22 @@ export abstract class Render {
       const lastIndex = this.animation.frames.length - 1;
 
       if (frameIndex < this.animation.frames.length) {
-        this.animation.lastPlayedIndex = frameIndex;
-        at(this.animation.frames, frameIndex)();
+        // AT MOST ONCE, which is what `lastPlayedIndex` is documented to
+        // guarantee and only half-delivered: the guard existed on the overshoot
+        // and forced-commit paths and not on the ordinary one, so several ticks
+        // landing on the same index replayed it. Measured: two frames over
+        // 1000 ms ticked at 0 ms and 100 ms produced `[0, 0]`.
+        //
+        // Harmless in output — a frame action is "the fold is at point P", so
+        // replaying it recomputes the same geometry — but not free: each replay
+        // re-ran `Flip.do` and, through the setters it calls, re-dirtied the
+        // renderer and forced another `drawFrame()` of identical pixels. Under
+        // the parked loop (C1) that is the difference between a short animation
+        // costing one draw per frame and one draw per tick.
+        if (this.animation.lastPlayedIndex !== frameIndex) {
+          this.animation.lastPlayedIndex = frameIndex;
+          at(this.animation.frames, frameIndex)();
+        }
       } else {
         // The clock overshot the end of the list — under load rAF skips
         // frames, and the last one carries the turn's final geometry. Play it
