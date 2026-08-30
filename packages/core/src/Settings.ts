@@ -218,13 +218,32 @@ export class Settings {
       throw new PageFlipError('Invalid direction (ltr|rtl)', 'INVALID_DIRECTION');
     }
 
-    result.pageBackground = safePageBackground(result.pageBackground);
+    // `safePageBackground` reads `.trim()` off whatever it is handed, so a
+    // JS caller passing a non-string (`0`, `{}`, an array) got a bare
+    // `TypeError: pageBackground.trim is not a function` out of the PageFlip
+    // constructor — the one input in this whole function that did not produce
+    // a `PageFlipError`. `null` already meant "not supplied" and fell through
+    // to the opaque default; a value of the wrong type is no more usable than
+    // `null`, so it takes the same route. This is the sanitising job only —
+    // the opacity check still runs inside `safePageBackground`, on the
+    // caller's own value.
+    const suppliedBackground: unknown = result.pageBackground;
+    result.pageBackground = safePageBackground(
+      typeof suppliedBackground === 'string' ? suppliedBackground : undefined,
+    );
 
     if (result.size === SizeType.STRETCH) {
       if (result.minWidth <= 0) result.minWidth = 100;
-      if (result.maxWidth < result.minWidth) result.maxWidth = 2000;
+      // `Math.max`, not a bare 2000: the fallback exists to fill in an absent
+      // upper bound, and a flat 2000 put it BELOW a `minWidth` the caller
+      // declared above it. `Render.computeBounds` reads both — it goes
+      // portrait under `minWidth * 2` (Render.ts:506) and then clamps
+      // `pageWidth` to `maxWidth` (Render.ts:511) — so `minWidth: 3000` gave a
+      // book that was "too narrow" below 6000px and simultaneously capped at
+      // 2000px, i.e. never able to reach its own declared minimum, silently.
+      if (result.maxWidth < result.minWidth) result.maxWidth = Math.max(2000, result.minWidth);
       if (result.minHeight <= 0) result.minHeight = 100;
-      if (result.maxHeight < result.minHeight) result.maxHeight = 2000;
+      if (result.maxHeight < result.minHeight) result.maxHeight = Math.max(2000, result.minHeight);
     } else {
       result.minWidth = result.width;
       result.maxWidth = result.width;

@@ -88,6 +88,108 @@ describe('Settings.getSettings (shipped)', () => {
     expect(settings.maxHeight).toBe(2000);
   });
 
+  test('a non-string pageBackground falls back to the default, it does not crash', () => {
+    // Every other bad value in getSettings raises a PageFlipError; this one
+    // raised `TypeError: pageBackground.trim is not a function` from inside
+    // safePageBackground, straight out of the PageFlip constructor.
+    for (const bad of [0, 1, {}, [], true, Symbol('x')]) {
+      expect(() =>
+        new Settings().getSettings({
+          width: 100,
+          height: 200,
+          pageBackground: bad as unknown as string,
+        }),
+      ).not.toThrow();
+
+      expect(
+        new Settings().getSettings({
+          width: 100,
+          height: 200,
+          pageBackground: bad as unknown as string,
+        }).pageBackground,
+      ).toBe(DEFAULT_PAGE_BACKGROUND);
+    }
+  });
+
+  test('a non-string pageBackground is refused, not stringified', () => {
+    // Discriminates the fix from `String(pageBackground)`: every other
+    // non-string stringifies into something invalid and lands on the default
+    // anyway, so only a value that coerces to a *valid* colour can tell the
+    // two apart. An array is not a documented pageBackground; honouring it
+    // would be the type contract drifting open by accident.
+    const settings = new Settings().getSettings({
+      width: 100,
+      height: 200,
+      pageBackground: ['red'] as unknown as string,
+    });
+
+    expect(settings.pageBackground).toBe(DEFAULT_PAGE_BACKGROUND);
+    expect(settings.pageBackground).not.toBe('red');
+  });
+
+  test('a string pageBackground still goes through both sanitising and the opacity check', () => {
+    // The type guard must not become a short-circuit: a real string still has
+    // to reach safePageBackground, which is where CSS safety and opacity are
+    // decided (two separate jobs, per the invariant).
+    const kept = new Settings().getSettings({
+      width: 100,
+      height: 200,
+      pageBackground: '#0f0',
+    });
+    expect(kept.pageBackground).toBe('#0f0');
+
+    for (const seeThrough of [
+      'transparent',
+      'rgba(255,255,255,0)',
+      'hsla(0,0%,100%,.5)',
+      '#fff0',
+      '#ffffff00',
+      'color-mix(in srgb, red, blue)',
+      'var(--x)',
+      'red;position:fixed',
+      'red}body{display:none',
+      'red/*x*/',
+      '   ',
+    ]) {
+      expect(
+        new Settings().getSettings({ width: 100, height: 200, pageBackground: seeThrough })
+          .pageBackground,
+      ).toBe(DEFAULT_PAGE_BACKGROUND);
+    }
+  });
+
+  test('stretch bounds are never left inverted by the max fallback', () => {
+    // The fallback filled an absent maxWidth with a flat 2000, which lands
+    // BELOW a minWidth the caller declared above it. Render then goes portrait
+    // under `minWidth * 2` and clamps pageWidth to maxWidth, so the book can
+    // never reach its own declared minimum and nothing is reported.
+    const wide = new Settings().getSettings({
+      width: 300,
+      height: 400,
+      size: 'stretch',
+      minWidth: 3000,
+    });
+    expect(wide.minWidth).toBe(3000);
+    expect(wide.maxWidth).toBe(3000);
+    expect(wide.maxWidth).toBeGreaterThanOrEqual(wide.minWidth);
+
+    const tall = new Settings().getSettings({
+      width: 300,
+      height: 400,
+      size: 'stretch',
+      minHeight: 3000,
+    });
+    expect(tall.minHeight).toBe(3000);
+    expect(tall.maxHeight).toBe(3000);
+    expect(tall.maxHeight).toBeGreaterThanOrEqual(tall.minHeight);
+
+    // …and the ordinary "no bounds given" case still gets the 2000 default,
+    // so the fix cannot degenerate into `maxWidth = minWidth`.
+    const plain = new Settings().getSettings({ width: 300, height: 400, size: 'stretch' });
+    expect(plain.maxWidth).toBe(2000);
+    expect(plain.maxHeight).toBe(2000);
+  });
+
   test('fixed size pins min/max to width/height', () => {
     const settings = new Settings().getSettings({
       width: 320,

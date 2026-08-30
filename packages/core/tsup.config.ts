@@ -25,7 +25,26 @@ const terserOptions: MinifyOptions = {
     unsafe_arrows: true,
     unsafe_math: true,
     unsafe_methods: true,
-    drop_console: true,
+    // `console.warn` survives. `drop_console: true` stripped the ONLY signal
+    // that `updateSettings` refused a construction-time setting
+    // (`PageFlip.updateSettings`), so in a production build that refusal was
+    // completely silent: the caller set `showCover`, `getSettings()` honestly
+    // reported the old value, and nothing said why. A diagnostic that exists
+    // only in development is a diagnostic for us, not for consumers. `log` and
+    // `debug` still go; measured cost of keeping `warn` and `error` is below.
+    // A LIST of methods to drop, not `true`. Terser's `drop_console: true`
+    // stripped the only signal that `updateSettings` refused a
+    // construction-time setting (`PageFlip.updateSettings`), so in a production
+    // build that refusal was completely silent: the caller set `showCover`,
+    // `getSettings()` honestly reported the old value, and nothing said why. A
+    // diagnostic that exists only in development is a diagnostic for us, not
+    // for consumers.
+    //
+    // The object form (`{ exclude: [...] }`) is esbuild's, not terser's — it
+    // coerces to truthy here and drops everything, which is what the first
+    // version of this did while reading as though it kept `warn`. Terser takes
+    // the method names to REMOVE.
+    drop_console: ['log', 'debug', 'info', 'trace', 'dir', 'table', 'time', 'timeEnd', 'count'],
     drop_debugger: true,
     dead_code: true,
   },

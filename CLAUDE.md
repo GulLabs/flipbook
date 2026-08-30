@@ -37,6 +37,15 @@ pnpm vitest run --project react -t 'onUpdate fires'
 
 Vitest uses `projects`: `core` (node env, `packages/core/tests`) and `react` (jsdom, `packages/react/tests`). Both alias `@gullabs/flipbook-core` / `@gullabs/react-flipbook` to **`src/`**, so unit tests never exercise the built `dist`.
 
+`tsc` does **not** honour those aliases, and used to resolve the same imports
+through `node_modules` to `dist/index.d.ts` — so `pnpm typecheck` graded the
+test suite against whatever `pnpm build` last emitted. The three
+test-including tsconfigs now carry a matching `paths` mapping. Do not add one
+to `packages/react/tsconfig.json`: tsup reads it for the dts build. The
+published `.d.ts` is still the contract and is still guarded, by
+`fixtures/isolated-consumer`, which installs the packed tarballs the way a
+consumer does.
+
 Playwright (`e2e/`) runs in CI on Chromium and WebKit. Its `webServer` builds
 the packages and the vanilla example itself, so a bare run works:
 

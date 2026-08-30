@@ -50,3 +50,32 @@ describe('opaque fold fill (shipped)', () => {
     expect(foldFill('#fff; position: fixed')).toBe(DEFAULT_PAGE_BACKGROUND);
   });
 });
+
+describe('the draw-time guard survives a non-string on the live settings object', () => {
+  /**
+   * `foldFill` runs for every page on every frame against
+   * `getSettings().pageBackground`, and `getSettings()` returns the LIVE
+   * settings object — which is the whole reason a draw-time guard exists
+   * separately from the settings boundary. An untyped consumer assigning to it
+   * skips validation entirely.
+   *
+   * The declared parameter type is therefore not a guarantee here, and
+   * `pageBackground.trim()` threw a bare `TypeError` out of the render loop on
+   * the NEXT frame — so the book stopped mid-turn, nowhere near the assignment
+   * that caused it.
+   */
+  test.each([
+    ['a number', 0],
+    ['an object', {}],
+    ['an array', ['red']],
+    ['a boolean', false],
+  ])('%s falls back to the opaque default instead of throwing', (_label, value) => {
+    expect(() => foldFill(value as unknown as string)).not.toThrow();
+    expect(foldFill(value as unknown as string)).toBe('#fff');
+  });
+
+  test('a real string is still honoured, so the guard is not a blanket default', () => {
+    expect(foldFill('#0f0')).toBe('#0f0');
+    expect(foldFill('  #0f0  ')).toBe('#0f0');
+  });
+});

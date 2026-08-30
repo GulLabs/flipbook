@@ -60,6 +60,22 @@ orientation, shadow gradients, hard-page z-order — wanted that already. If you
 were reading it to learn which way a turn was heading, read the `flip` event or
 compare page indices instead.
 
+### `PageFlipError.cause` is now part of the published type
+
+`PageFlipError` has always attached `cause` when constructed with
+`{ cause: someError }`, but the shipped `.d.ts` did not declare it, so reading
+it required a cast. The cast is no longer needed:
+
+```ts
+catch (e) {
+  if (e instanceof PageFlipError) console.error(e.code, e.cause);
+}
+```
+
+Runtime behaviour is unchanged: an error built without a cause still reads back
+`undefined`. This is an additive type change — no existing code breaks, and the
+old cast still compiles.
+
 ### `on()` and `off()` only accept real event names
 
 `on(eventName: string, callback)` was a public overload, so any string compiled.

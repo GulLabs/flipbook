@@ -18,6 +18,34 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — settings and error surface
+
+- **A non-string `pageBackground` threw a bare `TypeError` instead of a
+  `PageFlipError`.** `pageBackground: 0` / `{}` / `[]` — reachable from untyped
+  JS — hit `.trim()` and came out of the `PageFlip` constructor as
+  `pageBackground.trim is not a function`, the only input in `getSettings` that
+  did not produce a typed error. A wrong-typed value now takes the route `null`
+  always did and falls back to the opaque default. The same guard is on the
+  **draw-time** path, where it matters more: `foldFill` runs every frame against
+  the live settings object, so assigning a number to `getSettings().pageBackground`
+  crashed the render loop on the next frame — the book stopped mid-turn, nowhere
+  near the assignment. CSS-safety and opacity checks are unchanged and still
+  separate.
+- **Stretch bounds could be left inverted.** `size: 'stretch'` with a `minWidth`
+  above 2000 and no `maxWidth` filled `maxWidth` with a flat `2000` — below the
+  declared minimum. `Render` then chose portrait under `minWidth * 2` and
+  clamped `pageWidth` to `maxWidth`, so the book could never reach its own
+  declared minimum and nothing was reported. The fallback is now
+  `Math.max(2000, minWidth)`, and the same for height.
+- **`PageFlipError.cause` is now declared on the class.** The constructor has
+  always attached it, but `lib: ES2020` predates `Error.cause`, so the published
+  `.d.ts` denied a property that existed at runtime and `err.cause` did not
+  compile without a cast. Additive; the old cast still works.
+- **The `updateSettings` refusal warning survives minification.** Terser's
+  `drop_console: true` stripped it from every published build, so a refused
+  construction-time setting was completely silent in production: the value was
+  refused, `getSettings()` honestly reported the old one, and nothing said why.
+
 ### Fixed — event dispatch: one listener can no longer alter or abort another
 
 - **`trigger` iterated the live listener array**, so one dispatch had two

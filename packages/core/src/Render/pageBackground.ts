@@ -72,7 +72,15 @@ export function isOpaquePageBackground(pageBackground?: string): boolean {
  * exists to fix, so a translucent value is rejected exactly like an unsafe one.
  */
 function normalizePageBackground(pageBackground?: string): string {
-  if (pageBackground == null) return DEFAULT_PAGE_BACKGROUND;
+  // `typeof`, not a null check. The declared parameter type is not a guarantee
+  // here: `foldFill` runs every frame on `getSettings().pageBackground`, and
+  // `getSettings()` returns the LIVE settings object — the whole reason this
+  // draw-time guard exists (see `foldFill` below). An untyped consumer
+  // assigning `settings.pageBackground = 0` skipped the settings boundary
+  // entirely and reached `.trim()`, which threw a bare TypeError out of the
+  // render loop on the next frame: the book stops mid-turn, not at the
+  // assignment. A wrong-typed value takes the same route a missing one does.
+  if (typeof pageBackground !== 'string') return DEFAULT_PAGE_BACKGROUND;
 
   const value = pageBackground.trim();
 

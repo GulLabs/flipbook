@@ -69,6 +69,27 @@ if (body.includes('getContext')) {
   process.exit(1);
 }
 
+// The `updateSettings` refusal warning has to survive minification. It is the
+// only signal a consumer gets that a construction-time setting was ignored —
+// the value is refused, `getSettings()` honestly reports the old one, and
+// without this line nothing says why. Terser's `drop_console: true` removed it
+// from every published build, so the diagnostic existed in development only.
+//
+// Asserted on the packed output rather than trusted to the config, because the
+// config LOOKED correct while being wrong: `drop_console: { exclude: ['warn'] }`
+// is esbuild's option shape, and terser coerces the object to truthy and drops
+// everything. Nothing failed; the warning simply was not there.
+if (!body.includes('console.warn')) {
+  console.error(
+    'The updateSettings refusal warning did not survive minification.\n' +
+      "Terser's `drop_console` takes a LIST of console methods to REMOVE;\n" +
+      "`true`, or esbuild's `{ exclude: [...] }` object, strips every one of\n" +
+      'them — including the only diagnostic a consumer gets for a setting the\n' +
+      'engine refused. See packages/core/tsup.config.ts.',
+  );
+  process.exit(1);
+}
+
 const out = join(outDir, 'html-engine.js');
 writeFileSync(out, body);
 const bytes = Buffer.byteLength(body);
