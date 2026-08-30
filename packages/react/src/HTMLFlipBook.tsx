@@ -188,17 +188,35 @@ function composeRefs(
   };
 }
 
+/** Stable identity: a literal here would re-run the effect every render. */
+const EMPTY_ANCHORS: number[] = [0];
+
 function wrapChildren(
   children: ReactNode,
-  currentPage: number,
+  visiblePages: number[],
   lazyRadius: number | undefined,
   collect: (el: HTMLElement | null) => void,
 ): ReactElement[] {
   const list: ReactElement[] = [];
+
+  // `lazyRadius` is documented in SPREADS, but the window used to be measured
+  // in pages from the spread HEAD. In landscape that is off by a whole leaf:
+  // with `lazyRadius={1}` on spread [2, 3], page 4 sits at distance 2 and page
+  // 5 at distance 3, so BOTH leaves of the very next spread were still
+  // placeholders while the turn to them animated — the reader watched blank
+  // paper turn over.
+  //
+  // Measuring from the nearest VISIBLE page, with the radius scaled by the
+  // pages that spread actually shows, makes one radius mean one spread in both
+  // orientations. Portrait is unchanged: one visible page, scale of 1.
+  const pagesPerSpread = Math.max(1, visiblePages.length);
+  const reach = lazyRadius !== undefined ? lazyRadius * pagesPerSpread : 0;
+  const anchors = visiblePages.length > 0 ? visiblePages : [0];
+
   Children.forEach(children, (child, index) => {
     const far =
       lazyRadius !== undefined && Number.isFinite(lazyRadius)
-        ? Math.abs(index - currentPage) > lazyRadius
+        ? Math.min(...anchors.map((page) => Math.abs(index - page))) > reach
         : false;
 
     // One identity per leaf, whether or not it is currently inside the lazy
@@ -346,13 +364,19 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
 
     useImperativeHandle(ref, () => handle, [handle]);
 
-    const lazyPage = lazyRadius !== undefined ? currentPage : 0;
+    // MEMOISED. This feeds an effect dependency array, and a fresh array
+    // literal every render re-runs that effect, which re-renders — an infinite
+    // loop that shows up as a heap exhaustion, not as a failing assertion.
+    const lazyAnchors = useMemo(
+      () => (lazyRadius !== undefined ? visiblePages : EMPTY_ANCHORS),
+      [lazyRadius, visiblePages],
+    );
 
     useEffect(() => {
       const collect = (el: HTMLElement | null) => {
         if (el) childNodes.current.push(el);
       };
-      const next = wrapChildren(children, lazyPage, lazyRadius, collect);
+      const next = wrapChildren(children, lazyAnchors, lazyRadius, collect);
 
       // Bail out BEFORE clearing `childNodes`: emptying it without re-rendering
       // leaves it empty for good, and the load effect below then skips
@@ -377,7 +401,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       setPages(next);
       // pages.length is the previous render's count; intentional.
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [children, lazyPage, lazyRadius, renderOnlyPageLengthChange]);
+    }, [children, lazyAnchors, lazyRadius, renderOnlyPageLengthChange]);
 
     // Handlers are dispatched through a ref so `bindHandlers` is stable. With
     // the props in the dependency list, an inline `onFlip={(e) => …}` gave the

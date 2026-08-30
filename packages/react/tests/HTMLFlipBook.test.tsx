@@ -1498,3 +1498,62 @@ describe('lazy mounting keeps page identity (RB3)', () => {
     expect(onCollectionRebuild).not.toHaveBeenCalled();
   });
 });
+
+describe('RB7 — the lazy window covers the whole next spread', () => {
+  useMeasuredLayout();
+
+  test('landscape lazyRadius=1 mounts BOTH leaves of the adjacent spread', async () => {
+    blockSize = LANDSCAPE_BLOCK;
+    const ref = createRef<FlipBookHandle>();
+
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} lazyRadius={1} ref={ref}>
+        {pages('a', 'b', 'c', 'd', 'e', 'f')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.stf__block')).toBeTruthy();
+    });
+    expect(ref.current?.pageFlip()?.getOrientation()).toBe('landscape');
+
+    act(() => {
+      ref.current?.turnToPage(2);
+    });
+
+    const mounted = (label: string) =>
+      container.querySelector(`[data-testid="page-${label}"]`) !== null;
+
+    // On spread [2, 3] the next spread is [4, 5]. Measured in PAGES from the
+    // spread HEAD with radius 1, page 4 sat at distance 2 and page 5 at
+    // distance 3 — so both leaves of the very next spread were placeholders
+    // while the turn to them animated, and the reader watched blank paper.
+    await waitFor(() => {
+      expect(mounted('c')).toBe(true);
+      expect(mounted('d')).toBe(true);
+      expect(mounted('e')).toBe(true);
+      expect(mounted('f')).toBe(true);
+    });
+  });
+
+  test('the window is still bounded — a spread two away stays lazy', async () => {
+    blockSize = LANDSCAPE_BLOCK;
+    const ref = createRef<FlipBookHandle>();
+
+    const { container } = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} lazyRadius={1} ref={ref}>
+        {pages('a', 'b', 'c', 'd', 'e', 'f', 'g', 'h')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.stf__block')).toBeTruthy();
+    });
+
+    // Control: widening the window must not degenerate into mounting the whole
+    // book, which would make the assertion above pass for the wrong reason.
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-g"]')).toBeNull();
+    });
+  });
+});
