@@ -934,9 +934,6 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       //
       // Membership is asked of the collection rather than derived here: the
       // cover is a spread of one, so "pair the leaves two at a time" is wrong
-      // exactly when `showCover` is set.
-      // Membership is asked of the collection rather than derived here: the
-      // cover is a spread of one, so "pair the leaves two at a time" is wrong
       // exactly when `hardCovers` is set.
       const collection = engine.getPageCollection();
       const targetSpread = collection.getSpreadIndexByPage(controlledPage);
