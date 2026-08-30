@@ -105,6 +105,22 @@ export class CanvasRender extends Render {
     // runtime-updatable via `updateSettings`.
     if (!this.getSettings().drawShadow) return;
 
+    // C13: a portrait book shows ONE leaf, so it has no spine to shade. The
+    // gradient is centred on `rect.left + rect.width / 2` — the middle of the
+    // *spread* — and in portrait `rect.width === 2 * pageWidth` while the
+    // visible leaf is the right half, so that centre is exactly the leaf's
+    // LEFT EDGE. The clip in `drawFrame` then throws away the gradient's left
+    // half and leaves its darkest stops (0.5 → 0.4 alpha) painted as a dark
+    // band down the edge of the page.
+    //
+    // Suppress rather than narrow: `HTMLRender` paints no book shadow at all —
+    // only fold shadows, which are gated on an active flip — and in portrait it
+    // returns from `drawLeftPage` before drawing anything spine-like. Turning
+    // this into some page-edge shading would invent a decoration the HTML
+    // renderer has never had, and the two renderers must not disagree about
+    // whether a one-page view has a spine.
+    if (this.orientation === Orientation.PORTRAIT) return;
+
     const rect = this.getRect();
 
     this.ctx.save();
@@ -228,19 +244,23 @@ export class CanvasRender extends Render {
   }
 
   /**
-   * Backing pixels per CSS pixel, from the UI that owns the canvas.
+   * Backing pixels per CSS pixel, measured from the canvas itself.
    *
-   * Falls back to 1:1 rather than throwing — a renderer that cannot ask still
-   * has to paint something, and 1:1 is exactly the pre-DPR behaviour.
+   * This used to read `scaleX`/`scaleY` off the UI through a structural cast.
+   * That was a lying type: if `CanvasUI` ever renamed or stopped exposing them
+   * the cast still compiled, silently fell back to 1:1, and the whole book
+   * rendered at the wrong resolution with no error anywhere. The canvas knows
+   * its own backing size and its own CSS box, so ask it.
+   *
+   * Falls back to 1:1 for a zero-sized box — a hidden book still has to be able
+   * to run a frame without dividing by zero.
    */
   private backingScale(): { x: number; y: number } {
-    const ui = this.app.getUI();
-    const scaleX = (ui as { scaleX?: number }).scaleX;
-    const scaleY = (ui as { scaleY?: number }).scaleY;
+    const box = this.canvas.getBoundingClientRect();
 
     return {
-      x: typeof scaleX === 'number' && scaleX > 0 ? scaleX : 1,
-      y: typeof scaleY === 'number' && scaleY > 0 ? scaleY : 1,
+      x: box.width > 0 ? this.canvas.width / box.width : 1,
+      y: box.height > 0 ? this.canvas.height / box.height : 1,
     };
   }
 }

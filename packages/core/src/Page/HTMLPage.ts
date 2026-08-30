@@ -96,12 +96,24 @@ export class HTMLPage extends Page {
     // the wrong axis and drew in the wrong place.
     const spine = rect.left + rect.width / 2;
 
+    // H6, the vertical half of the same bug. `commonStyle` pins the element at
+    // `top:0` in the block, but the book is centred in the block:
+    // `rect.top = blockHeight / 2 - pageHeight / 2`. Soft pages pick that up —
+    // `convertPageToGlobal` adds `rect.top` to y, and `simpleDraw` writes
+    // `top:${rect.top}` — so a hard page translated by y = 0 sits `rect.top`
+    // pixels ABOVE every other leaf. With `size: 'stretch'` (or any fixed book
+    // in a taller host) that is a visible jump the instant the cover starts
+    // turning. Translate by `rect.top` so the hard element's box coincides with
+    // the soft one; the rotation is about Y, so the origin's y component is
+    // irrelevant to the axis and stays 0.
+    const top = rect.top;
+
     const angle = this.state.hardDrawingAngle;
 
     const transform =
       this.orientation === PageOrientation.LEFT
-        ? `transform-origin:${rect.pageWidth}px 0;transform:translate3d(${spine - rect.pageWidth}px,0,0) rotateY(${angle}deg);`
-        : `transform-origin:0 0;transform:translate3d(${spine}px,0,0) rotateY(${angle}deg);`;
+        ? `transform-origin:${rect.pageWidth}px 0;transform:translate3d(${spine - rect.pageWidth}px,${top}px,0) rotateY(${angle}deg);`
+        : `transform-origin:0 0;transform:translate3d(${spine}px,${top}px,0) rotateY(${angle}deg);`;
 
     this.element.style.cssText =
       `${commonStyle}backface-visibility:hidden;-webkit-backface-visibility:hidden;` +

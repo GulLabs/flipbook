@@ -3,8 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { CanvasRender } from '../Render/CanvasRender';
-import type { PageDensity } from './Page';
-import { Page, PageOrientation } from './Page';
+import { Page, PageDensity, PageOrientation } from './Page';
 import type { Render } from '../Render/Render';
 import type { Point } from '../BasicTypes';
 import { foldFill } from '../Render/pageBackground';
@@ -40,9 +39,25 @@ export class ImagePage extends Page {
    */
   private disposed = false;
 
-  constructor(render: Render, href: string, density: PageDensity) {
+  /** The copy this page animates during a portrait turn. */
+  private temporaryCopy: ImagePage | null = null;
+
+  /** True for a page created by `newTemporaryCopy()`, which borrows a bitmap. */
+  private readonly isTemporaryCopy: boolean;
+
+  constructor(render: Render, href: string, density: PageDensity, share?: ImagePage) {
     super(render, density);
 
+    if (share) {
+      // Share the already-decoded bitmap: a temporary copy must not issue a
+      // second request, and has to be drawable on the frame it is created.
+      this.image = share.image;
+      this.isLoad = share.isLoad;
+      this.isTemporaryCopy = true;
+      return;
+    }
+
+    this.isTemporaryCopy = false;
     this.image = new Image();
     this.image.src = href;
   }
@@ -174,6 +189,15 @@ export class ImagePage extends Page {
    */
   public override dispose(): void {
     super.dispose();
+
+    // A temporary copy BORROWS its bitmap from the page it was made from.
+    // Detaching handlers or dropping `src` here would blank the original, so a
+    // copy only marks itself spent.
+    if (this.isTemporaryCopy) {
+      this.disposed = true;
+      return;
+    }
+
     this.image.onload = null;
     this.image.removeAttribute('src');
     this.isLoad = false;
@@ -181,17 +205,34 @@ export class ImagePage extends Page {
   }
 
   public newTemporaryCopy(): Page {
-    return this;
+    // Hard pages return `this`, matching `HTMLPage`: a rigid cover swings, it
+    // does not curl, so it stays on the vendor previous-leaf path where the
+    // mover is not also the leaf beneath it.
+    if (this.nowDrawingDensity === PageDensity.HARD) {
+      return this;
+    }
+
+    // Returning `this` unconditionally is what left the fork's FLAGSHIP FIX
+    // absent in canvas mode. `getPortraitFlippingPage` asks for a copy and,
+    // seeing the same object back, falls through to `pages[i - 1]` — which is
+    // exactly upstream's previous-leaf slide-in, the bug this fork exists to
+    // kill.
+    //
+    // A canvas page has no DOM node to clone. What it needs is a second
+    // `PageState` over the same bitmap, so the mover and the leaf beneath it
+    // can hold different positions within one frame.
+    this.temporaryCopy ??= new ImagePage(this.render, '', this.nowDrawingDensity, this);
+
+    return this.temporaryCopy;
   }
 
   public getTemporaryCopy(): Page | null {
-    // An image page has no temporary copy: `newTemporaryCopy()` returns `this`.
-    // Returning `this` here handed a null-checking caller a truthy non-copy.
-    // (A1 will give canvas a real mover; until then, honest is null.)
-    return null;
+    return this.temporaryCopy;
   }
 
   public hideTemporaryCopy(): void {
-    return;
+    // Dropped, not disposed: the copy borrows its bitmap, so disposing it here
+    // would blank the page it was copied from.
+    this.temporaryCopy = null;
   }
 }
