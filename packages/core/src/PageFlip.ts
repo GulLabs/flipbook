@@ -117,7 +117,15 @@ export class PageFlip extends EventObject {
    *   or a stopped render instead is how a "working" call silently does
    *   nothing.
    * - `flipNext` / `flipPrev` keep their "refusal is a boolean" contract:
-   *   `false` plus `turnRejected` with `code: 'DESTROYED'`.
+   *   `false` plus `turnRejected` with `code: 'DESTROYED'`. That event is
+   *   still *emitted*, but every listener registered before `destroy()` has
+   *   been dropped (see below), so in practice nobody is left to hear it: the
+   *   `false` is what a caller should read.
+   * - **Every registered listener is forgotten** (Y2). Handlers are closures
+   *   over consumer state; keeping them was the one thing the teardown
+   *   retained. `on()` after `destroy()` still registers — `EventObject` is a
+   *   plain emitter — and such a listener would receive a later
+   *   `turnRejected`, which is the only event a dead engine still emits.
    * - Mutating lifecycle calls are safe no-ops: `destroy` itself (a consumer's
    *   cleanup legitimately runs twice), `update`, `updateSettings`,
    *   `replacePages`, `updateFromHtml`, `updateFromImages`.
@@ -174,6 +182,15 @@ export class PageFlip extends EventObject {
     this.ui = null;
     this.flipController = null;
     // The host owns `block` (React/SSR). Do not remove it from the DOM.
+
+    // Y2, and the same reasoning as the four nulls above: a listener is a
+    // closure, and under React it captures component state, refs and DOM. The
+    // engine kept the whole map alive, so a consumer holding a destroyed engine
+    // held every one of those closures too — the one retention the teardown
+    // missed. LAST, so anything the teardown itself emits (`ui.destroy()`
+    // abandons an in-flight gesture, which reports `changeState`) still reaches
+    // the handlers that were registered for it.
+    this.clearListeners();
   }
 
   public isDestroyed(): boolean {
@@ -394,6 +411,21 @@ export class PageFlip extends EventObject {
     this.ui?.destroy();
     this.render?.stop();
     this.pages?.destroy();
+    // Y1: the last collection-replacing path that had not opted into L6.
+    // `replacePages` and `updateFromHtml` both drop the gesture before they
+    // swap; this one did not, so a gesture in progress survived into a book
+    // that no longer contains the page it was anchored on, and the next
+    // `userMove` past the 5 px threshold folded the NEW collection with no
+    // `startUserTouch` for it.
+    //
+    // For a gesture the UI owns this is belt-and-braces — `ui.destroy()` above
+    // ends up in `UI.cancelGesture()`, which unwinds `isUserTouch` — and the
+    // test below records that honestly. It is NOT belt-and-braces for input
+    // driven through the public `startUserTouch` / `userMove` / `userStop`
+    // surface (a custom input layer, a synthetic gesture), which reaches these
+    // fields without any UI knowing, nor for the first `attachMode` of all,
+    // where there is no previous UI to cancel anything.
+    this.resetUserGesture();
 
     this.ui = ui;
     this.render = render;

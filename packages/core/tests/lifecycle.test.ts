@@ -19,7 +19,12 @@ import type { FlipSetting, PageCollection, Render } from '@gullabs/flipbook-core
 // identical type. `imageCollection` below is where that is laundered, once.
 import { ImagePageCollection } from '../src/Collection/ImagePageCollection';
 
-import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
+import {
+  installPointerCaptureShims,
+  makeHtmlBook,
+  makePages,
+  sizeElement,
+} from './html-book-fixture';
 
 function host(): HTMLElement {
   const el = document.createElement('div');
@@ -513,10 +518,18 @@ describe('a destroyed engine is observably dead (P3)', () => {
 
   test('flipNext / flipPrev keep the boolean contract and report DESTROYED', () => {
     const { book } = makeHtmlBook({ pageCount: 4, usePortrait: true });
-    const rejected: { reason: string; code?: string }[] = [];
-    book.on('turnRejected', (e) => rejected.push(e.data));
 
     book.destroy();
+
+    // Y2 amended this ONE line: the listener is now registered AFTER
+    // `destroy()`, because `destroy()` releases the ones registered before it
+    // (they are closures over consumer state — see `PageFlip.destroy`). The
+    // subject of this test is unchanged and still asserted in full: the
+    // refusal is a boolean, the dispatch still happens, and it still carries
+    // `code: 'DESTROYED'`. What a pre-registered listener now sees is pinned
+    // separately, in 'Y2 — destroy() releases the listeners'.
+    const rejected: { reason: string; code?: string }[] = [];
+    book.on('turnRejected', (e) => rejected.push(e.data));
 
     expect(book.flipNext()).toBe(false);
     expect(book.flipPrev()).toBe(false);
@@ -1706,5 +1719,275 @@ describe('startPage resolution at load', () => {
 
     flip.destroy();
     host.remove();
+  });
+});
+
+/**
+ * Y1 — `attachMode` is the one collection-replacing path that never opted
+ * into L6.
+ *
+ * `replacePages` and `updateFromHtml` both `abandon()` the flip and
+ * `resetUserGesture()` before they swap; `attachMode` only tore down the old
+ * `ui` / `render` / `pages`. So a second `loadFromHTML` (or a mode switch)
+ * while a gesture is live left `isUserTouch` set and `mousePosition` anchored
+ * in a book that no longer exists.
+ *
+ * ## What reproduces, and what does not
+ *
+ * Measured, not assumed: driving a REAL pointer gesture (`pointerdown` on the
+ * block) across a second `loadFromHTML` does **not** reproduce it. The old
+ * `UI` is destroyed first, `UI.destroy()` → `removeHandlers()` →
+ * `cancelGesture()` → `PageFlip.userStop(pos, true)`, and that already unwinds
+ * `isUserTouch`. Probed against the unfixed engine: `isUserTouch` was `false`
+ * immediately after the second load, the following move produced no fold, and
+ * the state stayed `READ`. That control is kept below, because it is the
+ * property that makes the real-pointer path safe and nothing else pins it.
+ *
+ * What DOES reproduce is the same swap driven through the public
+ * `startUserTouch` / `userMove` / `userStop` surface — a custom input layer, a
+ * synthetic gesture, a test harness — which reaches the engine's gesture
+ * fields without any `UI` in the loop, and so has no `cancelGesture()` behind
+ * it. That is the discriminating test, and it is the same surface the existing
+ * L6 tests for `updateFromHtml` / `replacePages` drive.
+ */
+describe('Y1 — a second load forgets the pointer gesture', () => {
+  function flippingPageOf(book: PageFlip): unknown {
+    return (book.getRender() as unknown as { flippingPage: unknown }).flippingPage;
+  }
+
+  /** Size the block the CURRENT load created, so geometry is real again. */
+  function relayout(book: PageFlip, width: number, height: number): void {
+    sizeElement(book.getUI().getDistElement(), width, height);
+    book.update();
+  }
+
+  test('loadFromHTML: the next move does not fold the new book from the stale anchor', () => {
+    const { host, book, destroy } = makeHtmlBook({
+      pageCount: 6,
+      usePortrait: false,
+      showCover: false,
+      flippingTime: 1000,
+      hostWidth: 400,
+      hostHeight: 300,
+    });
+
+    const rect = book.getBoundsRect();
+    // Anchored on the right corner of the OLD book, as a pointerdown would.
+    book.startUserTouch({ x: rect.left + rect.width - 10, y: rect.top + 10 });
+
+    const next = makePages(6);
+    for (const p of next) host.appendChild(p);
+    book.loadFromHTML(next);
+    relayout(book, 400, 300);
+
+    // The finger keeps moving — the swap came from a re-render or a fetch, not
+    // from the user lifting it.
+    book.userMove({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, true);
+
+    // The controller is a new one: `attachMode` builds it with the new render.
+    const flip = book.getFlipController()!;
+    expect(flip.getState()).toBe(FlippingState.READ);
+    expect(flip.getCalculation()).toBeNull();
+    expect(flippingPageOf(book)).toBeNull();
+
+    // And the engine is not deadened — a gesture that properly starts on the
+    // NEW book still folds it.
+    book.startUserTouch({ x: rect.left + rect.width - 10, y: rect.top + 10 });
+    book.userMove({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, true);
+    expect(flip.getState()).toBe(FlippingState.USER_FOLD);
+
+    destroy();
+  });
+
+  test('control: a REAL pointer gesture is already ended by the old UI teardown', () => {
+    installPointerCaptureShims();
+    const { host, book, destroy } = makeHtmlBook({
+      pageCount: 6,
+      usePortrait: false,
+      showCover: false,
+      flippingTime: 1000,
+      hostWidth: 400,
+      hostHeight: 300,
+    });
+    const dist = book.getUI().getDistElement();
+    const rect = book.getBoundsRect();
+
+    const pointer = (type: string, target: EventTarget, x: number, y: number): void => {
+      target.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          button: 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+          pointerType: 'mouse',
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    };
+
+    pointer('pointerdown', dist, rect.left + rect.width - 5, rect.top + 5);
+    // The press really reached the engine — otherwise the rest proves nothing.
+    expect((book as unknown as { isUserTouch: boolean }).isUserTouch).toBe(true);
+
+    const next = makePages(6);
+    for (const p of next) host.appendChild(p);
+    book.loadFromHTML(next);
+    relayout(book, 400, 300);
+
+    // `UI.destroy()` cancelled it, so this holds with or without the Y1 fix.
+    expect((book as unknown as { isUserTouch: boolean }).isUserTouch).toBe(false);
+
+    // The physical pointer moves on, landing on the block the new load built.
+    pointer(
+      'pointermove',
+      book.getUI().getDistElement(),
+      rect.left + rect.width / 2,
+      rect.top + rect.height / 2,
+    );
+
+    const flip = book.getFlipController()!;
+    expect(flip.getState()).toBe(FlippingState.READ);
+    expect(flip.getCalculation()).toBeNull();
+
+    destroy();
+  });
+});
+
+/**
+ * Y2 — `destroy()` forgets every listener.
+ *
+ * Asserting the map is empty would prove nothing about reachability (and would
+ * pass against a `new Map()` swapped in while `trigger` still read a captured
+ * one). What has to hold is that the engine can no longer CALL the callback,
+ * through the only dispatch a destroyed engine still performs: `flipNext()`
+ * reports its refusal as `turnRejected` with `code: 'DESTROYED'`.
+ */
+describe('Y2 — destroy() releases the listeners', () => {
+  test('a listener registered before destroy is no longer reachable by dispatch', () => {
+    const { book } = makeHtmlBook({ pageCount: 4 });
+
+    const seen: unknown[] = [];
+    book.on('turnRejected', (e) => seen.push(e.data));
+    book.on('flip', (e) => seen.push(e.data));
+    book.on('update', (e) => seen.push(e.data));
+
+    book.destroy();
+
+    // The refusal contract is unchanged: still `false`, still a dispatch — it
+    // simply has nobody left to deliver to.
+    expect(book.flipNext()).toBe(false);
+    expect(book.flipPrev()).toBe(false);
+    expect(seen).toEqual([]);
+  });
+
+  test('the same dispatch DOES reach a listener registered after destroy', () => {
+    const { book } = makeHtmlBook({ pageCount: 4 });
+    book.destroy();
+
+    // The decision, pinned: `EventObject` is a plain emitter with no notion of
+    // a destroyed owner, so `on()` after `destroy()` still registers. This is
+    // also the control for the test above — it proves the dispatch really does
+    // happen, so "nobody heard it" is about the listeners and not about a
+    // `flipNext` that quietly stopped emitting.
+    const seen: unknown[] = [];
+    book.on('turnRejected', (e) => seen.push(e.data));
+
+    expect(book.flipNext()).toBe(false);
+    expect(seen).toEqual([{ reason: 'setup', code: 'DESTROYED' }]);
+  });
+
+  test('a live engine still delivers to its listeners', () => {
+    const { book, destroy } = makeHtmlBook({ pageCount: 4 });
+
+    const seen: string[] = [];
+    book.on('update', () => seen.push('update'));
+    book.on('collectionRebuild', () => seen.push('collectionRebuild'));
+
+    book.updateFromHtml(makePages(4));
+
+    // Clearing on destroy must not become clearing on any teardown-shaped
+    // path: `updateFromHtml` tears down a collection too.
+    expect(seen).toEqual(['update', 'collectionRebuild']);
+
+    destroy();
+  });
+});
+
+/**
+ * Ordering, and it is observable: `destroy()` is not silent. Tearing the UI
+ * down abandons a gesture in flight, which reports `changeState: READ` — so
+ * clearing the listeners must be the LAST thing `destroy()` does, or a
+ * consumer's own state machine never hears the book leave `USER_FOLD` and is
+ * left believing a drag is still running.
+ */
+describe('Y2 — the listeners survive until the teardown is finished', () => {
+  test('a drag abandoned by destroy() still reports the state change', () => {
+    installPointerCaptureShims();
+    const { book } = makeHtmlBook({
+      pageCount: 6,
+      usePortrait: false,
+      showCover: false,
+      flippingTime: 1000,
+      hostWidth: 400,
+      hostHeight: 300,
+    });
+    const dist = book.getUI().getDistElement();
+    const rect = book.getBoundsRect();
+
+    const pointer = (type: string, x: number, y: number): void => {
+      dist.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          button: 0,
+          buttons: 1,
+          pointerType: 'mouse',
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    };
+
+    pointer('pointerdown', rect.left + rect.width - 5, rect.top + 5);
+    pointer('pointermove', rect.left + rect.width / 2, rect.top + rect.height / 2);
+    expect(book.getState()).toBe(FlippingState.USER_FOLD);
+
+    const seen: unknown[] = [];
+    book.on('changeState', (e) => seen.push(e.data));
+
+    book.destroy();
+
+    expect(seen).toEqual([FlippingState.READ]);
+  });
+});
+
+/**
+ * The edge `clearListeners()` inherits from `EventObject.trigger`, pinned
+ * because it is a consequence of Y2 and not obvious: `trigger` iterates the
+ * listener ARRAY it looked up, so clearing the map mid-dispatch does not
+ * truncate the dispatch already running. Destroying from inside a handler —
+ * the X4 case this engine explicitly supports — therefore still delivers that
+ * event to the consumer's remaining handlers, and only later events are lost.
+ */
+describe('Y2 — destroying from inside a handler does not truncate that dispatch', () => {
+  test('a second flip listener still runs after the first one destroys the book', () => {
+    const { book } = makeHtmlBook({ pageCount: 6, usePortrait: false, showCover: false });
+
+    const seen: string[] = [];
+    book.on('flip', () => {
+      seen.push('first');
+      book.destroy();
+    });
+    book.on('flip', () => seen.push('second'));
+
+    // `flippingTime: 0` from the fixture: the turn commits synchronously
+    // inside `flipNext`, so `flip` is emitted from within this call.
+    book.flipNext();
+
+    expect(seen).toEqual(['first', 'second']);
+    expect(book.isDestroyed()).toBe(true);
   });
 });

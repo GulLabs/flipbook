@@ -18,6 +18,19 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Changed — `destroy()` releases event listeners
+
+- **`PageFlip.destroy()` now releases every registered event listener.** Handlers
+  are closures — under React they capture component state, refs and DOM — and
+  the listener map was the one reference the teardown kept after it nulled
+  `pages`, `render`, `ui` and `flipController`. A consumer holding a destroyed
+  engine held all of it.
+- **Behaviour change:** a listener registered _before_ `destroy()` no longer
+  receives the `turnRejected` (`code: 'DESTROYED'`) that a post-destroy
+  `flipNext()` / `flipPrev()` emits. The `false` return value — what the API
+  tells callers to read — is unchanged. `on()` after `destroy()` still
+  registers, and such a listener does receive it.
+
 ### Fixed — engine lifecycle
 
 - `clear()` now announces the emptied book. It emits `update` (`page: 0`) and

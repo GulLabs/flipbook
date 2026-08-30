@@ -60,6 +60,22 @@ orientation, shadow gradients, hard-page z-order — wanted that already. If you
 were reading it to learn which way a turn was heading, read the `flip` event or
 compare page indices instead.
 
+### `destroy()` unbinds your event handlers
+
+Before: handlers registered with `on()` stayed registered on a destroyed engine,
+and a `flipNext()` / `flipPrev()` on that engine still called your
+`turnRejected` handler with `code: 'DESTROYED'`.
+
+Now: `destroy()` forgets every listener, so those closures — and everything they
+capture — are released with the rest of the engine. If you relied on a
+pre-registered `turnRejected` handler to observe post-destroy refusals, read the
+boolean instead: `flipNext()` / `flipPrev()` still return `false`. If you
+genuinely want the event, register **after** `destroy()`; `EventObject` has no
+notion of a destroyed owner and `on()` still works.
+
+There is no public `offAll()`. `off(name)` is unchanged, and complete unbinding
+is what `destroy()` now does.
+
 ### `clear()` now emits events
 
 `clear()` emits `update` and `collectionRebuild` with `page: 0` and
