@@ -79,10 +79,10 @@ const bytes = Buffer.byteLength(body);
 console.log(`html-engine.js ${files.join('+')} ${bytes} B (${(bytes / 1000).toFixed(2)} kB)`);
 
 // Raw bytes track parse/compile cost and catch gross drift. Transfer size is
-// enforced separately by `size-limit`. Canvas removal reclaims the Phase-2
-// ceiling raise (62 kB); stage 4 re-measures and tightens the number below.
-// Units: size-limit "kB" is decimal (1000).
-const RAW_ALARM_BYTES = 62_000;
+// enforced separately by `size-limit`. Measured 2026-08-30 after canvas removal
+// (ADR 0002): 56_207 B raw / 13.78 kB brotli / 15.43 kB gzip. Ceilings set
+// tight to that: 57 kB / 14 kB / 16 kB. Units: size-limit "kB" is decimal (1000).
+const RAW_ALARM_BYTES = 57_000;
 
 if (bytes > RAW_ALARM_BYTES) {
   console.error(

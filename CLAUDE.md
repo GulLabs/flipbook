@@ -67,12 +67,12 @@ Two packages, one direction of dependency: `react` → `core` (`workspace:*`). C
 
 ### Core engine (`packages/core/src`)
 
-`PageFlip` is the façade and the event emitter (extends `EventObject`). It owns four collaborators created in `loadFromHTML` / `loadFromImages`:
+`PageFlip` is the façade and the event emitter (extends `EventObject`). It owns four collaborators created in `loadFromHTML` (canvas mode was removed — ADR 0002; `loadFromImages` is a `CANVAS_REMOVED` stub):
 
-- **`UI`** (`HTMLUI` / `CanvasUI`) — all DOM contact. One Pointer Events path (no separate mouse/touch), `ResizeObserver` + `visualViewport`. It builds `.stf__parent > .stf__wrapper > .stf__block` and **moves the caller's page elements into `.stf__block`**. Styles are injected at runtime by `ensureFlipbookStyles()` (`styles.ts`) and also shipped as `@gullabs/flipbook-core/style.css`.
-- **`Render`** (`HTMLRender` / `CanvasRender`) — the rAF loop, layout rect, orientation detection, shadows, z-order, and the local↔global coordinate conversion.
+- **`UI`** (`HTMLUI`; abstract `UI` stays for a future renderer) — all DOM contact. One Pointer Events path (no separate mouse/touch), `ResizeObserver` + `visualViewport`. It builds `.stf__parent > .stf__wrapper > .stf__block` and **moves the caller's page elements into `.stf__block`**. Styles are injected at runtime by `ensureFlipbookStyles()` (`styles.ts`) and also shipped as `@gullabs/flipbook-core/style.css`.
+- **`Render`** (`HTMLRender`; abstract `Render` stays) — the rAF loop, layout rect, orientation detection, shadows, z-order, and the local↔global coordinate conversion.
 - **`Flip`** — the flip state machine (`READ` / `FOLD_CORNER` / `USER_FOLD` / `FLIPPING`), delegating math to `FlipCalculation`.
-- **`PageCollection`** (`HTMLPageCollection` / `ImagePageCollection`) — pages, spreads (portrait = 1 page per spread, landscape = 2), and which leaf is the mover vs the leaf underneath.
+- **`PageCollection`** (`HTMLPageCollection`; abstract `PageCollection` stays) — pages, spreads (portrait = 1 page per spread, landscape = 2), and which leaf is the mover vs the leaf underneath.
 
 Input flows `UI` → `PageFlip.startUserTouch/userMove/userStop` → `Flip.fold/flip/showCorner/stopMove` → `Render.startAnimation(frames)` → per-frame `Flip.do()` → `Page.draw()`. Page turns are committed by the animation's `onAnimateEnd` calling `PageFlip.turnToNextPage/turnToPrevPage`.
 

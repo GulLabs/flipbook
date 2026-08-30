@@ -1,8 +1,7 @@
 # ADR 0002 — Remove canvas mode
 
-**Status:** Accepted by the owner, 2026-08-29. **Not yet implemented** — no code
-has been changed under this decision. Implementation is explicitly not
-authorised yet.
+**Status:** Accepted by the owner, 2026-08-29. **Implemented** on
+`feat/gullabs-flipbook-3.0` (canvas source, tests, stubs, size ceilings).
 
 **Supersedes:** the nine-phase plan in [`../CANVAS_FIRST_CLASS.md`](../CANVAS_FIRST_CLASS.md).
 **Related:** [ADR 0001](./0001-image-page-api.md) (the canvas leaf API, now to be
@@ -117,11 +116,11 @@ reclaimed and the ceilings lowered again once the removal lands.
 reason this fork exists, lives in the flip state machine and shared collection
 and render helpers, **not** in a renderer. Removing canvas does not touch it.
 
+## Follow-ups decided at implementation
+
+- **`portraitBackCurl` / `portraitForwardCurl` removed** with the canvas work
+  (owner-approved): dead argument-less aliases of `portraitCurlLocal`.
+
 ## Deliberately NOT decided here
 
-- Whether to also remove `portraitBackCurl` / `portraitForwardCurl`. They are
-  dead exports — argument-less aliases of `portraitCurlLocal` with no engine
-  caller, whose only historical effect was to make a tautology look like the
-  flagship invariant's test. Removing them is free before publish and breaking
-  after. Owner has been informed; no decision recorded.
 - Whether HTML mode gets virtualisation.

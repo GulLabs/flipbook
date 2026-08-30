@@ -4,6 +4,26 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Removed — canvas mode (ADR 0002)
+
+Owner decision: canvas mode is gone. HTML mode stays; renderer abstractions stay
+for a future renderer.
+
+- **Deleted:** `CanvasRender`, `CanvasUI`, `ImagePageCollection`, `ImagePage`,
+  `canvasLeaf`, `imageFit`, `canvas-loader`, `ImageFlipBook`, canvas unit/e2e
+  suites, fixtures, and vanilla canvas demos.
+- **Settings:** `imageFit` / `imageInset` removed.
+- **API:** `loadFromImages` / `updateFromImages` remain as stubs that reject with
+  new code `CANVAS_REMOVED` (destroy still no-ops). Point at `loadFromHTML` with
+  `<img>` elements — see MIGRATION.md.
+- **Removed:** `getPageAltText` / `getPageAltTexts`, `INVALID_IMAGE_SOURCE`,
+  `CANVAS_LOAD`, and dead exports `portraitBackCurl` / `portraitForwardCurl`.
+- **Size:** HTML engine re-measured after removal — **56_207 B raw / 13.78 kB
+  brotli / 15.43 kB gzip**. Ceilings lowered from 62 / 15.5 / 17.5 kB to
+  **57 / 14 / 16 kB**.
+
+### Historical — canvas work superseded by ADR 0002 removal above
+
 ### Added — canvas fixtures, Phase 2 e2e harness, examples, `ImageFlipBook`
 
 - **`scripts/gen-canvas-fixtures.mjs`** grows fit/blank/error fixtures:

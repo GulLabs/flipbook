@@ -17,20 +17,17 @@ Forked from [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) and [Nodli
 
 On a phone, a back swipe must curl the **current** leaf away and show the previous leaf underneath. Upstream slides the previous page in from the left. That is the bug this fork exists to kill — in the engine, not with a monkey-patch.
 
-Fixed in **both renderers**. That qualification is deliberate: canvas mode
-carried the bug for the whole of 3.0's development while this line read as an
-unqualified claim, because `ImagePage.newTemporaryCopy()` returned `this` and
-the engine quietly fell back to upstream's previous-leaf path. Both are now
-covered by tests that fail if the fix is reverted.
+Fixed in the HTML engine. Covered by tests that fail if the fix is reverted.
+Canvas mode was removed in 3.0.0 (ADR 0002).
 
 ---
 
 ## Packages
 
-| Package                                       | Path             | Role                                                               |
-| --------------------------------------------- | ---------------- | ------------------------------------------------------------------ |
-| [`@gullabs/flipbook-core`](./packages/core)   | `packages/core`  | Framework-agnostic curl engine (HTML + canvas). Zero runtime deps. |
-| [`@gullabs/react-flipbook`](./packages/react) | `packages/react` | React 18/19 binding. `react` peer `>=18`.                          |
+| Package                                       | Path             | Role                                                      |
+| --------------------------------------------- | ---------------- | --------------------------------------------------------- |
+| [`@gullabs/flipbook-core`](./packages/core)   | `packages/core`  | Framework-agnostic curl engine (HTML). Zero runtime deps. |
+| [`@gullabs/react-flipbook`](./packages/react) | `packages/react` | React 18/19 binding. `react` peer `>=18`.                 |
 
 ---
 
@@ -77,17 +74,15 @@ Also: Pointer Events (one input path), `ResizeObserver` + `visualViewport`, `res
 
 Measured from the published artifacts, both terser-minified, zero runtime dependencies:
 
-|                                                            | raw (min) |    gzip |  brotli |
-| ---------------------------------------------------------- | --------: | ------: | ------: |
-| `page-flip@2.0.7` (upstream, **includes** canvas)          |   44.1 kB | 10.4 kB |  9.3 kB |
-| `@gullabs/flipbook-core` HTML engine (**excludes** canvas) |   45.0 kB | 12.3 kB | 11.0 kB |
+|                                            | raw (min) |    gzip |  brotli |
+| ------------------------------------------ | --------: | ------: | ------: |
+| `page-flip@2.0.7` (upstream)               |   44.1 kB | 10.4 kB |  9.3 kB |
+| `@gullabs/flipbook-core` HTML engine (3.0) |   56.2 kB | 15.4 kB | 13.8 kB |
 
-The canvas/image renderer is a lazily-imported chunk here (5.8 kB raw / 1.7 kB
-brotli) that upstream carried inline. So if you use HTML pages you download
-**~900 bytes more than upstream** and get the fixes above; if you use canvas
-mode you pay about 15% more raw. Compressed transfer is ~18% larger either way —
-that is RTL, reduced motion, typed errors and validation, and it is the honest
-price. This is not a smaller drop-in replacement, it is a maintained one.
+Larger than upstream because of RTL, reduced motion, typed errors, validation,
+and the portrait back-curl fix. This is not a smaller drop-in replacement; it is
+a maintained one. Canvas mode was removed (ADR 0002) — ceilings are 57 kB raw /
+14 kB brotli / 16 kB gzip on the packed HTML engine.
 
 Reproduce with `npm pack page-flip@2.0.7` and `pnpm build && pnpm size`.
 
@@ -118,54 +113,37 @@ import { PageFlip } from '@gullabs/flipbook-core';
 
 const pageFlip = new PageFlip(root, { width: 400, height: 600 });
 pageFlip.loadFromHTML(pages);
-// canvas / images mode (lazy chunk). Today accepts string[] URLs; the 3.0
-// image-page API (required `alt`, fit/inset, blank leaves) is specified in
-// docs/adr/0001-image-page-api.md and landing as Phase 2.
-await pageFlip.loadFromImages(['page1.jpg', 'page2.jpg']);
+// Image books: put <img alt="…"> inside HTML page elements (canvas mode removed).
 ```
 
 **React**
 
 ```tsx
-import HTMLFlipBook, { ImageFlipBook, usePageFlip } from '@gullabs/react-flipbook';
+import HTMLFlipBook, { usePageFlip } from '@gullabs/react-flipbook';
 
 export function Book() {
   return (
     <HTMLFlipBook width={300} height={500}>
       <div>Page 1</div>
-      <div>Page 2</div>
+      <div>
+        <img
+          src="/pages/2.jpg"
+          alt="Title page"
+          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+        />
+      </div>
     </HTMLFlipBook>
-  );
-}
-
-// Canvas / images mode — no children; one descriptor per leaf.
-export function ImageBook() {
-  const book = usePageFlip(0);
-  return (
-    <ImageFlipBook
-      ref={book.ref}
-      width={300}
-      height={400}
-      page={book.page}
-      {...book.bookProps}
-      images={[
-        { src: '/pages/1.jpg', alt: 'Cover' },
-        { src: '/pages/2.jpg', alt: 'Title page' },
-      ]}
-    />
   );
 }
 ```
 
 ### Examples
 
-| Example                | Path                                | What it shows                                          |
-| ---------------------- | ----------------------------------- | ------------------------------------------------------ |
-| Vanilla HTML           | `examples/vanilla/`                 | HTML pages, golden / gesture e2e host                  |
-| Vanilla canvas harness | `examples/vanilla/canvas.html`      | Pixel-probe rig for e2e (not a product demo)           |
-| Vanilla canvas demo    | `examples/vanilla/canvas-demo.html` | Public `loadFromImages` showcase (defect F3)           |
-| Vite + React           | `examples/vite-react/`              | Controlled `page`, `usePageFlip`, RTL, `ImageFlipBook` |
-| Next.js App Router     | `examples/nextjs/`                  | SSR placeholder → hydrate                              |
+| Example            | Path                   | What it shows                         |
+| ------------------ | ---------------------- | ------------------------------------- |
+| Vanilla HTML       | `examples/vanilla/`    | HTML pages, golden / gesture e2e host |
+| Vite + React       | `examples/vite-react/` | Controlled `page`, `usePageFlip`, RTL |
+| Next.js App Router | `examples/nextjs/`     | SSR placeholder → hydrate             |
 
 ---
 

@@ -2,35 +2,63 @@
 
 Drop-in `HTMLFlipBook` keeps **required `width` and `height`**. Other settings stay optional.
 
-## 3.0.0 — `ImageFlipBook` (canvas / images React binding)
+## 3.0.0 — canvas mode removed (ADR 0002)
 
-New export alongside `HTMLFlipBook`. Canvas mode has no page DOM, so it is a
-**separate component** (ADR 0001), not a `mode` prop on `HTMLFlipBook`.
+Canvas / images mode is **gone**. There is no `ImageFlipBook`, no
+`loadFromImages` implementation, and no `imageFit` / `imageInset` settings.
 
-```tsx
-import { ImageFlipBook } from '@gullabs/react-flipbook';
+`PageFlip.loadFromImages` / `updateFromImages` remain only as stubs that reject
+with `PageFlipError` code **`CANVAS_REMOVED`** (after `destroy()` they are still
+safe no-ops). Use HTML pages with `<img>` elements:
 
-<ImageFlipBook
-  width={400}
-  height={300}
-  images={[
-    { src: '/p1.jpg', alt: 'Cover of My Book' },
-    { blank: true, alt: '' }, // pad leaf — requires engine Phase 2
-    { src: '/p2.jpg', alt: 'Page 2' },
-  ]}
-/>;
+### Vanilla
+
+```ts
+import { PageFlip } from '@gullabs/flipbook-core';
+
+const root = document.getElementById('book')!;
+const book = new PageFlip(root, { width: 400, height: 300 });
+
+const pages = ['/p1.jpg', '/p2.jpg', '/p3.jpg'].map((src, i) => {
+  const el = document.createElement('div');
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = `Page ${i + 1}`;
+  img.style.width = '100%';
+  img.style.height = '100%';
+  img.style.objectFit = 'contain';
+  el.appendChild(img);
+  return el;
+});
+
+book.loadFromHTML(pages);
 ```
 
-- **No `children`.** Leaves are `images: readonly ImagePageLeaf[]`.
-- **`alt` is required** on every image descriptor. `alt: ''` means decorative.
-- **`lazyRadius` is not accepted** — it is HTML DOM-mount policy. Canvas uses
-  `imageLoadRadius` / `imageKeepRadius` on the engine once Phase 2 lands.
-- Until core accepts descriptors, `ImageFlipBook` falls back to bare `src`
-  strings and drops blank leaves with one `console.warn` per book.
+### React
 
-See `docs/adr/0001-image-page-api.md` for the full image-page contract
-(`imageFit`, `imageInset`, `imageError`, `replaceImage`, `retryImage` — the
-last two are engine Phase 2, not yet on this binding).
+```tsx
+import HTMLFlipBook from '@gullabs/react-flipbook';
+
+<HTMLFlipBook width={400} height={300}>
+  <div>
+    <img
+      src="/p1.jpg"
+      alt="Cover of My Book"
+      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+    />
+  </div>
+  <div>
+    <img
+      src="/p2.jpg"
+      alt="Page 2"
+      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+    />
+  </div>
+</HTMLFlipBook>;
+```
+
+`object-fit: contain|cover|fill` replaces the removed canvas `imageFit` setting.
+`alt` on the `<img>` replaces canvas leaf descriptors and `getPageAltText`.
 
 ## 3.0.0 — engine lifecycle and settings validation
 

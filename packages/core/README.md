@@ -9,7 +9,7 @@ import { PageFlip } from '@gullabs/flipbook-core';
 
 const pageFlip = new PageFlip(root, { width: 400, height: 300 });
 pageFlip.loadFromHTML(pages);
-await pageFlip.loadFromImages(['page1.jpg', 'page2.jpg']);
+// loadFromImages was removed — use <img> elements inside HTML pages (ADR 0002).
 ```
 
 License: **MPL-2.0** — file-level copyleft, with no license requirement on the
@@ -38,24 +38,25 @@ Copyright (c) 2026 Gul Labs, with upstream Nodlik MIT notices in
 
 Public and engine-boundary failures throw `PageFlipError` with a stable `code`:
 
-| Code                     | When                                                                |
-| ------------------------ | ------------------------------------------------------------------- |
-| `PAGE_FLIP`              | Generic / unspecified                                               |
-| `NOT_LOADED`             | API used before load finished wiring                                |
-| `INVALID_PAGE`           | Page index out of range or not in any spread                        |
-| `INVALID_SPREAD`         | Spread index invalid during a turn                                  |
-| `DESTROYED`              | Called on an engine that has been destroyed                         |
-| `INVALID_SWIPE_DISTANCE` | Non-finite or negative `swipeDistance`                              |
-| `INVALID_Z_INDEX`        | `startZIndex` not an integer                                        |
-| `INVALID_SHADOW_OPACITY` | Non-finite or negative `maxShadowOpacity`                           |
-| `DETACHED_PAGE`          | A page element left the document mid-turn                           |
-| `WRONG_MODE`             | `updateFromHtml` in canvas mode, or `updateFromImages` in HTML mode |
-| `INVALID_SIZE`           | Width/height/size type invalid in settings                          |
-| `INVALID_FLIPPING_TIME`  | Negative `flippingTime`                                             |
-| `INVALID_DIRECTION`      | `direction` not `ltr`/`rtl`                                         |
-| `INVALID_INDEX`          | Internal array access out of range                                  |
-| `FLIP_SETUP`             | Could not prepare flipping/bottom pages for a turn                  |
-| `RENDER_SETUP`           | Shadow/DOM render setup failed                                      |
-| `REJECTED`               | Programmatic turn did not start (also `turnRejected` event)         |
+| Code                     | When                                                                   |
+| ------------------------ | ---------------------------------------------------------------------- |
+| `PAGE_FLIP`              | Generic / unspecified                                                  |
+| `NOT_LOADED`             | API used before load finished wiring                                   |
+| `INVALID_PAGE`           | Page index out of range or not in any spread                           |
+| `INVALID_SPREAD`         | Spread index invalid during a turn                                     |
+| `DESTROYED`              | Called on an engine that has been destroyed                            |
+| `INVALID_SWIPE_DISTANCE` | Non-finite or negative `swipeDistance`                                 |
+| `INVALID_Z_INDEX`        | `startZIndex` not an integer                                           |
+| `INVALID_SHADOW_OPACITY` | Non-finite or negative `maxShadowOpacity`                              |
+| `DETACHED_PAGE`          | A page element left the document mid-turn                              |
+| `WRONG_MODE`             | `updateFromHtml` against a non-HTML UI (future renderer guard)         |
+| `CANVAS_REMOVED`         | `loadFromImages` / `updateFromImages` — canvas mode removed (ADR 0002) |
+| `INVALID_SIZE`           | Width/height/size type invalid in settings                             |
+| `INVALID_FLIPPING_TIME`  | Negative `flippingTime`                                                |
+| `INVALID_DIRECTION`      | `direction` not `ltr`/`rtl`                                            |
+| `INVALID_INDEX`          | Internal array access out of range                                     |
+| `FLIP_SETUP`             | Could not prepare flipping/bottom pages for a turn                     |
+| `RENDER_SETUP`           | Shadow/DOM render setup failed                                         |
+| `REJECTED`               | Programmatic turn did not start (also `turnRejected` event)            |
 
 `PageFlip.flipNext` / `flipPrev` return `boolean` (`false` = did not start) and emit `turnRejected` when refused.
