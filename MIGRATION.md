@@ -315,9 +315,11 @@ when `getCurrentPageIndex()` changes.
 What stops firing:
 
 - **Mounting.** A book that opens at page 0 emits no `flip` at all — previously
-  two. **If you seeded initial page state from the first `flip` / `onPageChange`,
-  use `init` / `onInit` instead**; it carries the resolved index, and it always
-  did. This is the only path where the change is observable as a loss.
+  two. **`onPageChange` is not an initialization event.** If you seeded initial
+  page state from the first `flip` / `onPageChange`, that worked only because of
+  this defect; use `init` / `onInit`, which carries the resolved index and always
+  did. This is the only path where the change is observable as a loss, and it is
+  the one to check first.
 - `updateSettings({ … })` on anything that cannot move the page.
 - `turnToPage(n)` when `n` is already on screen — including the other page of
   the same landscape spread, since both report the spread head.

@@ -2,8 +2,8 @@
 
 **Status:** Accepted, 2026-08-30. Decided by an agent under [`AGENTS.md`](../../AGENTS.md) §5:
 pre-publish, an API decision is a normal design decision made with a Codex
-signoff, a domain expert, and this record of the rejected alternatives. Owner
-may veto — see "What only the owner can answer".
+signoff, a domain expert, and this record of the rejected alternatives.
+**Confirmed by the owner** the same day — see "Settled by the owner".
 
 **Related:** [ADR 0002](./0002-remove-canvas-mode.md).
 
@@ -157,9 +157,31 @@ the section above argues against.
   engine on `collectionRebuild` rather than trusting the flip stream, which is
   why they survive untouched.
 
-## What only the owner can answer
+## Settled by the owner
 
-**Does the downstream GulLabs consumer seed its initial page state from the
-first `onPageChange` rather than from `onInit`?** That is the one path where
-this change is observable as a loss. If it does, the migration note should name
-`onInit` as the fix in its first line rather than in a bullet.
+**`onPageChange` is not an initialization event.** Owner decision, 2026-08-30,
+and it removes the only question this ADR had left open.
+
+The question had been whether the downstream consumer seeds its initial page
+from the first `onPageChange` rather than from `onInit` — the one path where
+this change is observable as a loss. The answer makes that moot: a consumer
+doing so was relying on the defect, not on a contract. `flip` fired at mount
+because `showSpread` announced every repaint, which was never intentional and
+was never documented, here or upstream.
+
+Worth recording WHY the wrong path was the easy one, because it is a design
+lesson rather than a user error. Three things pointed at `onPageChange`:
+
+- it fired at mount, so it appeared to cover initialization;
+- it is the handler a consumer needs anyway, for turns;
+- it hands over a bare `number`, while `onInit` hands over the raw event and
+  expects the caller to reach into `e.data.page`.
+
+So the correct event was the second handler, with the more awkward payload,
+telling you something you appeared to already have. `usePageFlip` shows the same
+instinct from the inside: it never binds `onInit` at all, seeding from its
+`initialPage` argument and re-deriving on `collectionRebuild`.
+
+That asymmetry is now the only thing making the right path harder than the wrong
+one, and it is worth revisiting — but as its own decision, not folded into this
+one. It is recorded here so the next person finds it.
