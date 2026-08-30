@@ -122,9 +122,16 @@ export type HTMLFlipBookProps = {
    * virtual cursor away and make linear reading impossible. Without real
    * controls such a reader had no way to turn a page at all.
    *
-   * Default true. Set false only if you render your own controls.
+   * `'auto'` (default) clips them out of the layout but keeps them in the
+   * accessibility tree and the tab order, revealing them on focus — the
+   * skip-link pattern. Shipping visible buttons by default would change the
+   * rendered height of every existing book.
+   *
+   * `'visible'` puts them in normal flow for you to style. `'none'` removes
+   * them — only do that if you render your own, because without controls a
+   * browse-mode screen-reader user cannot turn a page at all.
    */
-  controls?: boolean;
+  controls?: 'auto' | 'visible' | 'none';
   /** Labels for the built-in controls. Localise these. */
   controlLabels?: { previous: string; next: string };
   /** Mount only leaves within this many spreads of the current one. */

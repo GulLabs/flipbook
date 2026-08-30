@@ -296,11 +296,33 @@ export class Settings {
     // fail every later `updateSettings`.
     if (result.sizing === SizeMode.FIXED) {
       for (const bound of RESPONSIVE_ONLY_BOUNDS) {
-        if (supplied[bound] !== undefined) {
+        const authored = supplied[bound];
+        if (authored === undefined) continue;
+
+        // REJECT ONLY A CONFLICT, not the mere presence of the key.
+        //
+        // The first version rejected any authored responsive bound under
+        // `sizing: 'fixed'`, and that broke three things a consumer is entitled
+        // to do — all three measured:
+        //
+        //   * `updateSettings({ sizing: 'fixed' })` on a responsive book that
+        //     had authored a `minWidth`, which is a documented live transition;
+        //   * `updateSettings(getSettings())`, which this class advertises as
+        //     safe and which `PageFlip.updateSettings` promises;
+        //   * `new PageFlip(host, getSettings())` — the round-trip that keeping
+        //     `authored` exists to make work.
+        //
+        // Resolved settings always carry the derived bounds, so feeding them
+        // back looked like a mistake. Comparing against the value fixed mode
+        // WOULD derive keeps the diagnostic for the real error
+        // (`sizing:'fixed', width: 400, minWidth: 200` does nothing) while
+        // making `resolve` idempotent, which is what the round-trip needs.
+        const derived = bound === 'minHeight' ? result.height : result.width;
+        if (authored !== derived) {
           reject(
             bound,
-            supplied[bound],
-            `no value under sizing: 'fixed' (it derives from width/height)`,
+            authored,
+            `either ${derived} or nothing under sizing: 'fixed', where bounds derive from width/height`,
           );
         }
       }

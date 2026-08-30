@@ -90,6 +90,37 @@ function remountKeyOf(props: HTMLFlipBookProps): string {
  * Styles are inline rather than in FLIPBOOK_CSS because the region is rendered
  * server-side too, before the engine has injected any stylesheet.
  */
+/**
+ * R-7. The default for the H4 controls: reachable, but no layout impact.
+ *
+ * Shipping two unstyled buttons in normal flow changes the rendered height of
+ * every existing book, and the only escape a consumer had was `controls:
+ * false`, which re-opens the accessibility hole the buttons exist to close.
+ * That is a bad trade to hand someone.
+ *
+ * So the default is the skip-link pattern: clipped out of the layout, still in
+ * the accessibility tree and still in the tab order, and — via
+ * `:focus-within` in the injected stylesheet — visible the moment a keyboard
+ * user reaches them. A screen-reader user finds them either way, because
+ * clipping does not remove an element from the accessibility tree the way
+ * `display: none` does.
+ *
+ * `controls="visible"` opts into ordinary flow for a consumer who wants
+ * pointer-visible buttons and will style them.
+ */
+const VISUALLY_HIDDEN_UNTIL_FOCUS: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  margin: -1,
+  padding: 0,
+  border: 0,
+  overflow: 'hidden',
+  clip: 'rect(0 0 0 0)',
+  clipPath: 'inset(50%)',
+  whiteSpace: 'nowrap',
+};
+
 const VISUALLY_HIDDEN: CSSProperties = {
   position: 'absolute',
   width: 1,
@@ -290,7 +321,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       onPagesChanged,
       onTurnRejected,
       pageTransition = 'animate',
-      controls = true,
+      controls = 'auto',
       controlLabels = { previous: 'Previous page', next: 'Next page' },
       useKeyboard = true,
       lazyRadius,
@@ -421,7 +452,12 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       } catch (error: unknown) {
         if (!(error instanceof PageFlipError)) throw error;
         eventHandlersRef.current.onTurnRejected?.({
-          reason: error.code === 'PAGE_NOT_IN_SPREAD' ? 'invalidPage' : 'setup',
+          // R-4. Both of these are the caller naming a page the book cannot
+          // show; neither is a SETUP failure. The mapping was inverted.
+          reason:
+            error.code === 'INVALID_PAGE' || error.code === 'PAGE_NOT_IN_SPREAD'
+              ? 'invalidPage'
+              : 'setup',
           direction: null,
           targetPage: page,
           code: error.code,
@@ -430,17 +466,37 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       }
     }, []);
 
+    const runRelative = useCallback((direction: 'next' | 'prev', corner?: FlipCorner): boolean => {
+      const engine = engineRef.current;
+      if (!engine) {
+        eventHandlersRef.current.onTurnRejected?.({
+          reason: 'notReady',
+          direction,
+          targetPage: null,
+          code: 'NOT_LOADED',
+        });
+        return false;
+      }
+
+      return direction === 'next'
+        ? engine.flipNext(corner ?? FlipCorner.TOP)
+        : engine.flipPrev(corner ?? FlipCorner.TOP);
+    }, []);
+
     const handle: FlipBookHandle = useMemo(
       () => ({
         pageFlip: () => engineRef.current,
-        flipNext: (corner?: FlipCorner) =>
-          engineRef.current?.flipNext(corner ?? FlipCorner.TOP) ?? false,
-        flipPrev: (corner?: FlipCorner) =>
-          engineRef.current?.flipPrev(corner ?? FlipCorner.TOP) ?? false,
+        // R-5. These reported nothing when the engine was absent, while
+        // `runHandle` reported `notReady` — two of the four methods refusing
+        // silently, which is the contradiction D15 exists to remove. The engine
+        // emits `turnRejected` itself when it IS present, so this only covers
+        // the before-mount / after-unmount window it cannot see.
+        flipNext: (corner?: FlipCorner) => runRelative('next', corner),
+        flipPrev: (corner?: FlipCorner) => runRelative('prev', corner),
         turnToPage: (page: number) => runHandle(page, false),
         flipToPage: (page: number) => runHandle(page, true),
       }),
-      [runHandle],
+      [runHandle, runRelative],
     );
 
     useImperativeHandle(ref, () => handle, [handle]);
@@ -627,11 +683,25 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
 
     useEffect(() => {
       const engine = engineRef.current;
-      const nodes = readNodes();
 
-      if (!engine || !pageHost || pages.length === 0 || nodes.length === 0) {
-        return;
-      }
+      // R-1. GUARD BEFORE READING.
+      //
+      // The children effect publishes a FRESH, empty slot array and then calls
+      // `setPages`; the refs that fill it belong to elements that render in the
+      // NEXT commit. This effect runs in the same passive-effect flush as that
+      // publish, so calling `readNodes()` at the top saw every slot null and
+      // threw `DETACHED_PAGE` on the first mount of every book — the throw is
+      // the right contract, consulted at the wrong moment.
+      //
+      // `pages.length === childCount.current` is the proof that the commit
+      // which fills the slots has happened: `pages` is state, so it only holds
+      // the new list after that commit, and the refs fire during it. Softening
+      // the throw instead would have thrown away the whole point of D1.
+      if (!engine || !pageHost || pages.length === 0) return;
+      if (pages.length !== childCount.current) return;
+
+      const nodes = readNodes();
+      if (nodes.length === 0) return;
 
       // Handlers MUST be attached before updateFromHtml so `onUpdate` fires
       // (upstream removed listeners, emitted `update`, then re-attached).
@@ -695,10 +765,13 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
      * visually hidden anyway, so finding text on them was already misleading.
      */
     useEffect(() => {
-      const nodes = readNodes();
       // Before the collection loads there is no spread yet, and inerting every
       // leaf for that one commit would blank the tab order of a mounting book.
-      if (nodes.length === 0 || pageCount <= 0) return;
+      // Same commit-ordering guard as the load effect — see R-1 there.
+      if (pageCount <= 0 || pages.length === 0 || pages.length !== childCount.current) return;
+
+      const nodes = readNodes();
+      if (nodes.length === 0) return;
 
       const visible = new Set(visiblePages);
 
@@ -803,7 +876,12 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         // the engine already reports, and it hardcoded `INVALID_PAGE`,
         // discarding the `PAGE_NOT_IN_SPREAD` distinction the core paid for.
         eventHandlersRef.current.onTurnRejected?.({
-          reason: error.code === 'PAGE_NOT_IN_SPREAD' ? 'invalidPage' : 'setup',
+          // R-4. Both of these are the caller naming a page the book cannot
+          // show; neither is a SETUP failure. The mapping was inverted.
+          reason:
+            error.code === 'INVALID_PAGE' || error.code === 'PAGE_NOT_IN_SPREAD'
+              ? 'invalidPage'
+              : 'setup',
           direction: null,
           targetPage: controlledPage,
           code: error.code,
@@ -910,9 +988,14 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         data-flipbook-kb={useKeyboard ? '' : undefined}
         onKeyDown={useKeyboard ? onKeyDown : undefined}
       >
-        {useKeyboard ? (
-          <style>{`[data-flipbook-kb]:focus{outline:none}[data-flipbook-kb]:focus-visible{outline:2px solid #2563eb;outline-offset:2px}`}</style>
-        ) : null}
+        <style>
+          {`[data-flipbook-kb]:focus{outline:none}` +
+            `[data-flipbook-kb]:focus-visible{outline:2px solid #2563eb;outline-offset:2px}` +
+            // The skip-link reveal: clipped until something inside takes focus.
+            `[data-flipbook-controls]:focus-within{position:static!important;width:auto!important;` +
+            `height:auto!important;margin:0!important;overflow:visible!important;` +
+            `clip:auto!important;clip-path:none!important;white-space:normal!important}`}
+        </style>
         {pageHost ? createPortal(pages, pageHost) : null}
         {/*
           H4. REAL BUTTONS, and this is a defect fix rather than a convenience.
@@ -933,8 +1016,11 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
           positioned by the engine, and placed after the pages so the reading
           order is content-then-controls.
         */}
-        {controls ? (
-          <div data-flipbook-controls="">
+        {controls !== 'none' ? (
+          <div
+            data-flipbook-controls={controls === 'visible' ? 'visible' : ''}
+            style={controls === 'visible' ? undefined : VISUALLY_HIDDEN_UNTIL_FOCUS}
+          >
             <button
               type="button"
               data-flipbook-control="prev"
@@ -950,7 +1036,15 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
               type="button"
               data-flipbook-control="next"
               onClick={() => engineRef.current?.flipNext(FlipCorner.TOP)}
-              disabled={pageCount <= 0 || enginePage >= pageCount - 1}
+              // R-3. The LAST VISIBLE leaf, not the spread head. `enginePage` is
+              // `spread[0]`, so on the final landscape spread [4, 5] of a
+              // 6-page book it is 4, which is below `pageCount - 1` — the next
+              // button stayed enabled at the end of every landscape book. That
+              // is the invariant CLAUDE.md documents, and it bit worst for the
+              // browse-mode reader these buttons exist for.
+              disabled={
+                pageCount <= 0 || (visiblePages[visiblePages.length - 1] ?? 0) >= pageCount - 1
+              }
             >
               {controlLabels.next}
             </button>

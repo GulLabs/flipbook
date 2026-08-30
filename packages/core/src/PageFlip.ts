@@ -444,7 +444,7 @@ export class PageFlip extends EventObject {
    */
   public attachMode(ui: UI, render: Render, pages: PageCollection): void {
     // Mode attachment is the boundary a stale async load must not cross.
-    this.nextGeneration();
+    const generation = this.nextGeneration();
 
     if (this.destroyed) {
       ui.destroy();
@@ -577,9 +577,53 @@ export class PageFlip extends EventObject {
       orientation: render.getOrientation(),
     };
 
+    // MAJOR 3. The generation guard the deleted `dispatchCollectionChange`
+    // carried has to survive its deletion.
+    //
+    // `attachMode` claims a generation and never read it back, so a `ready`
+    // listener that reloads produced `loaded{pageCount:2}` then
+    // `loaded{pageCount:6}` for a two-page book — the newer load's event
+    // arriving FIRST and the stale one last. That is exactly the RE-2 failure,
+    // reachable again because the pair went away and took its guard with it.
+    //
+    // Destroy-from-`ready` is separately survivable: `destroy()` clears the
+    // listener set, so the second dispatch reaches nobody.
+    // MAJOR 4 / R-2. An EMPTY load is a shell, not a book — do not announce it.
+    //
+    // The React binding builds its portal target with `loadFromHTML([])` and
+    // supplies the real pages in a later effect via `updateFromHtml`. With the
+    // announcement synchronous, `ready`/`loaded` therefore fired for a book
+    // with no pages and deterministically reported `pageCount: 0` — and
+    // `pageCount` is the field D17 added so a consumer could render
+    // "page 1 of N". The old timer happened to land after the pages effect,
+    // which is precisely the race D17 removed; making it deterministic made it
+    // deterministically WRONG.
+    //
+    // So an empty load defers, and `updateFromHtml` announces when the pages
+    // actually arrive (see `openingFresh` there). A genuinely empty book never
+    // announces, which is honest: there is nothing to be ready with.
+    if (snapshot.pageCount > 0) this.announceLoad(generation, snapshot);
+  }
+
+  /**
+   * Emit `ready` (once per engine) and `loaded` (once per load), unless a
+   * listener has already superseded this load.
+   */
+  private announceLoad(generation: number, snapshot: BookSnapshot): void {
+    // Read through a method, not the field: `dispatch` runs consumer code that
+    // can destroy or reload the engine, and TypeScript narrows `this.destroyed`
+    // from the first check and then reports the second as always-false. The
+    // narrowing is wrong — that is exactly the re-entrancy this guards — but
+    // silencing the rule with a disable comment would hide a real always-false
+    // condition the next time one appears here.
+    const superseded = (): boolean => this.isDestroyed() || this.loadGeneration !== generation;
+
+    if (superseded()) return;
+
     if (!this.readyAnnounced) {
       this.readyAnnounced = true;
       this.dispatch('ready', snapshot);
+      if (superseded()) return;
     }
 
     this.dispatch('loaded', snapshot);
@@ -767,6 +811,17 @@ export class PageFlip extends EventObject {
       else pages[INHERIT_PAGE_INDEX](current);
 
       pages.show(target);
+
+      // The deferred announcement from an empty `loadFromHTML([])`. This is the
+      // moment the book first has pages, which is what `ready` / `loaded` are
+      // supposed to describe.
+      if (openingFresh && !this.readyAnnounced) {
+        this.announceLoad(this.loadGeneration, {
+          page: this.resolvedPageIndex(pages),
+          pageCount,
+          orientation: render.getOrientation(),
+        });
+      }
     }
 
     this.dispatchPagesChanged(

@@ -52,11 +52,25 @@ const INITIAL: FlipbookState = {
   lastRejection: null,
 };
 
+/**
+ * R-3. `page` is the spread HEAD, so comparing it to `pageCount - 1` is wrong
+ * in landscape: on the final spread [4, 5] of a six-page book the head is 4,
+ * which is below 5, so `canGoNext` stayed true at the end of every landscape
+ * book. That is the invariant CLAUDE.md documents — "turns are bounded by
+ * spreads, not page indices" — and this had the identical bug the H4 next
+ * button had.
+ *
+ * The last leaf on screen is `head + 1` when a second leaf fits: landscape,
+ * past the cover, and not the trailing odd leaf.
+ */
 function withBounds(state: FlipbookState): FlipbookState {
+  const pairs = state.orientation === 'landscape';
+  const lastVisible = pairs && state.page + 1 <= state.pageCount - 1 ? state.page + 1 : state.page;
+
   return {
     ...state,
     canGoPrev: state.page > 0,
-    canGoNext: state.pageCount > 0 && state.page < state.pageCount - 1,
+    canGoNext: state.pageCount > 0 && lastVisible < state.pageCount - 1,
   };
 }
 
