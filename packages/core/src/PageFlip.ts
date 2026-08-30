@@ -37,6 +37,28 @@ const CONSTRUCTION_TIME_SETTINGS = ['showCover', 'startPage'] as const;
  *
  * @extends EventObject
  */
+/**
+ * The page a load should actually open on.
+ *
+ * The numeric clamp alone is not enough: `NaN`, `Infinity` and `0.5` all
+ * survive it (`NaN < 0` and `NaN >= length` are both false), and
+ * `PageCollection.show()` then silently DECLINES them — leaving the renderer
+ * unseeded and the book blank, with nothing reported. The React binding repairs
+ * that later through `onNavigationError`; a raw core or canvas consumer never
+ * gets that path, which is why this belongs at load rather than in the
+ * constructor. Codex round 5.
+ *
+ * Asking the collection whether a spread actually contains the index is the
+ * only check that covers all three cases at once.
+ */
+function resolveStartPage(pages: PageCollection, pageCount: number, requested: number): number {
+  if (pageCount === 0) return 0;
+
+  const clamped = Math.min(Math.max(requested, 0), pageCount - 1);
+
+  return pages.getSpreadIndexByPage(clamped) === null ? 0 : clamped;
+}
+
 export class PageFlip extends EventObject {
   private mousePosition: Point = { x: 0, y: 0 };
   private isUserTouch = false;
@@ -387,7 +409,7 @@ export class PageFlip extends EventObject {
     // desynced. Clamping also keeps `Render` from being left with no pages set
     // at all, which is what "silently returns" costs on the render side.
     const pageCount = pages.getPageCount();
-    pages.show(pageCount === 0 ? 0 : Math.min(Math.max(this.setting.startPage, 0), pageCount - 1));
+    pages.show(resolveStartPage(pages, pageCount, this.setting.startPage));
 
     this.cancelPendingInit();
     this.initTimer = setTimeout(() => {

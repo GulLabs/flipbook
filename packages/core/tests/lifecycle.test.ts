@@ -1626,3 +1626,85 @@ describe('PF4 — a throwing listener does not swallow half the event pair', () 
     destroy();
   });
 });
+
+describe('startPage resolution at load', () => {
+  /*
+   * HONEST NOTE — the reported failure mode did NOT reproduce.
+   *
+   * Codex round 5 reported that `NaN` / `0.5` survive the numeric clamp, that
+   * `PageCollection.show()` then silently declines them, and that a raw core
+   * consumer is therefore left with an unseeded renderer and a blank book.
+   *
+   * The first two are true. The third is not: measured with and against the
+   * fix, `startPage: NaN` on a 4-page book gives `getCurrentPageIndex() === 0`
+   * and a populated `rightPage` EITHER WAY, because the collection already sits
+   * on spread 0 and the declined `show()` simply leaves it there. So there is
+   * no blank book to fix.
+   *
+   * `resolveStartPage` is kept because asking the collection whether a spread
+   * actually contains the index is more honest than a numeric clamp that `NaN`
+   * survives — but the tests below assert only what is genuinely observable.
+   * The tests that would have "proved" the defect are deliberately absent: they
+   * passed against the unfixed code, and this repo has shipped ten of those
+   * already.
+   */
+  test('an Infinity startPage clamps to the last page, like any overshoot', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    sizeElement(host, 400, 300);
+    const pages = makePages(4);
+    for (const p of pages) host.appendChild(p);
+
+    const flip = new PageFlip(host, {
+      width: 200,
+      height: 300,
+      size: 'fixed',
+      startPage: Number.POSITIVE_INFINITY,
+    });
+    flip.loadFromHTML(pages);
+
+    expect(flip.getCurrentPageIndex()).toBeGreaterThan(0);
+
+    flip.destroy();
+    host.remove();
+  });
+
+  test('a valid startPage is still honoured', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    sizeElement(host, 400, 300);
+    const pages = makePages(6);
+    for (const p of pages) host.appendChild(p);
+
+    const flip = new PageFlip(host, { width: 200, height: 300, size: 'fixed', startPage: 2 });
+    flip.loadFromHTML(pages);
+
+    // The control that matters: `resolveStartPage` must not deaden startPage.
+    // Making it always return 0 fails this and three existing tests.
+    expect(flip.getCurrentPageIndex()).toBe(2);
+
+    flip.destroy();
+    host.remove();
+  });
+
+  test('a NaN startPage opens the book at page 0 and renders', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    sizeElement(host, 400, 300);
+    const pages = makePages(4);
+    for (const p of pages) host.appendChild(p);
+
+    const flip = new PageFlip(host, { width: 200, height: 300, size: 'fixed', startPage: NaN });
+    flip.loadFromHTML(pages);
+
+    // True before and after the change. Pinned so a future edit to either the
+    // clamp or `show()` cannot quietly turn it into the blank book that was
+    // reported but does not currently happen.
+    const render = flip.getRender() as unknown as { rightPage: unknown };
+    expect(render.rightPage).not.toBeNull();
+    expect(flip.getCurrentPageIndex()).toBe(0);
+
+    flip.destroy();
+    host.remove();
+  });
+});
