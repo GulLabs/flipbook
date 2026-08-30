@@ -34,6 +34,7 @@ afterEach(() => {
 type Book = {
   book: PageFlip;
   host: HTMLElement;
+  /** Mutable: `loadFromHTML` builds a new one. See {@link refresh}. */
   dist: HTMLElement;
   /** Pointer ids the element currently believes it has captured. */
   captured: Set<number>;
@@ -72,7 +73,18 @@ function makeBook(settings: Record<string, unknown> = {}): Book {
   book.update();
 
   const captured = new Set<number>();
-  Object.assign(dist, {
+  shim(dist, captured);
+
+  books.push(() => {
+    book.destroy();
+    host.remove();
+  });
+  return { book, host, dist, captured };
+}
+
+/** Stateful pointer-capture shims sharing one ledger. */
+function shim(el: HTMLElement, captured: Set<number>): void {
+  Object.assign(el, {
     setPointerCapture(id: number) {
       captured.add(id);
     },
@@ -83,12 +95,22 @@ function makeBook(settings: Record<string, unknown> = {}): Book {
       return captured.has(id);
     },
   });
+}
 
-  books.push(() => {
-    book.destroy();
-    host.remove();
-  });
-  return { book, host, dist, captured };
+/**
+ * Re-resolve the dist element after a teardown.
+ *
+ * `loadFromHTML` replaces the whole UI, so the element the shims were installed
+ * on is no longer the one the engine listens to. Without this the fresh-pointer
+ * assertion below dispatches into a detached node and passes vacuously — it
+ * did, on the first run.
+ */
+function refresh(b: Book): void {
+  const current = b.book.getUI().getDistElement();
+  if (current === b.dist) return;
+
+  b.dist = current;
+  shim(current, b.captured);
 }
 
 function pointer(b: Book, type: string, x: number, id = 1): void {
@@ -150,19 +172,25 @@ const TEARDOWNS: Array<{ name: string; run: (b: Book) => void }> = [
 ];
 
 /**
- * MEASURED, and recorded because the reverse would be an overclaim: only
- * `clear` and `replacePages` actually DEPEND on the C1 fix. `updateFromHtml`
- * and `loadFromHTML` route through `HTMLUI.updateItems` -> `removeHandlers()`
- * -> `cancelGesture()`, which drops the same state by a second path, and the
- * settle case is covered by its own branch. Codex's mutant — moving the UI
- * cleanup out of `resetUserGesture()` and onto the settle branch alone — is
- * killed here by `clear`, not by all eight tests.
+ * WHICH CALLERS ACTUALLY DEPEND ON THE FIX — measured by the test expert with a
+ * full C1 revert, and NOT what an earlier version of this note claimed. It said
+ * `clear` and `replacePages` were the only dependents. Measured:
  *
- * They all stay anyway. The second route is an implementation detail of the
- * HTML UI that a future renderer need not have, and the existing comment at
- * the `attachMode` call site already calls that coverage belt-and-braces. A
- * test that passes for a reason other than the fix is still worth having when
- * it pins the BEHAVIOUR; it is only worth deleting when it pins nothing.
+ *   - `updateSettings` (the settle) depends in BOTH halves;
+ *   - `replacePages` depends in both halves;
+ *   - `clear` depends only in the CAPTURE half — its swipe test passed under a
+ *     full revert, because the swipe branch really does run and call
+ *     `flipNext`, which an emptied book refuses at the boundary. It was passing
+ *     for the wrong reason, so it now also asserts that nothing was REFUSED:
+ *     a refusal means the turn was attempted, which is the bug;
+ *   - `updateFromHtml` and `loadFromHTML` depend in neither, because
+ *     `HTMLUI.updateItems` -> `removeHandlers()` -> `cancelGesture()` drops the
+ *     same state by a second path.
+ *
+ * The last two stay anyway: that second path is an implementation detail of the
+ * HTML UI which a future renderer need not have, and they pin the behaviour
+ * either way. The note is here because the previous one was confidently wrong,
+ * which is the failure mode this repo keeps repeating.
  */
 
 describe('a teardown drops the pointer gesture, whichever path reaches it', () => {
@@ -175,7 +203,12 @@ describe('a teardown drops the pointer gesture, whichever path reaches it', () =
       const startX = rect.left + rect.width - 10;
 
       const flips: number[] = [];
+      const refusals: string[] = [];
       b.book.on('flip', (e) => flips.push(e.data as number));
+      // A refusal proves the turn was ATTEMPTED, which is the defect. Without
+      // this the `clear` case passes under a full revert: the swipe branch runs,
+      // calls `flipNext`, and an emptied book simply refuses it at the boundary.
+      b.book.on('turnRejected', () => refusals.push('rejected'));
 
       // Press and drag. Do NOT release — the gesture is live across the
       // teardown, which is the case a reader actually produces.
@@ -190,6 +223,7 @@ describe('a teardown drops the pointer gesture, whichever path reaches it', () =
       pointer(b, 'pointerup', startX - 200);
 
       expect(flips).toEqual([]);
+      expect(refusals).toEqual([]);
     });
 
     test(`${name}: the pointer CAPTURE is released too`, () => {
@@ -210,6 +244,38 @@ describe('a teardown drops the pointer gesture, whichever path reaches it', () =
       run(b);
 
       expect(b.captured.has(1)).toBe(false);
+
+      // B1, and this is the assertion that matters. Releasing the DOM capture
+      // while leaving `activePointerId` set passed the whole suite — measured.
+      // That is verbatim the failure C1 exists to prevent: `onPointerDown`
+      // early-returns whenever an id is held, so the book goes dead to every
+      // later finger for the rest of its life. A fresh pointer being ACCEPTED
+      // (and captured) is the only observable that proves ownership was given
+      // up; the DOM release alone does not.
+      refresh(b);
+      pointer(b, 'pointerdown', startX, 2);
+      expect(b.captured.has(2)).toBe(true);
     });
   }
+});
+
+test('POSITIVE CONTROL: with no teardown, that same swipe DOES turn the page', () => {
+  // Every assertion above is an absence, and an engine with the swipe branch
+  // deleted outright satisfies all of them. This is the one test in the file
+  // that fails if turning by swipe stops working at all, so the absences above
+  // mean something.
+  const b = makeBook();
+  b.book.turnToPage(2);
+
+  const flips: number[] = [];
+  b.book.on('flip', (e) => flips.push(e.data as number));
+
+  const rect = b.book.getBoundsRect();
+  const startX = rect.left + rect.width - 10;
+
+  pointer(b, 'pointerdown', startX);
+  pointer(b, 'pointermove', startX - 40);
+  pointer(b, 'pointerup', startX - 200);
+
+  expect(flips).not.toEqual([]);
 });

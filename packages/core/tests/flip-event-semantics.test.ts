@@ -60,7 +60,7 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     host.remove();
   });
 
-  test('mounting at a nonzero startPage emits no flip either — and none before init', () => {
+  test('mounting at a nonzero startPage emits no flip either — and none before init', async () => {
     // C2. The sibling above passes because the book opens where the fresh
     // collection already sits. With `startPage: 4` the head moves 0 -> 4 during
     // the synchronous `pages.show(...)` in `attachMode`, so the ADR 0003 guard
@@ -98,14 +98,23 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     book.loadFromHTML(pages);
 
     expect(flips).toEqual([]);
-    expect(order).toEqual([]);
     expect(book.getCurrentPageIndex()).toBe(4);
+
+    // MUST await the timer. `init` is dispatched from `setTimeout(..., 1)`, so
+    // asserting `order` synchronously can only ever observe an empty array —
+    // the ordering claim was vacuous, and a mutant that moved the spurious
+    // `flip` INTO the init timer, ahead of `init`, passed. Measured.
+    //
+    // `['init']` is strictly stronger than `[]`: it proves the flip is absent
+    // AND that `init` still arrives AND that nothing precedes it.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(order).toEqual(['init']);
 
     book.destroy();
     host.remove();
   });
 
-  test('clear() then reload at a nonzero startPage is silent too', () => {
+  test('clear() then reload at a nonzero startPage is silent too', async () => {
     // The gap the engine expert found in the first C2 fix. `isFirstLoad` was
     // `this.pages === null`, and `clear()` does NOT null it — `PageCollection`
     // is emptied in place and keeps the index it held when full. So a reload
@@ -140,8 +149,12 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     for (const p of reloaded) host.appendChild(p);
     book.loadFromHTML(reloaded);
 
-    expect(order).toEqual([]);
     expect(book.getCurrentPageIndex()).toBe(4);
+
+    // Same reason as the sibling: assert AFTER the init timer, or the ordering
+    // half of this test proves nothing.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(order).toEqual(['init']);
 
     book.destroy();
     host.remove();

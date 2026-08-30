@@ -318,3 +318,35 @@ rather than acting: it is not my work to discard.
 5. **M-3** — decide, and then test, what an uncontrolled React mount with
    `startPage` should emit.
 6. MIN-2, MIN-3, MIN-4 as convenient.
+
+---
+
+## Addendum — concurrent work landed mid-review
+
+While this review was running, another agent (see `docs/reviews/engine-expert-round1.md`)
+landed **uncommitted** changes to `packages/core/src/PageFlip.ts`,
+`packages/core/src/UI/UI.ts` and `packages/core/tests/flip-event-semantics.test.ts`,
+and removed `packages/core/tests/zz-scratch.test.ts`. Two notes:
+
+1. **MIN-4 is resolved** by them, and **half of M-3 is too**: `isFirstLoad` is now
+   `this.pages === null || this.pages.getPageCount() === 0`, which closes the
+   `clear()`-then-reload emit I measured, and the misleading React claim in the
+   C2 comment has been corrected to match what I measured independently. The
+   remaining half of M-3 stands: the React binding still emits `onPageChange` on
+   an uncontrolled `startPage` mount, and nothing tests it.
+
+2. **M-2 applies to their new test as well.** `clear() then reload at a nonzero
+startPage is silent too` registers an `init` listener and then asserts
+   `expect(order).toEqual([])` synchronously, never advancing the timer — so
+   `'init'` can never be recorded and the ordering half is vacuous by
+   construction, exactly as in the sibling at `:63`. The M-2 remedy (await the
+   timer, assert `order === ['init']`) should be applied to both.
+
+**Coordination caveat, reported rather than glossed:** my mutation passes used
+`git checkout <file>` to restore `PageFlip.ts` / `UI.ts` after each mutant. All
+of the other agent's edits listed above are present in the tree now and no
+`MUTANT_` marker survives anywhere, so nothing of theirs is missing as of this
+writing — but if any of their edits to those two files were in flight during one
+of my restores, that restore would have discarded it. They should re-read their
+own diff against what they intended before committing. I have made no source
+edits since discovering the overlap.
