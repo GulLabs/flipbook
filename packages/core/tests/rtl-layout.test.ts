@@ -362,6 +362,120 @@ describe('RTL spread layout is mirrored', () => {
     book.destroy();
   });
 
+  test('the settle drops the POINTER gesture too — a release cannot commit a turn', () => {
+    // C1. `resetUserGesture()` clears three fields on `PageFlip`; `touchPoint`
+    // and `activePointerId` live on `UI` and survived the settle. The swipe
+    // branch in `onPointerUp` gates on `touchPoint !== null` alone — nothing
+    // there consults `isUserTouch` — so lifting the finger inside
+    // `swipeTimeout`, past `swipeDistance`, still called `flipNext`/`flipPrev`.
+    //
+    // The reader was abandoned out of that gesture the moment the binding
+    // changed. Committing it turns a page they never turned, and it lands on
+    // the mirrored geometry, so it is also the wrong page.
+    //
+    // Mid-book on purpose: at page 0 a 'prev' resolution is refused at the
+    // boundary and the test would pass without the fix.
+    const book = makeHtmlBook({
+      ...landscape,
+      pageCount: 6,
+      direction: 'ltr',
+      flippingTime: 0,
+    });
+    const dist = book.book.getUI().getDistElement();
+    const rect = book.book.getBoundsRect();
+    const y = rect.top + rect.height / 2;
+    const startX = rect.left + rect.width - 10;
+
+    const pointer = (type: string, x: number): void => {
+      dist.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          button: 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+          pointerType: 'mouse',
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    };
+
+    book.book.turnToPage(2);
+    const flips: number[] = [];
+    book.book.on('flip', (e) => flips.push(e.data as number));
+
+    pointer('pointerdown', startX);
+    pointer('pointermove', startX - 40);
+    expect(book.book.getState()).not.toBe(FlippingState.READ);
+
+    book.book.updateSettings({ direction: 'rtl' });
+    expect(book.book.getState()).toBe(FlippingState.READ);
+
+    // A release well past `swipeDistance` (default 30) and inside the timeout:
+    // exactly the input the swipe branch commits on.
+    pointer('pointerup', startX - 200);
+
+    expect(flips).toEqual([]);
+    expect(book.book.getCurrentPageIndex()).toBe(2);
+
+    book.destroy();
+  });
+
+  test('the settle releases the CAPTURE too — a fresh finger still works', () => {
+    // The sibling above cannot prove this half. `onPointerUp` calls
+    // `releaseCapturedPointer()` on its first line, so by the time it has run,
+    // `activePointerId` is null however the settle behaved — and a fix that
+    // cleared only `touchPoint` passed it. Measured: the mutant survived.
+    //
+    // The distinguishing case is a settle with NO release after it, which is
+    // the common one: the reader is still holding the screen when the binding
+    // changes. Leaving `activePointerId` set makes `isActivePointer` reject
+    // every other pointer, so the book is dead to the next finger for the rest
+    // of its life — silently, and worse than the bug being fixed.
+    const book = makeHtmlBook({
+      ...landscape,
+      pageCount: 6,
+      direction: 'ltr',
+      flippingTime: 0,
+    });
+    const dist = book.book.getUI().getDistElement();
+    const rect = book.book.getBoundsRect();
+    const y = rect.top + rect.height / 2;
+    const startX = rect.left + rect.width - 10;
+
+    const pointer = (type: string, x: number, id: number): void => {
+      dist.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: id,
+          button: 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+          pointerType: 'mouse',
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    };
+
+    book.book.turnToPage(2);
+    pointer('pointerdown', startX, 1);
+    pointer('pointermove', startX - 40, 1);
+    expect(book.book.getState()).not.toBe(FlippingState.READ);
+
+    // Settle while the finger is STILL DOWN — no pointerup anywhere.
+    book.book.updateSettings({ direction: 'rtl' });
+    expect(book.book.getState()).toBe(FlippingState.READ);
+
+    // A different pointer — a second finger, or the same mouse after the OS
+    // reassigned the id.
+    pointer('pointerdown', startX, 2);
+    pointer('pointermove', startX - 40, 2);
+    expect(book.book.getState()).not.toBe(FlippingState.READ);
+    book.destroy();
+  });
+
   test('a mid-turn RESIZE settles the fold too — direction is not a special case', () => {
     // Codex: the settle originally keyed on `direction` alone, but every
     // geometry setting has the same hazard. `FlipCalculation` is built from the

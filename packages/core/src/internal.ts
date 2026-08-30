@@ -40,3 +40,21 @@ export const INHERIT_PAGE_INDEX = Symbol('flipbook.inheritPageIndex');
 
 /** Dispatches `flip`. Emits only — it does not move the book. */
 export const EMIT_PAGE_INDEX = Symbol('flipbook.emitPageIndex');
+
+/**
+ * Drops the pointer half of an in-flight gesture: the swipe anchor and the
+ * captured pointer, and nothing else.
+ *
+ * `PageFlip.resetUserGesture()` clears the engine's three fields, but the
+ * anchor lives on `UI` and survived every settle. The swipe branch in
+ * `onPointerUp` gates on that anchor alone, so a release inside `swipeTimeout`
+ * committed a turn the reader had already been abandoned out of — and did it
+ * against geometry that had just been mirrored, so it landed on the wrong page
+ * as well.
+ *
+ * Narrower than `cancelGesture()` on purpose. That path also runs `userStop`,
+ * `abandon()` and `show()`; every caller of this one has already done the
+ * engine half itself, and re-running it would dispatch `changeState` twice for
+ * one settle.
+ */
+export const DROP_POINTER_GESTURE = Symbol('flipbook.dropPointerGesture');

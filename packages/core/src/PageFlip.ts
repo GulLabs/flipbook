@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { EMIT_PAGE_INDEX, INHERIT_PAGE_INDEX } from './internal';
+import { DROP_POINTER_GESTURE, EMIT_PAGE_INDEX, INHERIT_PAGE_INDEX } from './internal';
 import type { PageCollection } from './Collection/PageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
 import type { PageRect, Point } from './BasicTypes';
@@ -1283,6 +1283,22 @@ export class PageFlip extends EventObject {
     this.isUserTouch = false;
     this.isUserMove = false;
     this.mousePosition = { x: 0, y: 0 };
+
+    // C1. The three fields above are only the engine's half. The swipe anchor
+    // and the captured pointer live on `UI`, and every one of these five call
+    // sites left them set — so a release inside `swipeTimeout` still ran the
+    // swipe branch of `onPointerUp`, which gates on that anchor alone and
+    // consults none of the flags above. The reader got a turn they had already
+    // been abandoned out of, and after a `direction` settle it landed on
+    // mirrored geometry, so it was the wrong page too.
+    //
+    // The docblock above has always said the next `pointerdown` starts a fresh
+    // gesture. This is the line that makes that true.
+    //
+    // Guarded: `attachMode` reaches here with no UI yet, and the public
+    // `startUserTouch` / `userMove` / `userStop` surface can be driven by a
+    // custom input layer that no UI knows about.
+    this.ui?.[DROP_POINTER_GESTURE]();
   }
 
   /**

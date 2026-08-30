@@ -10,6 +10,7 @@ import { FlipCorner, FlippingState } from '../Flip/Flip';
 import { Orientation } from '../Render/Render';
 import { ensureFlipbookStyles } from '../styles';
 import { FLIPBOOK_INTERACTIVE_SELECTOR } from '../interactive';
+import { DROP_POINTER_GESTURE } from '../internal';
 
 type SwipeData = {
   point: Point;
@@ -488,6 +489,17 @@ export abstract class UI {
   }
 
   /**
+   * Drop the swipe anchor and the captured pointer. See
+   * {@link DROP_POINTER_GESTURE}. Idempotent.
+   *
+   * @internal — symbol-keyed, unreachable by name from outside the package.
+   */
+  public [DROP_POINTER_GESTURE](): void {
+    this.touchPoint = null;
+    this.releaseCapturedPointer();
+  }
+
+  /**
    * End an in-flight gesture without committing anything.
    *
    * Releasing the capture is not enough: `PageFlip.isUserTouch` and the fold
@@ -502,8 +514,7 @@ export abstract class UI {
     const wasActive = this.touchPoint !== null || this.activePointerId !== null;
     const lastPos = this.touchPoint?.point ?? { x: 0, y: 0 };
 
-    this.touchPoint = null;
-    this.releaseCapturedPointer();
+    this[DROP_POINTER_GESTURE]();
 
     if (!wasActive) return;
 
