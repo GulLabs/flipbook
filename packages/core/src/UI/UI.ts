@@ -439,6 +439,17 @@ export abstract class UI {
    * Both axes are derived independently — a non-uniform `scale(sx, sy)` is
    * legal CSS — and a zero or missing measurement (a hidden book, jsdom's
    * unlaid-out DOM) falls back to 1:1 rather than dividing by zero.
+   *
+   * **Known limitation: translation and scale only.** `getBoundingClientRect()`
+   * returns the axis-aligned *bounding* box, so under an ancestor `rotate()` or
+   * `skew()` neither half of this holds: `rect.width / offsetWidth` is a
+   * cos/sin mix rather than a scale factor, and `rect.left/top` is a corner of
+   * the bounding box rather than the element's origin. A rotated book therefore
+   * folds away from the finger. Correcting it needs the accumulated ancestor
+   * matrix and a `DOMMatrix` inversion — several hundred bytes of engine to
+   * serve a case no consumer has asked for, against a fork whose size ceiling is
+   * already the binding constraint. Stated rather than fixed; reopen it if a
+   * real book is ever rendered on a rotated surface.
    */
   private getMousePos(x: number, y: number): Point {
     const el = this.distElement;
