@@ -2357,3 +2357,134 @@ describe('RE-4 — a teardown supersedes a turn, and the refusal says so', () =>
     book.destroy();
   });
 });
+
+describe('RE-2 — the collection pair must be true, not just atomic', () => {
+  test('a listener that replaces the collection stops the stale second half', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(6));
+
+    const events: string[] = [];
+    let once = false;
+
+    book.on('update', () => {
+      events.push('update');
+      if (once) return;
+      once = true;
+      book.updateFromHtml(makePages(2));
+    });
+    book.on('collectionRebuild', (e) => {
+      events.push(`rebuild:${(e.data as { pageCount: number }).pageCount}`);
+    });
+
+    book.updateFromHtml(makePages(4));
+
+    // Reverted fix: `update, update, rebuild:2, rebuild:4` — the LAST event a
+    // consumer sees says four pages, for a book that has two. Atomicity (E7)
+    // held; the second half was simply a lie, captured before the swap. A
+    // consumer rendering "page N of M" is then permanently wrong, which is the
+    // desync atomicity exists to prevent.
+    expect(book.getPageCount()).toBe(2);
+
+    const rebuilds = events.filter((e) => e.startsWith('rebuild:'));
+    expect(rebuilds).toEqual(['rebuild:2']);
+    expect(rebuilds).not.toContain('rebuild:4');
+
+    book.destroy();
+  });
+
+  test('superseding does not swallow the listener’s own error', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(6));
+
+    const boom = new Error('update listener');
+    let once = false;
+    book.on('update', () => {
+      if (!once) {
+        once = true;
+        book.updateFromHtml(makePages(2));
+      }
+      throw boom;
+    });
+
+    // The variant this closes: returning early on a moved generation is right,
+    // but returning early and DROPPING the error is not. This engine's rule
+    // (`requestTurn`) is that a failure which is not its own never becomes
+    // silence — being superseded is not an exception to that.
+    expect(() => {
+      book.updateFromHtml(makePages(4));
+    }).toThrow(boom);
+
+    book.destroy();
+  });
+
+  test('an unraced pair still delivers both halves', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(6));
+
+    const events: string[] = [];
+    book.on('update', () => events.push('update'));
+    book.on('collectionRebuild', () => events.push('rebuild'));
+
+    book.updateFromHtml(makePages(4));
+
+    // The control: the guard must fire on a moved generation, not on the mere
+    // presence of a listener — otherwise it would silently halve every event
+    // pair the engine emits.
+    expect(events).toEqual(['update', 'rebuild']);
+
+    book.destroy();
+  });
+});
+
+describe('RE-3 — updateSettings survives a listener destroying mid-call', () => {
+  test('a destroy from a refreshHandlers dispatch does not throw a TypeError', () => {
+    installPointerCaptureShims();
+    const { book } = makeHtmlBook({
+      pageCount: 6,
+      usePortrait: false,
+      showCover: false,
+      flippingTime: 400,
+      hostWidth: 400,
+      hostHeight: 300,
+    });
+    const dist = book.getUI().getDistElement();
+    const rect = book.getBoundsRect();
+
+    const pointer = (type: string, x: number, y: number): void => {
+      dist.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          button: 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+          pointerType: 'mouse',
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    };
+
+    // A REAL captured pointer. `cancelGesture()` only abandons when the UI
+    // itself believes a pointer is down — driving `startUserTouch`/`userMove`
+    // through the public surface sets `PageFlip`'s flags and leaves the UI's
+    // pointer state untouched, so `refreshHandlers()` announces nothing and the
+    // whole test passes vacuously. That is what the first draft did.
+    pointer('pointerdown', rect.left + rect.width - 5, rect.top + 5);
+    pointer('pointermove', rect.left + rect.width - 45, rect.top + 8);
+    expect((book as unknown as { isUserTouch: boolean }).isUserTouch).toBe(true);
+
+    book.on('changeState', () => {
+      if (!book.isDestroyed()) book.destroy();
+    });
+
+    // Reverted fix: `TypeError: Cannot read properties of null (reading
+    // 'applyHostSize')` — not a `PageFlipError`, out of a public method the
+    // destroy contract lists as a safe no-op.
+    expect(() => {
+      book.updateSettings({ useMouseEvents: false });
+    }).not.toThrow();
+
+    expect(book.isDestroyed()).toBe(true);
+  });
+});

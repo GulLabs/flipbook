@@ -268,10 +268,40 @@ export class PageFlip extends EventObject {
   private dispatchCollectionChange(page: number, pageCount: number, mode: Orientation): void {
     let failure: { err: unknown } | null = null;
 
+    // RE-2. The pair is atomic; it also has to be TRUE.
+    //
+    // `update` dispatches to consumer code, and a listener is entitled to
+    // replace the collection from it — `updateFromHtml`, `replacePages`,
+    // `clear` and every load are all reachable. When one does, the second half
+    // of this pair used to fire anyway, carrying the numbers this call captured
+    // before the swap. Measured: an `update` listener calling `updateFromHtml`
+    // again produced
+    //
+    //   update{page:0}  update{page:0}  rebuild{pageCount:2}  rebuild{pageCount:4}
+    //
+    // for a book that ends with TWO pages — `collectionRebuild` arriving last,
+    // with the count of a collection that no longer exists. A consumer
+    // rendering "page N of M" is then permanently wrong, which is precisely the
+    // desync E7's atomicity exists to prevent: delivering both halves is not
+    // worth much if the second half is a lie.
+    //
+    // `loadGeneration` is the existing stamp for "the collection was replaced",
+    // and every mutating path claims it. If it moved, the newer operation has
+    // already emitted its own complete, correct pair — so this one stops rather
+    // than appending stale data after it.
+    const generation = this.loadGeneration;
+
     try {
       this.dispatch('update', { page, mode });
     } catch (err: unknown) {
       failure = { err };
+    }
+
+    if (this.loadGeneration !== generation) {
+      // Still surface a listener's error: superseding is not a reason to
+      // swallow a consumer defect (the `requestTurn` rule).
+      if (failure !== null) throw failure.err;
+      return;
     }
 
     try {
@@ -761,14 +791,32 @@ export class PageFlip extends EventObject {
 
     // updateSettings can run before create() wires render/ui (React effects).
 
-    if (this.ui) {
+    // RE-3. HOISTED, because the line between these two DISPATCHES.
+    //
+    // `refreshHandlers()` -> `removeHandlers()` -> `UI.cancelGesture()` ->
+    // `flip.abandon()` emits `changeState`, and `pages.show()` emits `flip`. A
+    // listener on either that calls `destroy()` nulls `this.ui`, and the next
+    // line used to dereference it — measured with a real pointerdown/pointermove
+    // followed by `updateSettings({ useMouseEvents: false })`:
+    //
+    //   TypeError: Cannot read properties of null (reading 'applyHostSize')
+    //
+    // Not a `PageFlipError`, and it unwound out of a public method the destroy
+    // contract lists as a safe no-op. `applyHostSize` on a UI that has already
+    // been torn down is harmless — it writes styles to an element the teardown
+    // has finished with — so holding the reference is the fix rather than
+    // re-checking, and it matches `if (this.render)` below, which survives only
+    // because `update()` happens to use optional chaining.
+    const ui = this.ui;
+
+    if (ui) {
       if (mouseChanged) {
-        this.ui.refreshHandlers();
+        ui.refreshHandlers();
       }
       // Size-shaped settings are stamped onto the host element, so a changed
       // `width` / `height` / `size` has to be restamped here. Otherwise the
       // only way to resize a book is to rebuild the engine.
-      this.ui.applyHostSize(this.setting);
+      ui.applyHostSize(this.setting);
     }
 
     if (this.render) {

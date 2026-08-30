@@ -40,6 +40,21 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — two more reentrancy holes
+
+- **`collectionRebuild` could announce a collection that no longer existed.**
+  `update` dispatches to consumer code, and a listener may replace the
+  collection from it; the second half of the pair then fired anyway with the
+  numbers captured before the swap. Measured: an `update` listener calling
+  `updateFromHtml` again left `collectionRebuild` arriving last with
+  `pageCount: 4` for a book that ends with two pages. Both halves were still
+  delivered — atomicity held — but the last thing a consumer saw was wrong, so a
+  "page N of M" display stayed permanently desynced.
+- **`updateSettings` threw a raw `TypeError` if a listener destroyed the book
+  mid-call.** `refreshHandlers()` dispatches, a listener nulls the UI, and the
+  next line dereferenced it — an untyped error out of a method the `destroy()`
+  contract lists as a safe no-op.
+
 ### Fixed — accessibility: zoom, browser shortcuts, and focus on a turn
 
 - **Pinch-to-zoom was disabled across the entire book.**
