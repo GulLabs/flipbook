@@ -341,3 +341,100 @@ describe('FL4 — a fold with no shadow start clears the shadow it left behind',
     expect(app.getCurrentPageIndex()).toBe(2);
   });
 });
+
+describe('Z2 — the vertical corner band stops at the corner split', () => {
+  /**
+   * A 400x100 leaf. `operatingDistance` is a fifth of the DIAGONAL, so it
+   * outgrows half the height as soon as the leaf is wider than about 1.14x its
+   * height — here it is 82.46 against a half-height of 50, and the unclamped
+   * top and bottom bands therefore both covered the whole leaf.
+   */
+  const WIDE = { left: -210, top: 0, width: 800, height: 100, pageWidth: 400 } as const;
+  const WIDE_OD = Math.sqrt(400 * 400 + 100 * 100) / 5; // 82.4621…
+  const WIDE_LEAF_RIGHT = WIDE.left + WIDE.width; // global x = 590
+
+  function wideBook(opts?: Parameters<typeof makeHtmlBook>[0]) {
+    return book({ width: 400, height: 100, pageCount: 6, startPage: 0, ...opts });
+  }
+
+  function assertWideFixture(app: ReturnType<typeof book>['book']): void {
+    expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
+    expect(app.getBoundsRect()).toEqual(WIDE);
+    // THE precondition: without this inequality the clamp is inert and every
+    // assertion below would pass on the unfixed code.
+    expect(WIDE_OD).toBeCloseTo(82.462, 3);
+    expect(WIDE_OD).toBeGreaterThan(WIDE.height / 2);
+    // …while the horizontal band is still a genuine band, so what follows is
+    // about the y test and nothing else.
+    expect(WIDE_OD).toBeLessThan((WIDE.pageWidth * 2) / 5);
+  }
+
+  test('the vertical middle of a wide leaf is not a corner', () => {
+    const { book: app } = wideBook({ flippingTime: 0 });
+    const flip = app.getFlipController()!;
+    assertWideFixture(app);
+
+    const x = WIDE_LEAF_RIGHT - 2; // inside the FORWARD band, so only y varies
+
+    // The line the TOP/BOTTOM split is drawn on — `start()` picks the corner
+    // with `bookPos.y >= rect.height / 2` — belongs to neither band.
+    expect(flip.isPointOnCorners({ x, y: WIDE.top + WIDE.height / 2 })).toBe(false);
+
+    // Just off it, both bands are still live: the clamp bounds the bands at the
+    // split, it does not narrow them to a "proper" corner. Asserting otherwise
+    // would be asserting a policy this fix deliberately did not adopt.
+    expect(flip.isPointOnCorners({ x, y: WIDE.top + WIDE.height / 2 - 1 })).toBe(true);
+    expect(flip.isPointOnCorners({ x, y: WIDE.top + WIDE.height / 2 + 1 })).toBe(true);
+
+    // And the ends are unaffected.
+    expect(flip.isPointOnCorners({ x, y: WIDE.top + 2 })).toBe(true);
+    expect(flip.isPointOnCorners({ x, y: WIDE.top + WIDE.height - 2 })).toBe(true);
+  });
+
+  test('the clamp is inert at ordinary proportions', () => {
+    // 200x300: `operatingDistance` is 72.11 against a half-height of 150, so
+    // the clamp changes nothing and the middle band is a real gap, not a line.
+    const { book: app } = book({ pageCount: 6, flippingTime: 0, startPage: 2 });
+    const flip = app.getFlipController()!;
+    assertPortraitFixture(app, 2);
+    expect(OPERATING_DISTANCE).toBeLessThan(RECT.height / 2);
+
+    const x = LEAF_RIGHT - 2;
+    expect(flip.isPointOnCorners({ x, y: RECT.top + OPERATING_DISTANCE - 1 })).toBe(true);
+    expect(flip.isPointOnCorners({ x, y: RECT.top + OPERATING_DISTANCE + 1 })).toBe(false);
+    expect(flip.isPointOnCorners({ x, y: RECT.top + RECT.height / 2 })).toBe(false);
+    expect(flip.isPointOnCorners({ x, y: RECT.top + RECT.height - OPERATING_DISTANCE + 1 })).toBe(
+      true,
+    );
+  });
+
+  test('disableFlipByClick refuses the middle of a wide leaf', () => {
+    // The consumer-visible half. `PageFlip.requestUserTurn` gates on exactly
+    // this predicate, so an unclamped y band made `disableFlipByClick` accept a
+    // click on the split line — which is not a corner by the engine's own
+    // definition of one.
+    const { book: app } = wideBook({ flippingTime: 0, disableFlipByClick: true });
+    assertWideFixture(app);
+
+    const reasons: string[] = [];
+    app.on('turnRejected', (e) => reasons.push((e.data as { reason: string }).reason));
+
+    const pos = { x: WIDE_LEAF_RIGHT - 2, y: WIDE.top + WIDE.height / 2 };
+    app.startUserTouch(pos);
+    app.userStop(pos, false);
+
+    expect(app.getCurrentPageIndex()).toBe(0);
+    expect(reasons).toEqual(['disabled']);
+  });
+
+  test('…and still accepts a real corner of the same book', () => {
+    const { book: app } = wideBook({ flippingTime: 0, disableFlipByClick: true });
+    assertWideFixture(app);
+
+    const pos = { x: WIDE_LEAF_RIGHT - 2, y: WIDE.top + 2 };
+    app.startUserTouch(pos);
+    app.userStop(pos, false);
+
+    expect(app.getCurrentPageIndex()).toBe(1);
+  });
+});

@@ -11,7 +11,14 @@
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import { FlipCorner, FlippingState, Orientation, PageDensity } from '@gullabs/flipbook-core';
+import {
+  FlipCorner,
+  FlipDirection,
+  FlippingState,
+  Orientation,
+  PageDensity,
+} from '@gullabs/flipbook-core';
+import { FlipCalculation } from '../src/Flip/FlipCalculation';
 import { makeHtmlBook } from './html-book-fixture';
 
 const books: Array<{ destroy: () => void }> = [];
@@ -609,5 +616,175 @@ describe('F7 — flipping to a page already on screen is a declared no-op', () =
     expect(() => {
       app.flip(99);
     }).toThrow();
+  });
+});
+
+describe('Z1 — a corner hover must not park the fold past the spine', () => {
+  /**
+   * A 50x300 leaf: narrow enough that the OLD flat 50px peel parked the fold at
+   * local `x = 0`, which is exactly what `stopMove()` reads as "carried across
+   * the spine". Restated as constants so a fixture that stopped being narrow
+   * shows up as a precondition failure rather than as a silent pass.
+   */
+  const NARROW = { left: -35, top: 0, width: 100, height: 300, pageWidth: 50 } as const;
+
+  function narrowBook(opts?: Parameters<typeof makeHtmlBook>[0]) {
+    return book({ width: 50, height: 300, pageCount: 6, startPage: 0, ...opts });
+  }
+
+  /** Inside the FORWARD corner band of the narrow leaf, at the top. */
+  const HOVER = { x: NARROW.left + NARROW.width - 2, y: NARROW.top + 2 };
+  /** Middle of the leaf: in neither corner band, on either axis. */
+  const AWAY = { x: NARROW.left + 75, y: NARROW.top + 150 };
+
+  function assertNarrowFixture(app: ReturnType<typeof book>['book']): void {
+    expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
+    expect(app.getBoundsRect()).toEqual(NARROW);
+    // The leaf is at most as wide as the old constant — that inequality IS the
+    // defect's precondition.
+    expect(NARROW.pageWidth).toBeLessThanOrEqual(50);
+    const flip = app.getFlipController()!;
+    expect(flip.isPointOnCorners(HOVER)).toBe(true);
+    expect(flip.isPointOnCorners(AWAY)).toBe(false);
+  }
+
+  test('the parked pose stays strictly inside the leaf', () => {
+    // A REAL duration: `animateFlippingTo` installs frames rather than running
+    // them, and `finishAnimation()` below lands the last one — which is the
+    // parked pose, and the same call the hover-exit path makes.
+    const { book: app } = narrowBook({ flippingTime: 1000 });
+    const flip = app.getFlipController()!;
+    assertNarrowFixture(app);
+
+    flip.showCorner(HOVER);
+    expect(flip.getState()).toBe(FlippingState.FOLD_CORNER);
+
+    app.getRender().finishAnimation();
+
+    const calc = flip.getCalculation();
+    expect(calc).not.toBeNull();
+
+    // The pose, pinned against a calculation seeded at the destination the fix
+    // computes: `min(50, pageWidth / 2, height / 2)` = 25, so `x = 50 - 25`.
+    const parked = new FlipCalculation(
+      FlipDirection.FORWARD,
+      FlipCorner.TOP,
+      NARROW.pageWidth,
+      NARROW.height,
+    );
+    expect(parked.calc({ x: NARROW.pageWidth - 25, y: 25 })).toBe(true);
+    expect(calc!.getPosition()).toEqual(parked.getPosition());
+
+    // …and the property that actually matters: the corner is still on the
+    // reader's side of the spine, so `stopMove()` cannot read it as a commit.
+    expect(calc!.getPosition().x).toBeGreaterThan(0);
+
+    // The negative control. Seeded at the OLD destination — a flat 50 — the
+    // very same calculation parks AT the spine, which is the pose that turned
+    // the page. Without this the assertion above could be satisfied by a
+    // fixture that was never narrow enough to break.
+    const flat = new FlipCalculation(
+      FlipDirection.FORWARD,
+      FlipCorner.TOP,
+      NARROW.pageWidth,
+      NARROW.height,
+    );
+    expect(flat.calc({ x: NARROW.pageWidth - 50, y: 50 })).toBe(true);
+    expect(flat.getPosition().x).toBeLessThanOrEqual(0);
+    expect(flat.getPosition()).not.toEqual(parked.getPosition());
+  });
+
+  test('hovering a corner and moving away turns nothing', () => {
+    const { book: app } = narrowBook({ flippingTime: 1000 });
+    const flip = app.getFlipController()!;
+    assertNarrowFixture(app);
+    expect(app.getCurrentPageIndex()).toBe(0);
+
+    flip.showCorner(HOVER);
+    expect(flip.getState()).toBe(FlippingState.FOLD_CORNER);
+
+    // The exit: `showCorner` off the corner runs `finishAnimation()` (landing
+    // the parked pose) and then `stopMove()`, which starts either a snap-back
+    // or a turn. Landing THAT animation is what tells the two apart — asserting
+    // the index straight after the exit passes on a real duration whether or
+    // not a turn was started.
+    flip.showCorner(AWAY);
+    app.getRender().finishAnimation();
+
+    expect(app.getCurrentPageIndex()).toBe(0);
+    expect(flip.getState()).toBe(FlippingState.READ);
+    expect(flip.getCalculation()).toBeNull();
+  });
+
+  test('a drag that really does cross the spine still commits', () => {
+    // The other end of the same test: `stopMove`'s `pos.x <= 0` is what makes a
+    // genuine drag past the middle turn the page, so a "fix" that clamped or
+    // qualified THAT test would pass the case above and fail here.
+    const { book: app } = narrowBook({ flippingTime: 1000 });
+    const flip = app.getFlipController()!;
+    assertNarrowFixture(app);
+
+    flip.fold(HOVER);
+    expect(flip.getState()).toBe(FlippingState.USER_FOLD);
+    // Dragged well past the spine, at the far left of the host.
+    flip.fold({ x: NARROW.left - 40, y: NARROW.top + 2 });
+    expect(flip.getCalculation()!.getPosition().x).toBeLessThanOrEqual(0);
+
+    flip.stopMove();
+    app.getRender().finishAnimation();
+
+    expect(app.getCurrentPageIndex()).toBe(1);
+    expect(flip.getState()).toBe(FlippingState.READ);
+  });
+
+  test('an ordinary leaf keeps the full 50px peel', () => {
+    // The clamp is inert at ordinary proportions: 200x300 keeps `min(50, 100,
+    // 150) = 50`, so this is the assertion that the fix is a bound and not a
+    // rewrite of the affordance.
+    const { book: app } = book({ width: 200, height: 300, pageCount: 6, flippingTime: 1000 });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+    expect(rect).toEqual({ left: -110, top: 0, width: 400, height: 300, pageWidth: 200 });
+
+    flip.showCorner({ x: rect.left + rect.width - 2, y: rect.top + 2 });
+    app.getRender().finishAnimation();
+
+    const reference = new FlipCalculation(
+      FlipDirection.FORWARD,
+      FlipCorner.TOP,
+      rect.pageWidth,
+      rect.height,
+    );
+    expect(reference.calc({ x: rect.pageWidth - 50, y: 50 })).toBe(true);
+    expect(flip.getCalculation()!.getPosition()).toEqual(reference.getPosition());
+  });
+
+  test('a short leaf peels towards its own corner, not across the middle', () => {
+    // The vertical half of the same bound. On a 400x60 leaf the old flat 50 put
+    // a BOTTOM peel's destination at `y = 10` — the TOP tenth of the leaf.
+    const { book: app } = book({ width: 400, height: 60, pageCount: 6, flippingTime: 1000 });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+    expect(rect.pageWidth).toBe(400);
+    expect(rect.height).toBe(60);
+    expect(rect.height / 2).toBeLessThan(50);
+
+    flip.showCorner({ x: rect.left + rect.width - 2, y: rect.top + rect.height - 2 });
+    const calc = flip.getCalculation()!;
+    expect(calc.getCorner()).toBe(FlipCorner.BOTTOM);
+
+    app.getRender().finishAnimation();
+
+    // `min(50, 200, 30) = 30`, so the destination is `y = 60 - 30 = 30`: the
+    // boundary of the bottom half, never above it.
+    const parked = new FlipCalculation(
+      FlipDirection.FORWARD,
+      FlipCorner.BOTTOM,
+      rect.pageWidth,
+      rect.height,
+    );
+    expect(parked.calc({ x: rect.pageWidth - 30, y: rect.height - 30 })).toBe(true);
+    expect(calc.getPosition()).toEqual(parked.getPosition());
+    expect(calc.getPosition().y).toBeGreaterThanOrEqual(rect.height / 2);
   });
 });

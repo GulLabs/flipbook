@@ -489,11 +489,38 @@ export class Flip {
 
         this.setState(FlippingState.FOLD_CORNER);
 
-        const fixedCornerSize = 50;
+        // Z1. The peel is bounded by the leaf it peels.
+        //
+        // This size used to be a flat 50, and the fold parks at local
+        // `x = pageWidth - it`. On a leaf 50px wide or narrower that parks the
+        // corner AT or PAST the spine — and `stopMove()` commits on exactly
+        // `pos.x <= 0`. So on a 50x300 book, hovering a corner and then moving
+        // the pointer away turned the page: `showCorner`'s else-branch runs
+        // `finishAnimation()` (which lands the fold on its parked pose) and then
+        // `stopMove()`, which read that pose as "the reader carried this leaf
+        // across the spine" and advanced the index 0 -> 1 with no click.
+        //
+        // Fixed at the producer, not at the commit test. `pos.x <= 0` is the
+        // definition of a leaf that has crossed the spine, and it is what makes
+        // a genuine drag past the middle commit; clamping or special-casing it
+        // there would have to distinguish a fold that arrived from a hover from
+        // one that arrived from a finger, which is a fact about the gesture, not
+        // about the geometry. What was actually wrong is that a HOVER — an
+        // affordance that must never commit anything — was able to synthesise a
+        // committed pose. A peel is a corner-sized nub of the page, so its size
+        // is a property of the page.
+        //
+        // Bounded on BOTH axes for the same reason: `yDest` is
+        // `rect.height - it` for a BOTTOM hover, so on a leaf 50px tall or
+        // shorter the bottom corner's peel animated to the TOP half of the leaf.
+        // Half of each dimension keeps the parked pose strictly inside the leaf
+        // and on the hovered corner's own half, and the clamp is inert at
+        // ordinary proportions — a 200x300 leaf keeps the full 50.
+        const cornerSize = Math.min(50, rect.pageWidth / 2, rect.height / 2);
         const yStart = calc.getCorner() === FlipCorner.BOTTOM ? rect.height - 1 : 1;
 
         const yDest =
-          calc.getCorner() === FlipCorner.BOTTOM ? rect.height - fixedCornerSize : fixedCornerSize;
+          calc.getCorner() === FlipCorner.BOTTOM ? rect.height - cornerSize : cornerSize;
 
         // FL3. The seed has to be the same point the animation starts from.
         // It used to be hard-coded to `y: 1` — the TOP corner — while `yStart`
@@ -506,7 +533,7 @@ export class Flip {
 
         this.animateFlippingTo(
           { x: pageWidth - 1, y: yStart },
-          { x: pageWidth - fixedCornerSize, y: yDest },
+          { x: pageWidth - cornerSize, y: yDest },
           false,
           false,
         );
@@ -595,6 +622,25 @@ export class Flip {
       if (this.turnGeneration !== generation) return;
 
       if (needReset) {
+        // Z4, RECORDED AND NOT FIXED HERE — it cannot be, from this file.
+        //
+        // `Render.cancelAnimation` drops four pieces of per-turn state; this
+        // path drops three. `render.pageRect` — the clip
+        // `HTMLRender.drawInnerShadow` / `CanvasRender.drawInnerShadow` cut the
+        // inner shadow against — survives a completed turn, so the renderer
+        // carries one turn's fold geometry into the next.
+        //
+        // It is state hygiene, not a reproducible visual defect, and the same is
+        // true of RD2 on the cancel path. `pageRect` has exactly one reader on
+        // each renderer, both guarded by `shadow !== null`, and the shadow is
+        // cleared on the line below. Its only writer is `do()`, which writes it
+        // BEFORE `setShadowData` in the same call — so by the time a shadow
+        // exists again, the rect beside it is from the same frame. There is no
+        // ordering in which the stale rect can be drawn.
+        //
+        // Fixing it needs `Render.setPageRect(pageRect: RectPoints | null)`
+        // (Render.ts:716); this agent's file scope excludes that file, so the
+        // asymmetry is left visible rather than papered over with a cast.
         this.render.setBottomPage(null);
         this.render.setFlippingPage(null);
         this.render.clearShadow();
@@ -809,8 +855,6 @@ export class Flip {
     // by coincidence of proportions, and at ordinary proportions the clamp is
     // inert — a 200x300 leaf keeps its 72.1 in both orientations.
     //
-    // Only the horizontal band is clamped: the vertical one has no direction
-    // split to disagree with.
     // One term, not two: the FAR side of the split would need
     // `cornerBand <= visibleSpan - splitOffset`, and `splitOffset` is never more
     // than half the visible span in either orientation (landscape splits it
@@ -819,13 +863,44 @@ export class Flip {
     // branch — the C11 mistake in a `Math.min`.
     const cornerBand = Math.min(operatingDistance, this.getDirectionSplitOffset(rect));
 
+    // Z2, the same missing constraint on the other axis. `operatingDistance` is
+    // a fifth of the DIAGONAL and knows nothing about the page's height either,
+    // so it exceeds half the height on any leaf wider than about 1.14x its
+    // height — on a 400x100 leaf it is 82.5 against a half-height of 50, and the
+    // top band and the bottom band then both cover the whole leaf.
+    //
+    // The horizontal clamp (I10) was justified by the direction split, and the
+    // vertical axis was left alone on the grounds that it has no counterpart.
+    // It does: `start()` assigns the corner with
+    // `bookPos.y >= rect.height / 2 ? BOTTOM : TOP`. A band that reaches past
+    // that midline claims points which, once the fold is accepted, are handed
+    // to the OTHER corner — the same "two derivations of the same boundary"
+    // defect I10 fixed, so this is a consistency fix and not a new policy.
+    //
+    // Half the height is therefore the bound, and the midline itself belongs to
+    // neither band. That mirrors the horizontal case exactly: in landscape the
+    // split IS half the visible span, so the two x bands already tile the book
+    // with the middle line excluded, and "the middle of the page is not a
+    // corner" is a property this predicate already had at ordinary proportions.
+    //
+    // What this deliberately does NOT do is make the middle of a very wide leaf
+    // a non-corner in y. Once `operatingDistance` exceeds half the height, the
+    // two half-height bands still tile the leaf, so on a 400x100 book everything
+    // inside the x band except that one line is still a corner. That is the
+    // diagonal heuristic being a poor fit for extreme aspect ratios, and
+    // replacing it (a per-axis band, a fraction of each side) is a product
+    // decision about how big a corner IS — AGENTS.md §5, not this fix's to make.
+    // The `disableFlipByClick` consequence is bounded by the x clamp, which does
+    // exclude the middle of a wide leaf.
+    const cornerHeight = Math.min(operatingDistance, rect.height / 2);
+
     return (
       bookPos.x > visibleLeft &&
       bookPos.y > 0 &&
       bookPos.x < rect.width &&
       bookPos.y < rect.height &&
       (bookPos.x < visibleLeft + cornerBand || bookPos.x > rect.width - cornerBand) &&
-      (bookPos.y < operatingDistance || bookPos.y > rect.height - operatingDistance)
+      (bookPos.y < cornerHeight || bookPos.y > rect.height - cornerHeight)
     );
   }
 
