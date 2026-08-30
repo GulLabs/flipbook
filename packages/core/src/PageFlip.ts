@@ -165,6 +165,15 @@ export class PageFlip extends EventObject {
    */
   public destroy(): void {
     this.destroyed = true;
+
+    // L8. From here on a listener error cannot abort the teardown — it is
+    // reported on the next task instead of thrown. Everything below this line
+    // emits (`ui.destroy()` abandons an in-flight gesture, `abandon()`
+    // announces READ) while `destroyed` is already true, so any listener that
+    // reads engine state gets the `DESTROYED` error the contract promises — and
+    // that used to come straight back out of `destroy()`, taking the rest of
+    // the cleanup with it. See `EventObject.trigger`.
+    this.deferListenerErrors();
     this.cancelPendingInit();
     // May be called before create() finishes wiring render/ui.
     this.render?.stop();

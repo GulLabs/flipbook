@@ -18,6 +18,22 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — `destroy()` could be aborted by a consumer's own event listener
+
+- **A listener that read engine state threw out of `destroy()` itself.**
+  Teardown sets `destroyed` and then emits — `ui.destroy()` abandons an
+  in-flight gesture and `abandon()` announces `read` — so a `changeState`
+  listener reading `getPageCollection()` got exactly the `DESTROYED` error the
+  contract promises it, and that error came straight back out of `destroy()`,
+  skipping the rest of the cleanup. Under React that is a `useEffect` cleanup
+  throwing on unmount because of a listener that worked a moment earlier.
+
+  Listener errors raised **during teardown** are now reported on a later task
+  instead of thrown. This is not silencing — they still reach `window.onerror` /
+  `uncaughtException` — and it is scoped to teardown only: outside it, the first
+  listener error is still thrown synchronously, so
+  `try { book.updateFromHtml(…) } catch` is unchanged.
+
 ### Fixed — host ownership and redundant frames
 
 - **`destroy()` stripped a `stf__parent` class the caller owned.** The teardown

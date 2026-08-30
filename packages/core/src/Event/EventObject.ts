@@ -52,6 +52,9 @@ function rethrowAsync(error: unknown): void {
 export abstract class EventObject {
   private events = new Map<string, EventCallback[]>();
 
+  /** See {@link EventObject.deferListenerErrors}. */
+  private deferErrors = false;
+
   /**
    * E4: the event name is constrained to `FlipbookEventMap`.
    *
@@ -145,6 +148,15 @@ export abstract class EventObject {
    *   (only its types are), so this adds no public surface. Consumers already
    *   have `off(name)`.
    */
+  /**
+   * Route listener errors asynchronously from here on — see L8 in
+   * {@link EventObject.trigger}. One-way: nothing turns it back off, because
+   * the only caller is a teardown and there is no "after" for it to restore.
+   */
+  protected deferListenerErrors(): void {
+    this.deferErrors = true;
+  }
+
   protected clearListeners(): void {
     this.events.clear();
   }
@@ -217,6 +229,27 @@ export abstract class EventObject {
     }
 
     if (errors === null) return;
+
+    // L8. During teardown EVERY error is deferred, including the first.
+    //
+    // The synchronous rethrow below is deliberate (E2): a listener that throws
+    // is a consumer defect, and this engine does not convert a failure that is
+    // not its own into silence. Teardown is the one place where that rule loses
+    // to a stronger one — cleanup must complete. `destroy()` emits `changeState`
+    // (via `abandon()`) after `destroyed` is already set, so a listener that
+    // reads engine state gets the `DESTROYED` the contract promises it — and
+    // that throw came straight back out of `book.destroy()`. A React `useEffect`
+    // cleanup therefore threw on unmount because of a listener that had been
+    // working a moment earlier, and the rest of the teardown did not run.
+    //
+    // Deferring is not silencing: every one of these still reaches
+    // `window.onerror` / `uncaughtException` on the next task. What changes is
+    // that a dying engine cannot take the caller's cleanup down with it.
+    if (this.deferErrors) {
+      for (const error of errors) rethrowAsync(error);
+      return;
+    }
+
     for (let i = 1; i < errors.length; i += 1) rethrowAsync(errors[i]);
     throw errors[0];
   }

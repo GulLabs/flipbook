@@ -2002,3 +2002,90 @@ describe('Y2 — destroying from inside a handler does not truncate that dispatc
     expect(book.isDestroyed()).toBe(true);
   });
 });
+
+/**
+ * L8 — a listener cannot take the teardown down with it.
+ *
+ * Found by a test whose `changeState` listener happened to read
+ * `getPageCollection()`, not by reading the code.
+ */
+describe('L8 — destroy() completes even when a listener throws', () => {
+  test('a state listener that reads engine state does not break destroy()', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 400 });
+    book.loadFromHTML(makePages(6));
+
+    // A turn IN FLIGHT, and this is load-bearing: `setState` only dispatches on
+    // a real transition, so a book at rest emits nothing during teardown and
+    // the whole test passes vacuously. Both of the first drafts here did.
+    book.flipNext();
+    expect(book.getState()).toBe(FlippingState.FLIPPING);
+
+    // The natural shape: a listener that mirrors engine state into consumer UI.
+    book.on('changeState', () => {
+      book.getPageCollection().getCurrentSpreadIndex();
+    });
+
+    // Reverted fix: throws `PageFlipError('DESTROYED')`. `destroy()` sets
+    // `destroyed` first and then emits — `ui.destroy()` abandons an in-flight
+    // gesture, `abandon()` announces READ — so the listener gets exactly the
+    // error the contract promises it, and E2's synchronous rethrow carried it
+    // straight back out of `destroy()`. Under React that is a `useEffect`
+    // cleanup throwing on unmount, with the rest of the cleanup skipped.
+    expect(() => {
+      book.destroy();
+    }).not.toThrow();
+
+    // …and the teardown actually FINISHED rather than bailing out midway.
+    expect(book.isDestroyed()).toBe(true);
+    expect(() => book.getPageCollection()).toThrow(PageFlipError);
+    expect(book.flipNext()).toBe(false);
+  });
+
+  test('the error is deferred, not swallowed', () => {
+    vi.useFakeTimers();
+
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 400 });
+    book.loadFromHTML(makePages(6));
+
+    book.flipNext(); // a live state, so teardown has a transition to announce
+
+    const boom = new Error('listener blew up');
+    book.on('changeState', () => {
+      throw boom;
+    });
+
+    book.destroy();
+
+    // Deferring is not silencing — this engine's rule is that a failure which
+    // is not its own is never converted into silence (see `requestTurn`). It
+    // lands on a fresh task, where it becomes `window.onerror` /
+    // `uncaughtException`, instead of aborting the cleanup. Driven with fake
+    // timers like the E2 tests, because jsdom's uncaught-error plumbing is not
+    // the contract — "on a later task" is.
+    expect(() => {
+      vi.runAllTimers();
+    }).toThrow(boom);
+
+    vi.useRealTimers();
+  });
+
+  test('outside teardown the first error is still thrown synchronously', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(4));
+
+    const boom = new Error('still synchronous');
+    book.on('update', () => {
+      throw boom;
+    });
+
+    // The control, and the reason this is a narrow exception rather than a
+    // policy change: E2's synchronous rethrow is what keeps
+    // `try { book.updateFromHtml(…) } catch` working, and only teardown is
+    // exempt.
+    expect(() => {
+      book.updateFromHtml(makePages(6));
+    }).toThrow(boom);
+
+    book.destroy();
+  });
+});

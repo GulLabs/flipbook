@@ -60,6 +60,22 @@ orientation, shadow gradients, hard-page z-order — wanted that already. If you
 were reading it to learn which way a turn was heading, read the `flip` event or
 compare page indices instead.
 
+### `destroy()` no longer throws because of your event listener
+
+If one of your listeners throws while the engine is tearing down, `destroy()`
+now completes and the error surfaces as an uncaught error on a later task,
+rather than propagating out of the `destroy()` call and skipping the rest of the
+cleanup. Nothing is swallowed.
+
+This matters most for a listener that reads engine state: `destroy()` emits
+`changeState` after the engine is already marked destroyed, so
+`getPageCollection()`, `getRender()` and friends throw `DESTROYED` from inside
+that handler by design. Guard such a listener with `book.isDestroyed()` if you
+want it to stay quiet.
+
+Outside teardown nothing changes: the first listener error is still thrown
+synchronously from the call that emitted.
+
 ### The render loop is scheduled on demand, not continuously
 
 An idle HTML book no longer calls `requestAnimationFrame`. The engine wakes
