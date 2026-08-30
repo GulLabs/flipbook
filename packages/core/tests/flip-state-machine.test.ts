@@ -1247,3 +1247,92 @@ describe('V2 — the corner test and the direction test agree on the boundary', 
     ).toBe(false);
   });
 });
+
+describe('AN4 — a turn started from `changeState` cannot be overrun either', () => {
+  /**
+   * The window AN1's guard cannot reach. `finishOutgoingTurn()` runs BEFORE
+   * `start()`; this one opens after it — `calc` is installed, no animation is
+   * installed yet, and `setState(FLIPPING)` hands control to consumer code
+   * standing exactly in between. A listener's `flipNext()` therefore finds a
+   * live calculation with nothing to finish, concludes it superseded nothing,
+   * and takes the book out from under a call that is still holding the
+   * calculation it replaced.
+   */
+  test('the outer call is refused, and does not commit a second page', () => {
+    const { book: app } = book({ pageCount: 8, flippingTime: 400 });
+
+    const seen: number[] = [];
+    let chained = false;
+
+    app.on('flip', (e) => {
+      seen.push(e.data as number);
+    });
+    app.on('changeState', (e) => {
+      if ((e.data as string) !== 'flipping' || chained) return;
+      chained = true;
+      app.flipNext();
+    });
+
+    const started = app.flipNext();
+
+    // Reverted fix, measured against the built engine: `true`, page 1
+    // committed, `state: read`, and a ghost animation left running — then the
+    // NEXT `flipNext()` committed page 2 immediately and page 3 at completion.
+    // Two commits for one request.
+    expect(started).toBe(false);
+    expect(seen).toEqual([]);
+    expect(app.getCurrentPageIndex()).toBe(0);
+
+    // The nested turn is the one that owns the book, and it is intact.
+    expect(app.getState()).toBe(FlippingState.FLIPPING);
+    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+    expect(app.getRender().isAnimating()).toBe(true);
+
+    // …and it lands normally, once, when it finishes.
+    app.getRender().finishAnimation();
+    expect(seen).toEqual([1]);
+    expect(app.getCurrentPageIndex()).toBe(1);
+  });
+
+  test('an absolute turn overrun the same way does not throw or strand the index', () => {
+    const { book: app } = book({ pageCount: 8, flippingTime: 400 });
+
+    let chained = false;
+    app.on('changeState', (e) => {
+      if ((e.data as string) !== 'flipping' || chained) return;
+      chained = true;
+      app.flipNext();
+    });
+
+    // `PageFlip.flip` reaches `flipToPage` directly, so a throw here is
+    // uncaught in the consumer — and the React binding drives it from the
+    // controlled `page` prop.
+    expect(() => {
+      app.flip(5);
+    }).not.toThrow();
+
+    // The phantom spread index is the collection's PUBLIC state. Leaving it
+    // installed is what made a later `flipToPage` compute its direction from a
+    // spread the book was never on.
+    expect(app.getPageCollection().getCurrentSpreadIndex()).toBe(0);
+    expect(app.getCurrentPageIndex()).toBe(0);
+
+    app.getRender().finishAnimation();
+    expect(app.getCurrentPageIndex()).toBe(1);
+  });
+
+  test('a `flipping` listener that starts NO turn is unaffected', () => {
+    const { book: app } = book({ pageCount: 8, flippingTime: 400 });
+
+    const states: string[] = [];
+    app.on('changeState', (e) => states.push(e.data as string));
+
+    // The control: the guard must fire on a moved generation, not on the mere
+    // presence of a listener.
+    expect(app.flipNext()).toBe(true);
+    expect(states).toEqual(['flipping']);
+
+    app.getRender().finishAnimation();
+    expect(app.getCurrentPageIndex()).toBe(1);
+  });
+});

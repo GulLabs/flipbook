@@ -175,9 +175,38 @@ export class Flip {
     const calc = this.calc;
     if (calc === null) return false;
 
+    // This turn's own stamp, taken from `start()`. Everything below belongs to
+    // it, and the next line hands control to consumer code.
+    const generation = this.turnGeneration;
+
     const rect = this.getBoundsRect();
 
     this.setState(FlippingState.FLIPPING);
+
+    // AN4. `setState` dispatches `changeState` SYNCHRONOUSLY, and this one lands
+    // in the worst possible window: `start()` has installed a calculation but
+    // `animateFlippingTo` has not installed an animation yet. A listener that
+    // calls `flipNext()` from it therefore reaches `finishOutgoingTurn()`, which
+    // sees a live `calc` but no animation to finish, concludes nothing was
+    // superseded, and takes the book — while this call is still holding a
+    // reference to the calculation it just replaced.
+    //
+    // What happened next, reproduced against the built engine: the outer call
+    // resumed, ran `calc.calc()` on its now-orphaned calculation, and handed
+    // `animateFlippingTo` a generation that had already moved on to the nested
+    // turn — so its `startAnimation` force-finished the NESTED animation with
+    // the outer turn's frames. First `flipNext()` returned `true`, committed
+    // page 1 and left `state: read` with a ghost animation; the second
+    // committed page 2 immediately and page 3 at completion. Two commits for one
+    // request, and a `false` the caller never saw.
+    //
+    // AN1's guard cannot cover this: it runs before `start()`, and the window
+    // opens after. This is the same rule applied at the only other point in a
+    // turn's setup where the engine calls out to consumer code.
+    if (this.turnGeneration !== generation) {
+      this.refusal = 'superseded';
+      return false;
+    }
 
     const corner = calc.getCorner() === FlipCorner.BOTTOM ? 'bottom' : 'top';
     // SAME local curl for forward and back. BACK looks right on screen
@@ -490,6 +519,27 @@ export class Flip {
       this.pendingTarget = null;
       collection.setCurrentSpreadIndex(current);
       throw err;
+    }
+
+    // Read-and-clear HERE, because this path does not go through
+    // `PageFlip.requestTurn` — `PageFlip.flip` calls this method directly. A
+    // `superseded` left standing would attach itself to some unrelated later
+    // refusal and report "a newer turn is running" for a book at its boundary.
+    const refusal = this.takeRefusal();
+
+    if (refusal === 'superseded') {
+      // AN4 again, on the absolute path. A turn started from this call's own
+      // `changeState('flipping')` now owns the book, and `pendingTarget` with
+      // it — so the only thing still ours to put back is the phantom spread
+      // index, and it must go back unconditionally: the test below
+      // (`pendingTarget !== null`) is asking whether OUR target survived, and
+      // here it did not because somebody else overwrote it.
+      //
+      // Returning rather than throwing, for the same reason as the guard at the
+      // top: `PageFlip.flip` is called straight from the React binding's
+      // controlled `page` prop, and nothing about the request was invalid.
+      collection.setCurrentSpreadIndex(current);
+      return;
     }
 
     // Instant turns (`flippingTime: 0` / reduced motion) run the animation

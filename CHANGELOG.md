@@ -46,6 +46,14 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
 
 ### Fixed — re-entrancy from the engine's own synchronous events
 
+- **A turn started from `changeState('flipping')` could be overrun the same
+  way, through a window the first guard cannot reach.** `setState` dispatches
+  between `start()` installing a calculation and `animateFlippingTo` installing
+  an animation, so a listener's `flipNext()` found a live `calc` with nothing to
+  finish, concluded it had superseded nothing, and took the book from a call
+  still holding the calculation it replaced. Measured: the first `flipNext()`
+  returned `true`, committed page 1 and left `state: read` with a ghost
+  animation; the next committed page 2 immediately and page 3 at completion.
 - **A turn started from an `onFlip` handler could be overwritten by the call
   that finished it.** `finishAnimation()` commits the outgoing turn and emits
   `flip` synchronously, and a listener is entitled to start the next turn from
