@@ -163,6 +163,20 @@ export function pointsBetween(a: Point, b: Point): Point[] {
   const steps = Math.ceil(Math.max(sx, sy));
   const out: Point[] = [a];
 
+  // `steps` is the loop bound, and it comes from caller data. A non-finite
+  // endpoint makes it `Infinity`, and `i <= Infinity` never ends: the loop
+  // pushes points until the heap dies — measured, ~4 GB in six seconds under
+  // Node, a frozen tab in a browser. That is a worse failure than any wrong
+  // picture, and it is the one degenerate input this function cannot survive.
+  //
+  // A NaN endpoint already lands here harmlessly (`1 <= NaN` is false, so the
+  // list is just `[a]` and the turn does not move). This gives Infinity the
+  // same answer rather than inventing a second one, so there is one degenerate
+  // behaviour to reason about, not two. No engine path can produce either
+  // today — `Settings` rejects non-finite dimensions and the fold coordinates
+  // are derived from them — so this is a bound on the loop, not a live fix.
+  if (!Number.isFinite(steps)) return out;
+
   for (let i = 1; i <= steps; i += 1) {
     // Clamped so the last point is exactly `b` rather than a rounding of it.
     const t = Math.min(i / steps, 1);

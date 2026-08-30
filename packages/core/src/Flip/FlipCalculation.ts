@@ -32,6 +32,23 @@ export class FlipCalculation {
   private readonly pageHeight: number;
 
   /**
+   * The page's own geometry, which cannot change while a turn is in flight:
+   * `pageWidth`/`pageHeight` are `readonly`, and a resize builds a new
+   * `FlipCalculation`. These were rebuilt inside `calc()` — so on every pointer
+   * move and every animation frame — and the three borders were additionally
+   * written out twice each, once in the TOP branch and once in the BOTTOM one.
+   *
+   * Naming them here is the point; the saved work is a side effect. Nothing
+   * downstream may mutate them: `intersectSegments` only reads its arguments
+   * and returns a fresh point, so no border object ever escapes this class.
+   */
+  private readonly diagonal: number;
+  private readonly boundRect: Rect;
+  private readonly topBorder: Segment;
+  private readonly sideBorder: Segment;
+  private readonly bottomBorder: Segment;
+
+  /**
    * @constructor
    *
    * @param {FlipDirection} direction - Flipping direction
@@ -47,6 +64,21 @@ export class FlipCalculation {
   ) {
     this.pageWidth = pageWidth;
     this.pageHeight = pageHeight;
+
+    this.diagonal = Math.sqrt(pageWidth * pageWidth + pageHeight * pageHeight);
+    this.boundRect = { left: -1, top: -1, width: pageWidth + 2, height: pageHeight + 2 };
+    this.topBorder = [
+      { x: 0, y: 0 },
+      { x: pageWidth, y: 0 },
+    ];
+    this.sideBorder = [
+      { x: pageWidth, y: 0 },
+      { x: pageWidth, y: pageHeight },
+    ];
+    this.bottomBorder = [
+      { x: 0, y: pageHeight },
+      { x: pageWidth, y: pageHeight },
+    ];
   }
 
   /**
@@ -313,80 +345,60 @@ export class FlipCalculation {
     };
   }
 
+  /**
+   * One rotation by `this.angle`. `cos`/`sin` were each evaluated twice per
+   * point — eight of each per page rect, where two suffice — for a value that
+   * cannot change between the two lines that read it. Same arithmetic, same
+   * operand order, same bits out.
+   */
   private getRotatedPoint(transformedPoint: Point, startPoint: Point): Point {
+    const cos = Math.cos(this.angle);
+    const sin = Math.sin(this.angle);
+
     return {
-      x:
-        transformedPoint.x * Math.cos(this.angle) +
-        transformedPoint.y * Math.sin(this.angle) +
-        startPoint.x,
-      y:
-        transformedPoint.y * Math.cos(this.angle) -
-        transformedPoint.x * Math.sin(this.angle) +
-        startPoint.y,
+      x: transformedPoint.x * cos + transformedPoint.y * sin + startPoint.x,
+      y: transformedPoint.y * cos - transformedPoint.x * sin + startPoint.y,
     };
   }
 
   private calculateIntersectPoint(pos: Point): void {
-    const boundRect: Rect = {
-      left: -1,
-      top: -1,
-      width: this.pageWidth + 2,
-      height: this.pageHeight + 2,
-    };
+    const boundRect = this.boundRect;
 
     if (this.corner === FlipCorner.TOP) {
       this.topIntersectPoint = intersectSegments(
         boundRect,
         [pos, this.rect.topRight],
-        [
-          { x: 0, y: 0 },
-          { x: this.pageWidth, y: 0 },
-        ],
+        this.topBorder,
       );
 
       this.sideIntersectPoint = intersectSegments(
         boundRect,
         [pos, this.rect.bottomLeft],
-        [
-          { x: this.pageWidth, y: 0 },
-          { x: this.pageWidth, y: this.pageHeight },
-        ],
+        this.sideBorder,
       );
 
       this.bottomIntersectPoint = intersectSegments(
         boundRect,
         [this.rect.bottomLeft, this.rect.bottomRight],
-        [
-          { x: 0, y: this.pageHeight },
-          { x: this.pageWidth, y: this.pageHeight },
-        ],
+        this.bottomBorder,
       );
     } else {
       this.topIntersectPoint = intersectSegments(
         boundRect,
         [this.rect.topLeft, this.rect.topRight],
-        [
-          { x: 0, y: 0 },
-          { x: this.pageWidth, y: 0 },
-        ],
+        this.topBorder,
       );
 
       this.sideIntersectPoint = intersectSegments(
         boundRect,
         [pos, this.rect.topLeft],
-        [
-          { x: this.pageWidth, y: 0 },
-          { x: this.pageWidth, y: this.pageHeight },
-        ],
+        this.sideBorder,
       );
 
       this.bottomIntersectPoint = intersectSegments(
         boundRect,
         [this.rect.bottomLeft, this.rect.bottomRight],
-        [
-          { x: 0, y: this.pageHeight },
-          { x: this.pageWidth, y: this.pageHeight },
-        ],
+        this.bottomBorder,
       );
     }
   }
@@ -400,8 +412,6 @@ export class FlipCalculation {
       this.updateAngleAndGeometry(result);
     }
 
-    const rad = Math.sqrt(this.pageWidth * this.pageWidth + this.pageHeight * this.pageHeight);
-
     let checkPointOne = this.rect.bottomRight;
     let checkPointTwo = this.rect.topLeft;
 
@@ -411,7 +421,7 @@ export class FlipCalculation {
     }
 
     if (checkPointOne.x <= 0) {
-      const bottomPoint = limitToCircle(centerTwo, rad, checkPointTwo);
+      const bottomPoint = limitToCircle(centerTwo, this.diagonal, checkPointTwo);
 
       if (bottomPoint !== result) {
         result = bottomPoint;

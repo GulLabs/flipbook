@@ -40,6 +40,24 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — `pointsBetween` could loop without bound
+
+- **A non-finite endpoint froze the tab.** The loop count is derived from caller
+  data, so an `Infinity` coordinate made it `Infinity` and the loop allocated
+  points until the heap died — measured at ~4 GB in 6 s under Node, which in a
+  browser is a frozen tab. It returns a single point now, the same degenerate
+  answer a `NaN` endpoint already gave, so there is one degenerate behaviour
+  instead of two. No engine path can reach this today — `Settings` rejects
+  non-finite dimensions — so it is a bound on the loop rather than a live defect.
+
+### Internal — `FlipCalculation` does less work per frame
+
+- Page borders, bounds rect and the diagonal are built once in the constructor
+  instead of on every animation frame, and a point is rotated with one
+  `cos`/`sin` pair instead of two. **Bit-for-bit identical output**, pinned by a
+  2,400-frame digest across twelve page geometries; about 17% less work per
+  frame and 130 bytes smaller raw.
+
 ### Fixed — the density class contradicted the density
 
 - **An engine-inferred hard page carried `--soft`.** `setDrawingDensity` syncs
