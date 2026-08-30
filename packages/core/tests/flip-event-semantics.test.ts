@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest';
-import { makeHtmlBook, sizeElement } from './html-book-fixture';
+import { PageFlip } from '@gullabs/flipbook-core';
+import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
 
 /**
  * ADR 0003 — `flip` fires only when `getCurrentPageIndex()` actually changes.
@@ -31,19 +32,72 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     // book opens at 0, so nothing changed and nothing is claimed. `init` is the
     // load announcement and carries the resolved index.
     //
-    // The engine has to be watched from BEFORE the load, which the shared
-    // fixture cannot do — it loads inside the constructor helper — so the
-    // listener goes on via the `init` payload instead: `init` fires
-    // asynchronously, after the load's own dispatches, so anything `flip`
-    // emitted during the load is already in `document.body.dataset`.
-    const seen: number[] = [];
-    const book = makeHtmlBook({ ...landscape, startPage: 0 });
-    book.book.on('flip', (e) => seen.push(e.data as number));
+    // Built by hand rather than through `makeHtmlBook`, and that is the whole
+    // point of the test: the fixture calls `loadFromHTML` inside itself, so a
+    // listener attached to its return value has already MISSED the mount. A
+    // first-load exception that kept the old double-emit passed the earlier
+    // version of this test for exactly that reason.
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const pages = makePages(6);
+    for (const p of pages) host.appendChild(p);
 
-    // A repaint of the SAME spread. Before ADR 0003 this alone emitted.
-    book.book.update();
+    const book = new PageFlip(host, { width: 200, height: 300, size: 'fixed' });
+
+    const seen: number[] = [];
+    book.on('flip', (e) => seen.push(e.data as number));
+
+    book.loadFromHTML(pages);
 
     expect(seen).toEqual([]);
+    expect(book.getCurrentPageIndex()).toBe(0);
+
+    // A repaint of the SAME spread. Before ADR 0003 this alone emitted.
+    book.update();
+    expect(seen).toEqual([]);
+
+    book.destroy();
+    host.remove();
+  });
+
+  test('replacing the page NODES at the same index emits no flip', () => {
+    // Codex's blocker, and the most common call the React binding makes: every
+    // time children change, `updateFromHtml` builds a FRESH collection, which
+    // starts at index 0, and re-shows the preserved index. The guard then
+    // compared 0 against 2 and announced a turn to page 2 for a reader already
+    // on page 2 — a false `onPageChange` on every re-render that swaps nodes.
+    const book = makeHtmlBook({ ...landscape, flippingTime: 0 });
+    book.book.turnToPage(2);
+    expect(book.book.getCurrentPageIndex()).toBe(2);
+
+    const seen = watch(book.book);
+
+    const replacement = makePages(6);
+    for (const p of replacement) book.host.appendChild(p);
+    book.book.updateFromHtml(replacement);
+
+    expect(book.book.getCurrentPageIndex()).toBe(2);
+    expect(seen).toEqual([]);
+
+    book.destroy();
+  });
+
+  test('replacing with a SHORTER book that clamps the index does emit', () => {
+    // The negative control for the seeding, and it is what stops the fix from
+    // being "never announce on a replacement". The book is on page 4; the new
+    // one has three pages, so the index really does move and must be reported.
+    const book = makeHtmlBook({ ...landscape, flippingTime: 0 });
+    book.book.turnToPage(4);
+    expect(book.book.getCurrentPageIndex()).toBe(4);
+
+    const seen = watch(book.book);
+
+    const replacement = makePages(3);
+    for (const p of replacement) book.host.appendChild(p);
+    book.book.updateFromHtml(replacement);
+
+    expect(book.book.getCurrentPageIndex()).toBe(2);
+    expect(seen).toEqual([2]);
 
     book.destroy();
   });
@@ -115,8 +169,12 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     book.book.flipNext();
     book.book.flipNext();
     book.book.flipPrev();
+    book.book.flipPrev();
 
-    expect(seen).toEqual([2, 4, 2]);
+    // Returning to head 0 is deliberate: `changed && headIdx` — a truthiness
+    // guard instead of a comparison — swallows exactly this turn and passes
+    // every other assertion in this file.
+    expect(seen).toEqual([2, 4, 2, 0]);
 
     book.destroy();
   });

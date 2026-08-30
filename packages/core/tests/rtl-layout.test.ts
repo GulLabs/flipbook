@@ -19,6 +19,11 @@ type Internals = Render & {
 
 const inner = (render: Render): Internals => render as unknown as Internals;
 
+/** The render's in-flight animation slot — protected, no getter, like the pages. */
+function renderAnimation(book: ReturnType<typeof makeHtmlBook>): unknown {
+  return (book.book.getRender() as unknown as { animation: unknown }).animation;
+}
+
 /** Force the frame that writes the inline styles, then hand back the internals. */
 function drawn(book: ReturnType<typeof makeHtmlBook>): Internals {
   const render = inner(book.book.getRender());
@@ -192,6 +197,54 @@ describe('RTL spread layout is mirrored', () => {
     rtl.destroy();
   });
 
+  test('showCover: the OFF-PARITY paired spread mirrors too', () => {
+    // Codex's third half-fix: mirror only when `headIdx % 2 === 0`. Every
+    // paired spread tested so far — [0,1] and [2,3] — has an even head, so
+    // that passes. With `showCover` the cover stands alone and the pairs shift
+    // to [1,2], [3,4]: odd heads, which the parity mutant leaves left-to-right.
+    //
+    // This is why parity is never a safe proxy for "is this a spread head".
+    const ltr = makeHtmlBook({ ...landscape, pageCount: 6, showCover: true, direction: 'ltr' });
+    const rtl = makeHtmlBook({ ...landscape, pageCount: 6, showCover: true, direction: 'rtl' });
+
+    ltr.book.turnToPage(1);
+    rtl.book.turnToPage(1);
+
+    // Sanity: this really is the [1,2] spread, not [0] or [2,3].
+    expect(ltr.book.getCurrentPageIndex()).toBe(1);
+    expect(rtl.book.getCurrentPageIndex()).toBe(1);
+
+    expect(drawn(ltr).leftPage).toBe(ltr.book.getPage(1));
+    expect(inner(ltr.book.getRender()).rightPage).toBe(ltr.book.getPage(2));
+
+    expect(drawn(rtl).rightPage).toBe(rtl.book.getPage(1));
+    expect(inner(rtl.book.getRender()).leftPage).toBe(rtl.book.getPage(2));
+
+    ltr.destroy();
+    rtl.destroy();
+  });
+
+  test('a ONE-page showCover book keeps its cover on the binding side', () => {
+    // The PC2 tie-break exists because for a one-page `showCover` book both
+    // descriptions are true of the same leaf: index 0 is also index
+    // `length - 1`. Without the `showCover && headIdx === 0` exclusion the
+    // last-leaf test wins and the cover is placed away from the spine.
+    //
+    // Under `ltr` that puts it left; under `rtl`, right. The RTL half was
+    // untested, so dropping the exclusion passed the whole file.
+    const ltr = makeHtmlBook({ ...landscape, pageCount: 1, showCover: true, direction: 'ltr' });
+    const rtl = makeHtmlBook({ ...landscape, pageCount: 1, showCover: true, direction: 'rtl' });
+
+    expect(drawn(ltr).rightPage).toBe(ltr.book.getPage(0));
+    expect(inner(ltr.book.getRender()).leftPage).toBeNull();
+
+    expect(drawn(rtl).leftPage).toBe(rtl.book.getPage(0));
+    expect(inner(rtl.book.getRender()).rightPage).toBeNull();
+
+    ltr.destroy();
+    rtl.destroy();
+  });
+
   test('changing direction mid-turn settles the fold instead of splitting the book', () => {
     // `showSpread` re-mirrors the static spread on the next `update()`, which
     // is immediate. The fold cannot: `Render.direction` and `FlipCalculation`
@@ -220,6 +273,101 @@ describe('RTL spread layout is mirrored', () => {
     expect(inner(book.book.getRender()).rightPage).toBe(
       book.book.getPage(book.book.getCurrentPageIndex()),
     );
+
+    book.destroy();
+  });
+
+  test('the settle drops the ANIMATION, not just the fold state', () => {
+    // `abandon()` alone satisfies a state assertion while the renderer keeps a
+    // live animation — a turn that still has frames scheduled against a
+    // calculation nobody owns. The pair is `cancelAnimation()` + `abandon()`,
+    // and only this asserts the first half.
+    const book = makeHtmlBook({ ...landscape, direction: 'ltr', flippingTime: 400 });
+
+    book.book.flipNext();
+    expect(renderAnimation(book)).not.toBeNull();
+
+    book.book.updateSettings({ direction: 'rtl' });
+
+    expect(renderAnimation(book)).toBeNull();
+
+    book.destroy();
+  });
+
+  test('the settle resets a real DRAG, not just a programmatic turn', () => {
+    // The settle test above uses `flipNext()`, which leaves no user gesture —
+    // so deleting `resetUserGesture()` passes it. During a real drag the
+    // engine is holding `isUserTouch` / `touchPoint`, and leaving those set
+    // means the NEXT pointermove resumes a fold with no fresh pointerdown:
+    // the page follows the cursor with no button held.
+    const book = makeHtmlBook({ ...landscape, direction: 'ltr', flippingTime: 400 });
+    const dist = book.book.getUI().getDistElement();
+    const rect = book.book.getBoundsRect();
+    const y = rect.top + rect.height / 2;
+    const startX = rect.left + rect.width - 10;
+
+    const pointer = (type: string, x: number): void => {
+      dist.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          button: 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+          pointerType: 'mouse',
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    };
+
+    // Press and drag, but do NOT release — the gesture is live.
+    pointer('pointerdown', startX);
+    pointer('pointermove', startX - 40);
+    expect(book.book.getState()).not.toBe(FlippingState.READ);
+
+    book.book.updateSettings({ direction: 'rtl' });
+    expect(book.book.getState()).toBe(FlippingState.READ);
+
+    // And the gesture flags are cleared, which is what `resetUserGesture()`
+    // exists for. Asserting the FIELDS rather than a behaviour is a concession,
+    // and it is recorded rather than hidden — AGENTS.md §2 asks for a
+    // non-discriminating test to be reported, not quietly kept.
+    //
+    // Two behavioural assertions were drafted first and both were MEASURED to
+    // pass with `resetUserGesture()` deleted, i.e. to prove nothing:
+    //   - "the next pointermove resumes the fold" — it does not; the state
+    //     machine refuses to fold from READ without a fresh press, so the stale
+    //     flag is invisible here.
+    //   - "a hover then folds the page corner" — `userMove` does guard
+    //     `showCorner` behind `!isUserTouch`, so this is the real downstream
+    //     symptom, but `FOLD_CORNER` is not reachable in this jsdom fixture
+    //     even with the flags correctly cleared, so the assertion fails for the
+    //     wrong reason.
+    // What a stuck `isUserTouch` actually costs a user is corner hover, dead
+    // for the rest of the book's life. That belongs in an e2e test with a real
+    // pointer, not here.
+    const gesture = book.book as unknown as { isUserTouch: boolean; isUserMove: boolean };
+    expect(gesture.isUserTouch).toBe(false);
+    expect(gesture.isUserMove).toBe(false);
+
+    book.destroy();
+  });
+
+  test('a mid-turn RESIZE settles the fold too — direction is not a special case', () => {
+    // Codex: the settle originally keyed on `direction` alone, but every
+    // geometry setting has the same hazard. `FlipCalculation` is built from the
+    // page dimensions at turn start, so a book resized mid-turn re-lays its
+    // static leaves at the new width while the curl keeps the old one.
+    const book = makeHtmlBook({ ...landscape, flippingTime: 400 });
+
+    book.book.flipNext();
+    expect(book.book.getState()).toBe(FlippingState.FLIPPING);
+
+    book.book.updateSettings({ width: 150 });
+
+    expect(book.book.getState()).toBe(FlippingState.READ);
+    expect(renderAnimation(book)).toBeNull();
 
     book.destroy();
   });

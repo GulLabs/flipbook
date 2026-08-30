@@ -43,6 +43,29 @@ export abstract class PageCollection {
   }
 
   /**
+   * Adopt the page index the collection this one REPLACES was reporting.
+   *
+   * ADR 0003 made `flip` fire only when the index changes, and a replacement
+   * collection breaks that predicate unless it is told where the book already
+   * was. `updateFromHtml` / `replacePages` preserve the outgoing index, build a
+   * fresh collection — which starts at 0 — and re-show the preserved index. The
+   * guard then compares 0 against 2 and announces a turn to page 2 for a reader
+   * who was already on page 2 and never moved. Swapping the page nodes under a
+   * React book is the common case, so that fired constantly.
+   *
+   * Seeding closes it without weakening anything: if the new book is shorter
+   * and the index clamps, the comparison is against the real outgoing index and
+   * the change is announced, correctly.
+   *
+   * Not a general setter — it does not move the book, and calling it anywhere
+   * but immediately after a replacement fabricates the baseline the `flip`
+   * guard measures against.
+   */
+  public adoptCurrentPageIndex(index: number): void {
+    this.currentPageIndex = index;
+  }
+
+  /**
    * Load pages
    */
   public abstract load(): void;

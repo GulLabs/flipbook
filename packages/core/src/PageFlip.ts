@@ -30,6 +30,42 @@ import { PageFlipError } from './errors';
 const CONSTRUCTION_TIME_SETTINGS = ['showCover', 'startPage'] as const;
 
 /**
+ * Settings a turn in flight was built against, and cannot absorb a change to.
+ *
+ * `Flip` freezes per-turn state at turn start on purpose — `Render.direction`
+ * is the geometric fold side (the `rtl` mirror applied exactly once), and
+ * `FlipCalculation` is constructed from the page dimensions of that moment.
+ * Everything here feeds one of those two. `updateSettings` meanwhile pushes
+ * straight through to `update()`, which re-lays the STATIC spread immediately.
+ *
+ * Change one mid-turn and the two halves disagree on screen: the resting pages
+ * re-lay at the new geometry while the curl, the underside, the shadows and the
+ * z-order keep the old, until the animation ends and snaps. Resizing a 200px
+ * landscape book to 150px mid-turn splits it exactly as toggling `direction`
+ * did.
+ *
+ * So a change to any of these settles the fold first. Freezing the static side
+ * to match the fold is the other repair and is the wrong one — it makes a
+ * public setting silently not take effect for as long as a gesture is held,
+ * which is the `swipeDistance` failure this repo already fixed once.
+ *
+ * `satisfies` so that adding a geometry setting without listing it here is a
+ * compile error rather than a book that splits under one specific gesture.
+ */
+const FOLD_INVALIDATING_SETTINGS = [
+  'direction',
+  'size',
+  'width',
+  'height',
+  'minWidth',
+  'maxWidth',
+  'minHeight',
+  'maxHeight',
+  'usePortrait',
+  'autoSize',
+] as const satisfies readonly (keyof FlipSetting)[];
+
+/**
  * Class representing a main PageFlip object
  *
  * @extends EventObject
@@ -439,6 +475,10 @@ export class PageFlip extends EventObject {
     const pageCount = pages.getPageCount();
     const target = pageCount === 0 ? 0 : Math.min(Math.max(current, 0), pageCount - 1);
 
+    // ADR 0003: the new collection starts at 0, so it has to inherit where the
+    // book already was or `show(target)` announces a turn that never happened.
+    this.pages.adoptCurrentPageIndex(current);
+
     if (pageCount === 0) {
       // Same hole as `updateFromHtml`: `show()` returns early for any index on
       // an empty collection, so the renderer would keep its references into the
@@ -700,6 +740,7 @@ export class PageFlip extends EventObject {
       // it only recreates the shadow elements.
       render.releasePages();
     } else {
+      pages.adoptCurrentPageIndex(current);
       pages.show(target);
     }
 
@@ -746,12 +787,14 @@ export class PageFlip extends EventObject {
 
     const next = new Settings().getSettings({ ...this.setting, ...effective });
     const mouseChanged = next.useMouseEvents !== this.setting.useMouseEvents;
-    const directionChanged = next.direction !== this.setting.direction;
+    const foldInvalidated = FOLD_INVALIDATING_SETTINGS.some(
+      (key) => (next[key] as unknown) !== (this.setting[key] as unknown),
+    );
     Object.assign(this.setting, next);
 
-    // A changed reading direction settles an in-flight fold before applying.
+    // A changed geometry setting settles an in-flight fold before applying.
     //
-    // `direction` is read live in two places that update at different moments.
+    // These are read live in two places that update at different moments.
     // `PageCollection.showSpread` re-mirrors the STATIC spread on the next
     // `update()`, which is immediate. The FOLD does not: `Render.direction` is
     // the geometric side, stamped once per turn by `Render.setDirection`, and
@@ -762,7 +805,9 @@ export class PageFlip extends EventObject {
     // begin an LTR landscape `flipNext()`, then flip to `rtl` after the first
     // frame, and the resting pages swap sides instantly while the curl,
     // the underside, the shadow gradients and the z-order stay LTR until the
-    // animation ends and snaps. Two readings on screen at once.
+    // animation ends and snaps. Two readings on screen at once. Resizing the
+    // book mid-turn splits it the same way, in the other axis: the static
+    // leaves take the new page width while the curl keeps the old one.
     //
     // Freezing the static side to match the fold would be the other repair,
     // and it is the wrong one: it makes a public setting silently not take
@@ -775,7 +820,7 @@ export class PageFlip extends EventObject {
     // `abandon()` emits `changeState`, so a listener may destroy from inside
     // it; the check below is why this sits ABOVE the RE-3 hoist rather than
     // beside `update()`.
-    if (directionChanged && this.render !== null) {
+    if (foldInvalidated && this.render !== null) {
       this.render.cancelAnimation();
       this.flipController?.abandon();
       this.resetUserGesture();
