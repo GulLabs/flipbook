@@ -995,3 +995,125 @@ describe('R7 — the loop closure has no temporal dead zone', () => {
     expect(render.frameDraws).toBe(3);
   });
 });
+
+describe('U5 — startAnimation must not orphan a turn chained from its own commit', () => {
+  /** Five frames, tagged, so three animations can share one trace. */
+  function tagged(trace: string[], tag: string): Array<() => void> {
+    return [0, 1, 2, 3, 4].map((i) => () => trace.push(`${tag}:${String(i)}`));
+  }
+
+  test('an animation installed by the opening finishAnimation() survives', () => {
+    // The live race: turn A is animating, its `onAnimateEnd` chains B (a
+    // consumer calling `flipNext()` from `onFlip`, auto-advance, a controlled
+    // `page` prop) — and a user gesture starts C at the same moment. C's own
+    // `finishAnimation()` is what commits A and therefore what creates B.
+    const { render, tick } = makeHarness();
+    const trace: string[] = [];
+
+    render.start();
+    tick(1000);
+    render.startAnimation(tagged(trace, 'A'), 500, () => {
+      trace.push('A:end');
+      render.startAnimation(tagged(trace, 'B'), 500, () => trace.push('B:end'));
+    });
+
+    tick(1100); // A frame 1
+
+    // The racing gesture. Reverted fix: `this.animation = {...}` at the bottom
+    // of `startAnimation` replaces B with C, and B's `onAnimateEnd` — the
+    // callback that COMMITS the chained page turn — never runs.
+    render.startAnimation(tagged(trace, 'C'), 500, () => trace.push('C:end'));
+
+    expect(trace).toEqual(['A:1', 'A:4', 'A:end']);
+
+    tick(1200);
+    tick(1300);
+
+    // B is the animation on the object, playing from the frame clock it was
+    // stamped on (R2), and C never ran at all.
+    expect(trace).toEqual(['A:1', 'A:4', 'A:end', 'B:1', 'B:2']);
+
+    tick(1700);
+    expect(trace).toContain('B:end');
+    expect(trace.filter((entry) => entry.startsWith('C:'))).toEqual([]);
+  });
+
+  test('a chained INSTANT turn is not overrun by the outer request', () => {
+    // The subtly wrong variant this catches: guarding with `if (this.animation
+    // === null)` instead of a generation counter. That is the obvious fix and it
+    // handles the test above — but a nested INSTANT turn (`flippingTime: 0`,
+    // `prefers-reduced-motion`) installs NOTHING: it runs its final frame and
+    // its callback synchronously and leaves the field null. The outer call then
+    // installs C over a book that has already committed the chained turn, and
+    // C's `onAnimateEnd` commits a SECOND page turn on top of it.
+    const { render, tick } = makeHarness();
+    const trace: string[] = [];
+
+    render.start();
+    tick(1000);
+    render.startAnimation(tagged(trace, 'A'), 500, () => {
+      trace.push('A:end');
+      render.startAnimation(tagged(trace, 'B'), 0, () => trace.push('B:end'));
+    });
+
+    tick(1100);
+    render.startAnimation(tagged(trace, 'C'), 500, () => trace.push('C:end'));
+
+    expect(trace).toEqual(['A:1', 'A:4', 'A:end', 'B:4', 'B:end']);
+
+    tick(1200);
+    tick(1300);
+    tick(1700);
+
+    // Nothing further ran: no C frames, and above all no second commit.
+    expect(trace).toEqual(['A:1', 'A:4', 'A:end', 'B:4', 'B:end']);
+  });
+
+  test('a turn abandoned from the commit is not resurrected by the outer request', () => {
+    // Same slot, the teardown path: a consumer calling `replacePages()` /
+    // `destroy()` from `onFlip` reaches `cancelAnimation()`, whose whole purpose
+    // is to drop the turn WITHOUT committing it. The outer `startAnimation` must
+    // not then install an animation over pages that were just released.
+    const { render, tick } = makeHarness();
+    const trace: string[] = [];
+
+    render.start();
+    tick(1000);
+    render.startAnimation(tagged(trace, 'A'), 500, () => {
+      trace.push('A:end');
+      render.cancelAnimation();
+    });
+
+    tick(1100);
+    render.startAnimation(tagged(trace, 'C'), 500, () => trace.push('C:end'));
+
+    tick(1200);
+    tick(1300);
+
+    expect(trace).toEqual(['A:1', 'A:4', 'A:end']);
+  });
+
+  test('the ordinary path still replaces a running animation', () => {
+    // The guard must not become "first animation wins". With nothing chained
+    // from the commit, a new `startAnimation` supersedes the old one exactly as
+    // before — that is how every gesture that interrupts a turn works.
+    const { render, tick } = makeHarness();
+    const trace: string[] = [];
+
+    render.start();
+    tick(1000);
+    render.startAnimation(tagged(trace, 'A'), 500, () => trace.push('A:end'));
+
+    tick(1100);
+    render.startAnimation(tagged(trace, 'B'), 500, () => trace.push('B:end'));
+
+    // A was committed by B's opening `finishAnimation()`…
+    expect(trace).toEqual(['A:1', 'A:4', 'A:end']);
+
+    // …and B is the animation now running.
+    tick(1200);
+    tick(1700);
+    expect(trace).toContain('B:1');
+    expect(trace).toContain('B:end');
+  });
+});

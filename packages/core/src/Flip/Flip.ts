@@ -304,6 +304,11 @@ export class Flip {
   /**
    * Turn to the specified page number (with animation)
    *
+   * Throws `PageFlipError` when the request cannot be satisfied. Returns
+   * quietly, having animated nothing, when it ALREADY is — i.e. when `page`
+   * shares the current spread, which in landscape includes its partner half.
+   * That is a success, not a rejection; see the comment on the guard below.
+   *
    * @param {number} page - New page number
    * @param {FlipCorner} corner - Active page corner when turning
    */
@@ -328,6 +333,36 @@ export class Flip {
         'FLIP_SETUP',
       );
     }
+    // F7. Asking for a page that is ALREADY on screen is a no-op, deliberately,
+    // and it is neither an error nor a rejection. This is the declaration of
+    // that, because an undeclared no-op on a public method is indistinguishable
+    // from a bug — which is how it was recorded.
+    //
+    // The postcondition of `flipToPage(p)` is "page `p` is visible". Landscape
+    // spreads hold two pages, so `flip(3)` while showing `[2, 3]` already
+    // satisfies it: there is nothing to animate, and the call SUCCEEDED.
+    //
+    // The two alternatives were both wrong for that reason:
+    //
+    // - **Throw.** `PageFlip.flip` calls this directly rather than through
+    //   `requestTurn`, so a throw reaches the consumer uncaught, and the React
+    //   binding's controlled `page` prop drives this method on every change. A
+    //   consumer setting `page` to the partner half of the spread it is already
+    //   on would crash rather than no-op. The `PageFlipError` contract this fork
+    //   added is for a request that CANNOT be satisfied (`page` out of range, in
+    //   no spread) — not for one that already is.
+    // - **Emit `turnRejected`.** Nothing was rejected. Its three reasons
+    //   (`boundary`, `setup`, `disabled`) all describe a refusal, the React
+    //   binding forwards it to `onTurnRejected`, and consumers would see a
+    //   spurious failure for a satisfied request. Widening the event's public
+    //   vocabulary to say so is a product decision, not this fix's to make
+    //   (AGENTS.md §5).
+    //
+    // Note the `finishAnimation()` above still runs: a turn already in flight is
+    // committed first, so `current` is read after it lands. That is the same
+    // finish-then-restart policy the rest of the method uses, and it is what
+    // makes `flip(5)` immediately followed by `flip(4)` settle correctly when
+    // the two share a spread.
     if (next === current) {
       return;
     }
@@ -479,7 +514,21 @@ export class Flip {
         this.do(this.render.convertToPage(globalPos));
       }
     } else {
-      this.setState(FlippingState.READ);
+      // I9, the same ordering family as I1's fix in `fold()`: the state is
+      // handed back by whoever finishes the fold, not announced ahead of it.
+      //
+      // This branch used to run `setState(READ)` first, then `finishAnimation()`
+      // and `stopMove()` — and `stopMove()` starts the snap-back ANIMATION, with
+      // `calc` still live, while the book has already told the world it is
+      // reading. `UI.onPointerMove` reads READ as "not flipping", so a pointer
+      // move during that snap-back re-entered `showCorner`, found `calc !== null`
+      // and went straight to `do()`: the releasing fold snapped back onto the
+      // pointer instead of settling.
+      //
+      // Nothing is lost by dropping the call. `stopMove()` settles to READ on
+      // both of its paths — immediately when there is no calculation, and via
+      // `animateFlippingTo`'s `needReset` when the snap-back completes — so the
+      // only change is that READ is now announced when it is TRUE.
       this.render.finishAnimation();
 
       this.stopMove();
@@ -587,6 +636,11 @@ export class Flip {
     const rect = this.getBoundsRect();
     let direction: FlipDirection = FlipDirection.FORWARD;
 
+    // The one definition of where BACK stops and FORWARD starts. It is shared
+    // with `isPointOnCorners` (I10) so the corner band cannot be derived from a
+    // different boundary than the direction it will produce.
+    const splitOffset = this.getDirectionSplitOffset(rect);
+
     if (this.render.getOrientation() === Orientation.PORTRAIT) {
       // FL2. Measured from the visible leaf's own left edge, and bounded at
       // BOTH ends. The upper bound is upstream's; the lower one is new.
@@ -611,12 +665,12 @@ export class Flip {
       // biasing the split towards it is the friendlier target, and landscape's
       // even split is a consequence of the left page BEING the previous page,
       // not a rule portrait has to match.
-      const leafPos = touchPos.x - rect.pageWidth;
+      const leafPos = touchPos.x - this.getVisibleLeft(rect);
 
-      if (leafPos >= 0 && leafPos <= (rect.pageWidth * 2) / 5) {
+      if (leafPos >= 0 && leafPos <= splitOffset) {
         direction = FlipDirection.BACK;
       }
-    } else if (touchPos.x < rect.width / 2) {
+    } else if (touchPos.x < this.getVisibleLeft(rect) + splitOffset) {
       direction = FlipDirection.BACK;
     }
 
@@ -729,16 +783,81 @@ export class Flip {
     // test runs before any direction is chosen — it is the thing that decides
     // whether a fold starts at all. What it needs is the leaf's extent, which
     // `getRect()` and `getOrientation()` already state.
-    const visibleLeft =
-      this.render.getOrientation() === Orientation.PORTRAIT ? rect.width - pageWidth : 0;
+    const visibleLeft = this.getVisibleLeft(rect);
+
+    // I10. The horizontal band and the direction split were derived
+    // independently and could describe different halves of the book.
+    //
+    // `operatingDistance` is a fifth of the page DIAGONAL and knows nothing
+    // about the page's width, so it exceeds `pageWidth` on any book taller than
+    // `pageWidth * sqrt(24)` — about 4.9:1. Measured on a 100x600 portrait book:
+    // `pageWidth = 100`, `operatingDistance = 121.7`, and both bands then span
+    // the whole leaf, so the middle of the page — the one place on it that is
+    // certainly not a corner — hover-peels, and `disableFlipByClick` (which
+    // gates on exactly this predicate in `PageFlip.requestUserTurn`) stops
+    // restricting anything at all.
+    //
+    // The narrower and stranger case is a band that crosses the split: in
+    // portrait, `operatingDistance` between 0.4 and 0.6 of `pageWidth` (e.g. a
+    // 100x200 leaf, where it is 44.7) puts points on the FORWARD side of the
+    // split inside the BACK band. The reader hovers near the leaf's left edge
+    // and its right edge peels.
+    //
+    // Both are the same missing constraint: a corner band must not reach past
+    // the boundary that decides which leaf the fold belongs to. Clamping it to
+    // that boundary makes the two derivations agree BY CONSTRUCTION rather than
+    // by coincidence of proportions, and at ordinary proportions the clamp is
+    // inert — a 200x300 leaf keeps its 72.1 in both orientations.
+    //
+    // Only the horizontal band is clamped: the vertical one has no direction
+    // split to disagree with.
+    // One term, not two: the FAR side of the split would need
+    // `cornerBand <= visibleSpan - splitOffset`, and `splitOffset` is never more
+    // than half the visible span in either orientation (landscape splits it
+    // exactly in half, portrait at 2/5), so the near-side bound is always the
+    // tighter one. Carrying the far-side term as well would be an unreachable
+    // branch — the C11 mistake in a `Math.min`.
+    const cornerBand = Math.min(operatingDistance, this.getDirectionSplitOffset(rect));
 
     return (
       bookPos.x > visibleLeft &&
       bookPos.y > 0 &&
       bookPos.x < rect.width &&
       bookPos.y < rect.height &&
-      (bookPos.x < visibleLeft + operatingDistance || bookPos.x > rect.width - operatingDistance) &&
+      (bookPos.x < visibleLeft + cornerBand || bookPos.x > rect.width - cornerBand) &&
       (bookPos.y < operatingDistance || bookPos.y > rect.height - operatingDistance)
     );
+  }
+
+  /**
+   * Book-x of the left edge of the span the reader can actually SEE.
+   *
+   * Zero in landscape, where the bounds rect *is* the two visible leaves. In
+   * portrait the bounds rect is twice the single leaf and its left half is
+   * phantom (`computeBounds` puts `left` at `middle.x - 1.5 * pageWidth`), so
+   * the visible leaf starts one `pageWidth` in. See FL1 in
+   * {@link Flip.isPointOnCorners}.
+   */
+  private getVisibleLeft(rect: PageRect): number {
+    return this.render.getOrientation() === Orientation.PORTRAIT ? rect.width - rect.pageWidth : 0;
+  }
+
+  /**
+   * Distance from {@link Flip.getVisibleLeft} to the boundary between the BACK
+   * region and the FORWARD region — the single definition of the direction
+   * split, before any `rtl` mirror (which flips the *meaning* of the two sides,
+   * never the geometry of the line between them).
+   *
+   * Landscape splits the visible span in half, because the left leaf IS the
+   * previous page. Portrait gives BACK the leading 2/5 of the single leaf — see
+   * FL2 in {@link Flip.getDirectionByPoint} for why the two differ.
+   *
+   * Shared with {@link Flip.isPointOnCorners} so a corner band can never be
+   * measured against a boundary the direction does not use (I10).
+   */
+  private getDirectionSplitOffset(rect: PageRect): number {
+    return this.render.getOrientation() === Orientation.PORTRAIT
+      ? (rect.pageWidth * 2) / 5
+      : rect.width / 2;
   }
 }

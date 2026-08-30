@@ -173,6 +173,35 @@ export abstract class Render {
   private loopGeneration = 0;
 
   /**
+   * Bumped by every `startAnimation` and every `cancelAnimation`.
+   *
+   * U5. `startAnimation` opens with `finishAnimation()`, and that callback is
+   * `onAnimateEnd` — the thing that turns the page. A consumer chaining a turn
+   * from `onFlip` (auto-advance, a controlled `page` prop, a queued gesture)
+   * therefore re-enters `startAnimation` *from inside* the outer one, installs
+   * its animation, and returns; the outer call then ran `this.animation = {...}`
+   * unconditionally and replaced it. The chained animation's `onAnimateEnd`
+   * never ran: a page turn that never commits.
+   *
+   * This is the OVERWRITE, not R4's NULL, and R4's fix does not reach it — R4
+   * stopped a trailing `= null` from discarding a nested install, while here the
+   * discard is the ordinary assignment at the bottom of the method.
+   *
+   * The nested animation wins, and the outer request is dropped rather than
+   * merged, because by then the nested one owns the engine: `Flip.start` has
+   * already replaced `calc`, the flipping page and `turnGeneration`. Letting the
+   * outer animation install would drive the *new* calculation with the *old*
+   * turn's frames, and its `onAnimateEnd` would commit a second page turn on top
+   * of the one the callback just committed.
+   *
+   * A counter rather than "is `this.animation` still null?" because a nested
+   * INSTANT turn (`flippingTime: 0`, reduced motion) installs nothing at all —
+   * it runs its final frame and its callback synchronously — and that is exactly
+   * where consumers auto-advance.
+   */
+  private animationGeneration = 0;
+
+  /**
    * Safari browser definitions for resolving a bug with a css property clip-area
    *
    * https://bugs.webkit.org/show_bug.cgi?id=126207
@@ -336,7 +365,15 @@ export abstract class Render {
     duration: number,
     onAnimateEnd: AnimationSuccessAction,
   ): void {
+    // U5: claim this call's slot BEFORE the commit below can re-enter us. If
+    // `finishAnimation()`'s callback starts another animation, that nested call
+    // bumps the counter and everything below this line belongs to a superseded
+    // request — see {@link Render.animationGeneration}.
+    const generation = ++this.animationGeneration;
+
     this.finishAnimation(); // finish the previous animation process
+
+    if (generation !== this.animationGeneration) return;
 
     if (duration <= 0 || frames.length === 0) {
       if (frames.length > 0) {
@@ -564,6 +601,12 @@ export abstract class Render {
    * turn must be dropped rather than finished.
    */
   public cancelAnimation(): void {
+    // U5, the same slot: abandoning a turn from inside an `onAnimateEnd` —
+    // `replacePages` / `destroy` called from an `onFlip` handler — must not
+    // leave the outer `startAnimation` free to install an animation over pages
+    // that have just been released.
+    this.animationGeneration += 1;
+
     this.animation = null;
 
     // RD1: `clearShadow()`, not `this.shadow = null` — the X3 defect at a second
