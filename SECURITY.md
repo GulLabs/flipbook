@@ -35,8 +35,8 @@ Correct method names use camelCase `loadFromHTML` / `updateFromHtml` (not `loadF
 
 ## Releases and CI
 
-- Releases publish from GitHub Actions on `main` after the Release workflow `gate` job (gitleaks + audit + `quality:ci`). See [`RELEASING.md`](./RELEASING.md).
-- Publish uses **OIDC trusted publishing** with provenance — no long-lived npm token in the workflow.
+- Releases publish from GitHub Actions. The Release workflow is triggered by a successful run of the CI workflow (gitleaks + `pnpm audit --prod` + `quality:ci`) and re-runs `pnpm preflight` immediately before publishing. See [`RELEASING.md`](./RELEASING.md).
+- Publish uses an **npm automation token** stored as the `NPM_TOKEN` repository secret, plus [npm provenance](https://docs.npmjs.com/generating-provenance-statements) (`id-token: write` + `NPM_CONFIG_PROVENANCE=true`). Provenance is signed with the Actions OIDC identity, but the publish itself authenticates with the long-lived token — this repository is **not** yet on npm trusted publishing. Migrating requires per-package setup on npmjs.com first; see [`RELEASING.md`](./RELEASING.md).
 - CI runs `gitleaks` on every pull request and on `main`.
 - Dependabot opens weekly PRs for npm and GitHub Actions.
 - Install lifecycle scripts are allow-listed via `pnpm.onlyBuiltDependencies` in the root `package.json`.

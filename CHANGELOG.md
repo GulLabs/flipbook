@@ -40,6 +40,27 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Security — the release workflow could be triggered by a fork PR
+
+- **A fork PR whose branch was named `main` could reach the publish job.** The
+  Release workflow runs on `workflow_run`, which executes in the base repository
+  with full secrets, and it fires for CI runs triggered by `pull_request` — which
+  CI accepts from anywhere. The `branches: [main]` filter does not help: on a
+  `workflow_run` it matches `head_branch`, and for a fork PR that is the _fork's_
+  branch name. The job's only condition was that CI had passed, and the attacker
+  controls the tests. Their commit would then be checked out and built —
+  `pnpm install --frozen-lockfile` with their lockfile, `tsup` with their config
+  — inside a job holding `NPM_TOKEN` and `contents: write`.
+
+  The job now additionally requires the triggering run to be a `push`, from this
+  repository, on `main`. `scripts/check-workflow-guards.mjs` asserts all four
+  statically and fails the build if any is dropped, since GitHub Actions cannot
+  be exercised locally.
+
+- **`SECURITY.md` claimed OIDC trusted publishing with no long-lived token.**
+  The workflow injects an npm automation token; provenance is OIDC-signed, but
+  publishing is not. A false claim in a security policy is worse than no claim.
+
 ### Fixed — two more reentrancy holes
 
 - **`collectionRebuild` could announce a collection that no longer existed.**

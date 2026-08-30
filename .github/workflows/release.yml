@@ -18,7 +18,35 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: github.event.workflow_run.conclusion == 'success'
+    # FOUR conditions, and only the first was here. `workflow_run` is the
+    # "pwn request" trigger: it runs in the BASE repo with full secrets
+    # (`NPM_TOKEN`, `contents: write`), and it fires for CI runs triggered by
+    # `pull_request` — which `ci.yml` accepts unrestricted, so fork PRs
+    # included. The `branches: [main]` filter above does NOT help: for a
+    # `workflow_run` it matches `head_branch`, and for a fork PR that is the
+    # FORK's branch name.
+    #
+    # So the chain was: fork the repo, name your branch `main`, open a PR. CI
+    # runs your commit — you control the tests, so it goes green. Release fires,
+    # checks out `head_sha` (your commit), and runs `pnpm install
+    # --frozen-lockfile` with your lockfile and `pnpm build` with your
+    # `tsup.config.ts`. That is arbitrary code execution in a job holding the
+    # publish token, and `changeset publish` will then upload whatever it built
+    # as `@gullabs/*`. `Preflight` is no defence — it is the attacker's code too.
+    #
+    # `event == 'push'` is the load-bearing one: a PR-triggered CI run can never
+    # satisfy it. The repository and branch checks are belt and braces, and cost
+    # nothing.
+    #
+    # Not empirically executed — GitHub Actions cannot be run locally — so this
+    # is reasoned from the documented `workflow_run` semantics and verified
+    # statically by `scripts/check-workflow-guards.mjs`, which fails the build
+    # if any of the four is dropped.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main'
     permissions:
       # changeset publish pushes version tags; changesets/action opens the
       # release PR.
