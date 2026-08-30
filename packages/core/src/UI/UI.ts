@@ -511,6 +511,15 @@ export abstract class UI {
    * gesture. Idempotent: a no-op when nothing is in flight.
    */
   private cancelGesture(): void {
+    // NOTE the coupling C1 introduced: `resetUserGesture()` now clears both of
+    // these, so any path that resets BEFORE reaching here finds `wasActive`
+    // false and skips the `userStop` / `abandon()` / `show()` tail below.
+    // Traced at the time for the one path where that happens —
+    // `updateFromHtml` -> `updateItems` -> `removeHandlers` — and all three are
+    // already no-ops there, because the same tail ran on the engine side a
+    // moment earlier. Pinned here rather than left implicit: a future tail that
+    // is NOT idempotent would be silently skipped, and nothing else in the file
+    // would say why.
     const wasActive = this.touchPoint !== null || this.activePointerId !== null;
     const lastPos = this.touchPoint?.point ?? { x: 0, y: 0 };
 

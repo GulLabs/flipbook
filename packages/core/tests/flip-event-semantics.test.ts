@@ -105,6 +105,48 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     host.remove();
   });
 
+  test('clear() then reload at a nonzero startPage is silent too', () => {
+    // The gap the engine expert found in the first C2 fix. `isFirstLoad` was
+    // `this.pages === null`, and `clear()` does NOT null it — `PageCollection`
+    // is emptied in place and keeps the index it held when full. So a reload
+    // after a clear took the RELOAD branch, where `outgoing` is the placeholder
+    // 0 that `resolvedPageIndex` returns for an empty collection, and the guard
+    // announced `flip(4)` before `init` all over again.
+    //
+    // An emptied collection is not a book the reader was on. For the purpose of
+    // the baseline it is the same as no collection at all, which is what the
+    // condition now says.
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const pages = makePages(6);
+    for (const p of pages) host.appendChild(p);
+
+    const book = new PageFlip(host, {
+      width: 200,
+      height: 300,
+      size: 'fixed',
+      startPage: 4,
+    });
+    book.loadFromHTML(pages);
+    book.clear();
+
+    // Only what happens from HERE is under test; `clear()` announces its own
+    // move to an empty book, which is a real change and correctly reported.
+    const order: string[] = [];
+    book.on('flip', (e) => order.push(`flip:${String(e.data)}`));
+    book.on('init', () => order.push('init'));
+
+    const reloaded = makePages(6);
+    for (const p of reloaded) host.appendChild(p);
+    book.loadFromHTML(reloaded);
+
+    expect(order).toEqual([]);
+    expect(book.getCurrentPageIndex()).toBe(4);
+
+    book.destroy();
+    host.remove();
+  });
+
   test('LANDSCAPE: the baseline is the spread HEAD, not the requested page', () => {
     // A guard on the SHAPE of the C2 fix, not a second reproduction of it —
     // stated plainly because a test whose comment overclaims is worse than no

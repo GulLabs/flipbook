@@ -539,7 +539,16 @@ export class PageFlip extends EventObject {
     //
     // `this.pages` is null on the very first load, which is the case that
     // SHOULD start at 0 — a book with no previous index has not moved.
-    const isFirstLoad = this.pages === null;
+    // An EMPTY outgoing collection counts as a first load. `clear()` does not
+    // null `this.pages` — `PageCollection` is emptied in place and keeps the
+    // index it held when it was full — so `=== null` alone sent a reload after
+    // a clear down the reload branch, where `outgoing` is the placeholder 0
+    // that `resolvedPageIndex` returns for an empty collection. The guard then
+    // announced `flip(4)` before `init`: C2 again, one path over.
+    //
+    // The rule the condition states: a book with no pages is not a book the
+    // reader was on, so there is no index to carry across.
+    const isFirstLoad = this.pages === null || this.pages.getPageCount() === 0;
     const outgoing = this.pages === null ? 0 : this.resolvedPageIndex(this.pages);
 
     this.ui?.destroy();
@@ -604,7 +613,11 @@ export class PageFlip extends EventObject {
     // And it announced it BEFORE `init`, which is dispatched from the timer
     // below. ADR 0003 makes `init` the seeding event, so a consumer's `init`
     // handler ran after the `flip` it was supposed to be the baseline for —
-    // the desync is silent, and a controlled React binding acts on the `flip`.
+    // the desync is silent. NOT reachable through this repo's own React
+    // binding, which mounts with `loadFromHTML([])` and honours `startPage`
+    // with its own `turnToPage` — stated because the first version of this
+    // comment claimed it was, and an unverified claim about a consumer is the
+    // kind that outlives the code. This is a fix for direct core consumers.
     //
     // Only the first load. A RELOAD keeps `outgoing`: there the index really
     // can move, and the guard is right to say so.
@@ -1317,9 +1330,19 @@ export class PageFlip extends EventObject {
     // The docblock above has always said the next `pointerdown` starts a fresh
     // gesture. This is the line that makes that true.
     //
-    // Guarded: `attachMode` reaches here with no UI yet, and the public
-    // `startUserTouch` / `userMove` / `userStop` surface can be driven by a
-    // custom input layer that no UI knows about.
+    // Guarded because the FIRST `attachMode` of all has no UI yet. On every
+    // later attach `this.ui` is the OUTGOING UI, already destroyed one line
+    // up — so the call lands on a dead object and is a provable no-op there,
+    // `UI.destroy()` having gone through `removeHandlers()` -> `cancelGesture()`
+    // already. Harmless (`releaseCapturedPointer` early-returns on a null id)
+    // and left in place rather than special-cased: the value here is that ONE
+    // method is the whole answer, which is what stops the next caller getting
+    // half of it.
+    //
+    // It is not redundant for the paths that keep their UI — `replacePages`,
+    // `updateFromHtml`, `clear`, the settle — nor for the public
+    // `startUserTouch` / `userMove` / `userStop` surface, which a custom input
+    // layer can drive without any UI knowing.
     this.ui?.[DROP_POINTER_GESTURE]();
   }
 
