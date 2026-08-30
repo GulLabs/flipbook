@@ -453,8 +453,7 @@ export class Flip {
         // one pointer move and the next.
         //
         // A bare `if` left the LAST computed shadow in `Render.shadow`, and
-        // neither renderer re-derives it: `HTMLRender.drawFrame` repaints
-        // whatever the field holds and `CanvasRender` does the same, so the
+        // `HTMLRender.drawFrame` repaints whatever the field holds, so the
         // shadow froze in mid-air over a leaf that had moved on, until the turn
         // ended and `animateFlippingTo` cleared it. "No shadow for this pose"
         // is a result, not an absence of one.
@@ -839,9 +838,9 @@ export class Flip {
         //
         // `Render.cancelAnimation` drops four pieces of per-turn state; this
         // path drops three. `render.pageRect` — the clip
-        // `HTMLRender.drawInnerShadow` / `CanvasRender.drawInnerShadow` cut the
-        // inner shadow against — survives a completed turn, so the renderer
-        // carries one turn's fold geometry into the next.
+        // `HTMLRender.drawInnerShadow` cuts the inner shadow against —
+        // survives a completed turn, so the renderer carries one turn's fold
+        // geometry into the next.
         //
         // It is state hygiene, not a reproducible visual defect, and the same is
         // true of RD2 on the cancel path. `pageRect` has exactly one reader on

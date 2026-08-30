@@ -423,12 +423,11 @@ export abstract class UI {
    * distance from the block's origin, so it is worst at the outer edge where
    * folds actually start.
    *
-   * The two canvas fixes for the same mismatch (`CanvasUI.resizeCanvas`,
-   * `CanvasRender.backingScale`) could simply stop measuring the visual box and
-   * measure the layout box instead, because both were measuring *the element*.
-   * That option does not exist here: the input genuinely is a visual-pixel
-   * point, so the choice is not which box to measure but which space to end up
-   * in — and it must be `Render`'s. Hence: locate the origin with the
+   * A backing-store path that measures *the element* can pick the layout box
+   * and stop. That option does not exist here: the input genuinely is a
+   * visual-pixel point, so the choice is not which box to measure but which
+   * space to end up in — and it must be `Render`'s. Hence: locate the origin
+   * with the
    * transform-aware rect (same space as the pointer), then divide by the
    * visual-per-layout ratio of the very same element. **Output is layout
    * pixels, relative to `distElement`** — the space `Render.convertToBook`

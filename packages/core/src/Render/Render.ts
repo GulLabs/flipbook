@@ -694,8 +694,7 @@ export abstract class Render {
     // R8, and this is the wake-up path with the most entrances: the
     // `ResizeObserver` and `visualViewport` handlers in `UI`, an orientation
     // change (`PageFlip.updateOrientation` → `UI.setOrientationStyle`),
-    // `PageFlip.update()`, `updateSettings`, and `CanvasUI.update` after it has
-    // resized — and therefore CLEARED — the backing store. Asked for before the
+    // `PageFlip.update()`, and `updateSettings`. Asked for before the
     // unobserved early return, because a book that has just been un-hidden
     // reaches that return on the pass that measured zero and the real box
     // arrives on the next one.
@@ -831,8 +830,7 @@ export abstract class Render {
   ): void {
     if (!this.app.getSettings().drawShadow) {
       // X3: turning `drawShadow` off mid-fold has to take the shadow that is
-      // already on screen with it. `CanvasRender` re-reads the setting at draw
-      // time and so recovered on the next frame; `HTMLRender.drawFrame` draws
+      // already on screen with it. `HTMLRender.drawFrame` draws
       // whatever `this.shadow` holds, so a bare `return` here froze the last
       // computed shadow over the moving leaf until the turn ended and
       // `clearShadow()` ran. The asymmetry is this method's, not the HTML
