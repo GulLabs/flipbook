@@ -24,7 +24,15 @@ import type {
  * `pageCount`, `setPage` and `setPageCount` as four independent pieces, so a
  * caller could set a page the count did not admit, and `setPageCount` wrote to
  * state that is DERIVED from the engine — a value the next event overwrote.
- * Both setters are gone.
+ *
+ * `setPage` is replaced by {@link goToPage}, which actually turns the book.
+ * Restoring a saved reading position is a real use case and deleting the
+ * setter outright would have stranded it; a setter that moved nothing while
+ * desyncing the state from the engine was the wrong shape for it.
+ *
+ * This hook is UNCONTROLLED plus imperative actions: `bookProps` carries event
+ * handlers and `initialPage`, never a `page`. An earlier version of these docs
+ * reasoned about feeding a controlled `page`, which the shape does not do.
  *
  * Before mount (and after unmount) there is no engine behind `ref`, so the
  * actions are no-ops returning `false`. That is the contract, not an oversight:
@@ -80,14 +88,19 @@ export function usePageFlip(initialPage = 0) {
     withBounds({ ...INITIAL, page: initialPage }),
   );
 
-  const apply = useCallback((snapshot: BookSnapshot) => {
+  /**
+   * `clearRejection` is false for load events. A rejection is cleared by a
+   * successful TURN, which is what the field documents; clearing it on every
+   * `loaded` swallowed the refusal a consumer was about to render.
+   */
+  const apply = useCallback((snapshot: BookSnapshot, clearRejection = true) => {
     setState((previous) =>
       withBounds({
         ...previous,
         page: snapshot.page,
         pageCount: snapshot.pageCount,
         orientation: snapshot.orientation === 'portrait' ? 'portrait' : 'landscape',
-        lastRejection: null,
+        lastRejection: clearRejection ? null : previous.lastRejection,
       }),
     );
   }, []);
@@ -96,6 +109,22 @@ export function usePageFlip(initialPage = 0) {
   const flipPrev = useCallback((corner?: FlipCorner) => ref.current?.flipPrev(corner) ?? false, []);
   const turnToPage = useCallback((next: number) => ref.current?.turnToPage(next) ?? false, []);
   const flipToPage = useCallback((next: number) => ref.current?.flipToPage(next) ?? false, []);
+
+  /**
+   * Move the book to a page. The replacement for the removed `setPage`.
+   *
+   * An ACTION rather than a setter: `setPage` wrote hook state the engine did
+   * not know about, so the two disagreed until the next event overwrote it.
+   * This turns the book and lets the resulting event update the state, which is
+   * the only version that cannot desync.
+   */
+  const goToPage = useCallback(
+    (next: number, transition: 'animate' | 'instant' = 'animate') =>
+      transition === 'animate'
+        ? (ref.current?.flipToPage(next) ?? false)
+        : (ref.current?.turnToPage(next) ?? false),
+    [],
+  );
 
   /**
    * Ask the ENGINE where the book landed; fall back to the payload only when
@@ -131,20 +160,24 @@ export function usePageFlip(initialPage = 0) {
   const bookProps: Pick<
     IEventProps,
     'onPageChange' | 'onPagesChanged' | 'onChangeOrientation' | 'onLoaded' | 'onTurnRejected'
-  > = useMemo(
+  > & { initialPage: number } = useMemo(
     () => ({
       onPageChange: apply,
       onPagesChanged,
-      onLoaded: apply,
+      // MIN-2. FORWARDED, so the argument reaches the book. It used to seed
+      // local state only, and the first `loaded` overwrote it with page 0 —
+      // while the comment below implied it drove the engine.
+      initialPage,
+      onLoaded: (snapshot: BookSnapshot) => apply(snapshot, false),
       onChangeOrientation: ({ orientation }) =>
         setState((previous) => ({
           ...previous,
           orientation: orientation === 'portrait' ? 'portrait' : 'landscape',
         })),
-      // Previously omitted, so `usePageFlip(999)` clamped with no signal at all.
+      // Previously omitted, so an out-of-range page clamped with no signal.
       onTurnRejected,
     }),
-    [apply, onPagesChanged, onTurnRejected],
+    [apply, onPagesChanged, onTurnRejected, initialPage],
   );
 
   return {
@@ -154,6 +187,7 @@ export function usePageFlip(initialPage = 0) {
     flipPrev,
     turnToPage,
     flipToPage,
+    goToPage,
     bookProps,
   };
 }

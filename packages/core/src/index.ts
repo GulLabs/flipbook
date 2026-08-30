@@ -9,7 +9,6 @@ export type {
   FlipSetting,
   LiveSetting,
   ReadingDirection,
-  SizeMode as SizeModeValue,
   FlipOnClick,
   PointerKind,
 } from './Settings';

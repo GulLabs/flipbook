@@ -773,8 +773,21 @@ export abstract class Render {
       if (pageWidth > this.setting.maxWidth) pageWidth = this.setting.maxWidth;
 
       pageHeight = pageWidth / ratio;
-      if (pageHeight > blockHeight) {
-        pageHeight = blockHeight;
+
+      // `maxHeight` was validated, defaulted, returned by `getSettings()` and
+      // never read — so a responsive book could not be height-capped, while
+      // `maxWidth` above worked. The asymmetry was the tell: someone declared
+      // the setting because the need is real (a book in a short viewport, or
+      // beside other content), and deleting the key would have removed an
+      // advertised feature rather than implementing it. Owner decision.
+      //
+      // Clamped BEFORE the block-height fit, so an explicit cap and the
+      // available space compose: whichever is tighter wins, and the aspect
+      // ratio is preserved either way by re-deriving width from height.
+      const heightCap = Math.min(this.setting.maxHeight, blockHeight);
+
+      if (pageHeight > heightCap) {
+        pageHeight = heightCap;
         pageWidth = pageHeight * ratio;
       }
 

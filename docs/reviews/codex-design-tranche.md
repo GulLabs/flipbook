@@ -99,9 +99,9 @@ There are three observable failures in the new synchronous stream:
 - `attachMode` captures one snapshot, marks `readyAnnounced`, dispatches
   `ready`, then unconditionally dispatches `loaded` from the captured snapshot
   (`packages/core/src/PageFlip.ts:568-585`). A `ready` listener can synchronously
-  clear, replace, reload, or destroy the book; the abandoned outer attach then
-  emits stale `loaded` after the newer operation. A throwing `ready` listener
-  also prevents the first `loaded` entirely. `readyAnnounced` itself correctly
+  clear, replace, or reload the book; the abandoned outer attach then emits
+  stale `loaded` after the newer operation. A throwing `ready` listener also
+  prevents the first `loaded` entirely. `readyAnnounced` itself correctly
   remains once per live engine; the unsafe part is the unguarded tail after the
   callback.
 - In React, the handlers are bound and `loadFromHTML([])` synchronously fires
@@ -176,13 +176,17 @@ runtime blocker, but a commit represented as implementing D1–D21 is missing D1
 
 ## Verification
 
-- Inspected `git show 7500ffe` and the parent/current product call paths only;
-  no test file was inspected and no test command was run.
+- Inspected `git show 7500ffe` and its parent product call paths only; no test
+  file was inspected and no test command was run. The worktree advanced to a
+  later commit and acquired concurrent product edits during the audit; those
+  changes were left untouched and are not folded into this verdict.
 - Legacy setting-name search across `packages/*/src` found no stale executable
   read through a cast or index signature. The material missed read behavior is
   reported above (`pointerInput`, `flipOnClick`, and `pageBackground`).
 - `readyAnnounced` remains once per engine and is not reset on reload; destroyed
   engines cannot reload. The post-`ready` tail is the lifecycle defect.
-- The requested build command passed:
+- The requested build command passed from an isolated `git archive 7500ffe`
+  after producing the archived core declaration artifact needed by React's
+  package-name resolution:
   `pnpm exec tsc --noEmit -p packages/core/tsconfig.src.json && pnpm exec tsc --noEmit -p packages/react/tsconfig.src.json && pnpm build`.
   The build reported the packed HTML engine at 58,286 bytes.

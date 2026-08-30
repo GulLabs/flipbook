@@ -22,6 +22,7 @@ import {
   PageFlip,
   PageFlipError,
   type FlipOptions,
+  type LiveSetting,
   type WidgetEvent,
   type FlipbookEventMap,
 } from '@gullabs/flipbook-core';
@@ -34,6 +35,7 @@ const ENGINE_SETTING_KEYS = [
   'minWidth',
   'maxWidth',
   'minHeight',
+  'maxHeight',
   'drawShadow',
   'flippingTime',
   'usePortrait',
@@ -52,16 +54,31 @@ const ENGINE_SETTING_KEYS = [
   'readingDirection',
 ] as const satisfies readonly (keyof FlipOptions)[];
 
-function pickSettings(props: HTMLFlipBookProps): FlipOptions {
+/**
+ * MIN-4. Undefined means "back to the default", not "leave it as it was".
+ *
+ * `updateSettings` merges into the engine's authored object, so dropping
+ * undefined keys latched the last value forever:
+ * `drawShadow={cond ? false : undefined}` stayed `false` for the life of the
+ * engine once `cond` had been true once. Conditional props are ordinary React,
+ * and a prop that cannot be un-set is a trap.
+ *
+ * So an absent key is sent EXPLICITLY as `undefined`, and `Settings.resolve`
+ * drops undefined values against the defaults — which is what `definedOnly`
+ * there is for. The constructor path is unaffected: a fresh engine has no
+ * previous value to latch.
+ */
+function pickSettings(props: HTMLFlipBookProps, forUpdate = false): FlipOptions {
   const out: FlipOptions = {
     width: props.width,
     height: props.height,
   };
+  const bag = out as unknown as Record<string, unknown>;
+
   for (const key of ENGINE_SETTING_KEYS) {
     const value = props[key];
-    if (value !== undefined) {
-      (out as unknown as Record<string, unknown>)[key] = value;
-    }
+    if (value !== undefined) bag[key] = value;
+    else if (forUpdate) bag[key] = undefined;
   }
   return out;
 }
@@ -82,7 +99,12 @@ function remountKeyOf(props: HTMLFlipBookProps): string {
   // the consumer never called. Two layers disagreeing by accident of a
   // dependency array. Remounting is the honest reading of "open at a different
   // page".
-  return [props.hardCovers, props.sizing, props.initialPage].join(':');
+  // `sizing` is NOT here. It is in `LiveSetting` and `updateSettings`
+  // recalculates layout for it, so keying on it destroyed the engine — losing
+  // the current page and any in-flight turn — for a change the engine can
+  // absorb. That is the exact cost this function's docblock explains that
+  // `width`/`height` avoid.
+  return [props.hardCovers, props.initialPage].join(':');
 }
 
 /**
@@ -404,6 +426,18 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       [enginePage, pageCount, orientation, hardCovers],
     );
 
+    /**
+     * R-3. Boundaries are asked of the SPREAD, not the head index.
+     *
+     * `enginePage` is `spread[0]`, so on the final landscape spread [4, 5] of a
+     * six-page book it is 4 — below `pageCount - 1` — and the next control
+     * stayed enabled at the end of every landscape book. That is the invariant
+     * CLAUDE.md documents ("turns are bounded by spreads, not page indices"),
+     * and it bit worst for the browse-mode reader these controls exist for.
+     */
+    const atStart = pageCount <= 0 || enginePage <= 0;
+    const atEnd = pageCount <= 0 || (visiblePages[visiblePages.length - 1] ?? 0) >= pageCount - 1;
+
     useEffect(() => {
       // Skip the first settled render: announcing the spread the reader has not
       // turned to yet is noise, and it fires for every book on the page.
@@ -440,6 +474,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
           reason: 'notReady',
           direction: null,
           targetPage: page,
+          landedOn: null,
           code: 'NOT_LOADED',
         });
         return false;
@@ -460,6 +495,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
               : 'setup',
           direction: null,
           targetPage: page,
+          landedOn: engine.getPageCount() > 0 ? engine.getCurrentPageIndex() : null,
           code: error.code,
         });
         return false;
@@ -473,6 +509,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
           reason: 'notReady',
           direction,
           targetPage: null,
+          landedOn: null,
           code: 'NOT_LOADED',
         });
         return false;
@@ -655,7 +692,18 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     useEffect(() => {
       const engine = engineRef.current;
       if (!engine) return;
-      engine.updateSettings(settings);
+      // MIN-6. Typed `LiveSetting` at the call site, so D19's compile-time
+      // fence applies to the binding too. Passing the `FlipOptions` variable
+      // skipped excess-property checking, which meant the one call site that
+      // matters most got no protection from the type that exists for it.
+      const {
+        hardCovers: _hardCovers,
+        initialPage: _initialPage,
+        ...live
+      } = pickSettings(props, true);
+      const liveSettings: Partial<LiveSetting> = live;
+
+      engine.updateSettings(liveSettings);
       // settings object is rebuilt each render; identity is not load-bearing.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
@@ -679,6 +727,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       props.minWidth,
       props.maxWidth,
       props.minHeight,
+      props.maxHeight,
     ]);
 
     useEffect(() => {
@@ -736,7 +785,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // not a turn on either side of the boundary. `initialPage` is part of the
       // remount key, so changing it rebuilds rather than being ignored (D6).
       setEnginePage(engine.getCurrentPageIndex());
-    }, [pages, pageHost, bindHandlers, remountKey, controlledPage, readNodes]);
+    }, [pages, pageHost, bindHandlers, remountKey, readNodes]);
 
     /*
      * Every leaf is in the DOM at all times, stacked, so a link or button on a
@@ -852,8 +901,21 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       firstControlledApply.current = false;
 
       try {
-        if (animate) engine.flip(controlledPage);
-        else engine.turnToPage(controlledPage);
+        if (animate) {
+          // MIN-10. A superseded turn used to vanish: `flip` returned void, so
+          // the effect saw no change, did not re-run, and the book rested
+          // somewhere the prop had not asked for with nothing reported.
+          if (!engine.flip(controlledPage)) {
+            eventHandlersRef.current.onTurnRejected?.({
+              reason: 'superseded',
+              direction: null,
+              targetPage: controlledPage,
+              landedOn: engine.getPageCount() > 0 ? engine.getCurrentPageIndex() : null,
+            });
+          }
+        } else {
+          engine.turnToPage(controlledPage);
+        }
       } catch (error: unknown) {
         // Only the engine refusing the page is a navigation error. A consumer
         // handler that throws, or a broken renderer, must not be relabelled as
@@ -884,6 +946,9 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
               : 'setup',
           direction: null,
           targetPage: controlledPage,
+          // The clamp above already ran, so this is where the reader ACTUALLY
+          // is — the field `onNavigationError` called `actual`.
+          landedOn: engine.getPageCount() > 0 ? engine.getCurrentPageIndex() : null,
           code: error.code,
         });
       }
@@ -966,7 +1031,14 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
       <div
         ref={rootRef}
-        className={className}
+        // MIN-8. `stf__parent` is declared HERE, not left to the engine alone.
+        // `UI` adds it to this same element, and React replaces the whole
+        // `class` attribute on a runtime `className` change — taking
+        // `position:relative; display:block; touch-action` with it and breaking
+        // the positioning context mid-session. The engine's add stays (it is
+        // idempotent, and the engine must work without React); this makes React
+        // aware of a class it was silently clobbering.
+        className={className === undefined ? 'stf__parent' : `${className} stf__parent`}
         style={style}
         data-flipbook-placeholder={hydrated ? undefined : ''}
         aria-label={ariaLabel}
@@ -1021,30 +1093,41 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
             data-flipbook-controls={controls === 'visible' ? 'visible' : ''}
             style={controls === 'visible' ? undefined : VISUALLY_HIDDEN_UNTIL_FOCUS}
           >
+            {/*
+              R-6. `aria-disabled`, NOT `disabled`, and this is the whole reason
+              the APG recommends it for controls in a composite.
+
+              The disabled state is derived from the current page, so reaching a
+              boundary BY CLICKING the control disables the element that has
+              focus. Browsers blur a disabled element and focus resets to
+              `<body>` — so the keyboard or AT user who clicks "Previous page"
+              until they reach the cover is silently teleported to the top of
+              the document. That is exactly the WCAG 2.4.3 failure the
+              focus-rescue effect exists to prevent, arriving through the
+              control H4 added for that same user.
+
+              `aria-disabled` announces the state, keeps the element focusable,
+              and leaves focus where the reader put it. The handler no-ops.
+            */}
             <button
               type="button"
               data-flipbook-control="prev"
-              onClick={() => engineRef.current?.flipPrev(FlipCorner.TOP)}
-              // A boundary disables the button rather than hiding it: a control
-              // that disappears moves everything after it and is announced as
-              // removed.
-              disabled={pageCount <= 0 || enginePage <= 0}
+              aria-disabled={atStart || undefined}
+              onClick={() => {
+                if (atStart) return;
+                runRelative('prev');
+              }}
             >
               {controlLabels.previous}
             </button>
             <button
               type="button"
               data-flipbook-control="next"
-              onClick={() => engineRef.current?.flipNext(FlipCorner.TOP)}
-              // R-3. The LAST VISIBLE leaf, not the spread head. `enginePage` is
-              // `spread[0]`, so on the final landscape spread [4, 5] of a
-              // 6-page book it is 4, which is below `pageCount - 1` — the next
-              // button stayed enabled at the end of every landscape book. That
-              // is the invariant CLAUDE.md documents, and it bit worst for the
-              // browse-mode reader these buttons exist for.
-              disabled={
-                pageCount <= 0 || (visiblePages[visiblePages.length - 1] ?? 0) >= pageCount - 1
-              }
+              aria-disabled={atEnd || undefined}
+              onClick={() => {
+                if (atEnd) return;
+                runRelative('next');
+              }}
             >
               {controlLabels.next}
             </button>

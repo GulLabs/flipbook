@@ -31,10 +31,11 @@ import { PageFlipError } from './errors';
  * Settings that are consumed once while the book is being built and never read
  * again, so `updateSettings` cannot make them take effect.
  *
- * `showCover` is captured by `PageCollection`'s constructor and decides the
- * spread layout; `startPage` is read only by `attachMode`. Deliberately NOT
- * including `size` / `width` / `height`: `updateSettings` restamps those via
- * `ui.applyHostSize`, so they are live.
+ * `hardCovers` is captured by `PageCollection`'s constructor and decides the
+ * spread layout; `initialPage` is read only by `attachMode` and by
+ * `updateFromHtml`'s first-content path. Deliberately NOT including `sizing` /
+ * `width` / `height`: `updateSettings` restamps those via `ui.applyHostSize`,
+ * so they are live.
  */
 const CONSTRUCTION_TIME_SETTINGS = ['hardCovers', 'initialPage'] as const;
 
@@ -534,9 +535,9 @@ export class PageFlip extends EventObject {
     // it opens at `start`, so the guard compared 0 against the head of the
     // opening spread and announced `flip(4)` for a mount nobody had touched.
     //
-    // And it announced it BEFORE `init`, which is dispatched from the timer
-    // below. ADR 0003 makes `init` the seeding event, so a consumer's `init`
-    // handler ran after the `flip` it was supposed to be the baseline for —
+    // And it announced it BEFORE the load event, which ADR 0003 makes the
+    // seeding event — so a consumer's handler ran after the `flip` it was
+    // supposed to be the baseline for —
     // the desync is silent. NOT reachable through this repo's own React
     // binding, which mounts with `loadFromHTML([])` and honours `startPage`
     // with its own `turnToPage` — stated because the first version of this
@@ -873,9 +874,13 @@ export class PageFlip extends EventObject {
 
     const nextAuthored: FlipOptions = { ...this.authored, ...effective };
     const next = new Settings().resolve(nextAuthored);
-    const mouseChanged =
-      next.pointerInput.length !== this.setting.pointerInput.length ||
-      next.pointerInput.some((k, i) => k !== this.setting.pointerInput[i]);
+    // Compared as a SET. Elementwise, `['mouse','touch'] -> ['touch','mouse']`
+    // counted as a change and called `refreshHandlers()`, which runs
+    // `removeHandlers() -> cancelGesture()` and abandons an in-flight gesture —
+    // a reordered list is the same policy and must not drop the reader's drag.
+    const before = new Set(this.setting.pointerInput);
+    const after = new Set(next.pointerInput);
+    const mouseChanged = before.size !== after.size || [...after].some((kind) => !before.has(kind));
     const foldInvalidated = FOLD_INVALIDATING_SETTINGS.some(
       (key) => (next[key] as unknown) !== (this.setting[key] as unknown),
     );
@@ -1009,7 +1014,7 @@ export class PageFlip extends EventObject {
     // before `HTMLUI.clear()` ran and before either collection event was
     // emitted. Measured against the built engine: `pageCount: 0` reported, six
     // leaves still parented to `.stf__block`, none handed back to the host, and
-    // no `update` or `collectionRebuild` — a half-cleared book that every
+    // no `pagesChanged` — a half-cleared book that every
     // listener still believes is whole.
     //
     // L8's rule is "cleanup must complete". `destroy()` gets there by deferring
@@ -1032,9 +1037,9 @@ export class PageFlip extends EventObject {
     // emptying is just the pageCount === 0 case of the same operation — the one
     // path neither covered. A consumer rendering "page 3 of 12" had no signal
     // at all that the book was gone. Same two events, same shape, so a listener
-    // needs no special case: `update` because what is rendered changed,
-    // `collectionRebuild` because the collection did. Not `flip` (no turn
-    // happened) and not `init` (the book is not becoming ready).
+    // needs no special case: `pagesChanged`, because the collection did. Not
+    // `flip` (no turn
+    // happened) and not a load event (the book is not becoming ready).
     this.dispatchPagesChanged(0, 0, render.getOrientation());
   }
 
@@ -1124,12 +1129,22 @@ export class PageFlip extends EventObject {
     const policy = this.setting.flipOnClick;
 
     if (policy === 'never') {
-      this.dispatch('turnRejected', { reason: 'disabled', direction: null, targetPage: null });
+      this.dispatch('turnRejected', {
+        reason: 'disabled',
+        direction: null,
+        targetPage: null,
+        landedOn: this.pages === null ? null : this.resolvedPageIndex(this.pages),
+      });
       return;
     }
 
     if (flip !== null && policy === 'corners' && !flip.isPointOnCorners(pos)) {
-      this.dispatch('turnRejected', { reason: 'disabled', direction: null, targetPage: null });
+      this.dispatch('turnRejected', {
+        reason: 'disabled',
+        direction: null,
+        targetPage: null,
+        landedOn: this.pages === null ? null : this.resolvedPageIndex(this.pages),
+      });
       return;
     }
 
@@ -1158,6 +1173,7 @@ export class PageFlip extends EventObject {
       // "destroyed" never will be.
       this.dispatch('turnRejected', {
         ...context,
+        landedOn: null,
         reason: 'notReady',
         code: this.destroyed ? 'DESTROYED' : 'NOT_LOADED',
       });
@@ -1178,7 +1194,12 @@ export class PageFlip extends EventObject {
       // would hide it from the consumer and from us.
       if (!(err instanceof PageFlipError)) throw err;
 
-      this.dispatch('turnRejected', { ...context, reason: 'setup', code: err.code });
+      this.dispatch('turnRejected', {
+        ...context,
+        landedOn: this.pages === null ? null : this.resolvedPageIndex(this.pages),
+        reason: 'setup',
+        code: err.code,
+      });
       return false;
     }
 
@@ -1191,7 +1212,11 @@ export class PageFlip extends EventObject {
     // `Flip.finishOutgoingTurn`). Reporting that as `boundary` tells a consumer
     // the book is at its end while it is mid-turn, which is the shape of
     // failure that disables "next" buttons.
-    this.dispatch('turnRejected', { ...context, reason: flip.takeRefusal() });
+    this.dispatch('turnRejected', {
+      ...context,
+      landedOn: this.pages === null ? null : this.resolvedPageIndex(this.pages),
+      reason: flip.takeRefusal(),
+    });
     return false;
   }
 
@@ -1201,11 +1226,16 @@ export class PageFlip extends EventObject {
    * @param {number} page - New page number
    * @param {FlipCorner} corner - Active page corner when turning
    */
-  public flip(page: number, corner: FlipCorner = FlipCorner.TOP): void {
+  public flip(page: number, corner: FlipCorner = FlipCorner.TOP): boolean {
     // Explicit navigation fails loudly, exactly like `turnToPage`. Optional
     // chaining here made "animate to page 7" a silent no-op before load — the
     // §4.6 failure this fork exists to remove.
-    this.requireLoaded(this.flipController, 'flip controller').flipToPage(page, corner);
+    //
+    // Returns `false` only when a NEWER turn overtook this one. That is not an
+    // error — the book is moving, just not where this call asked — but it was
+    // previously indistinguishable from success, so a controlled binding could
+    // not tell that its request had been dropped.
+    return this.requireLoaded(this.flipController, 'flip controller').flipToPage(page, corner);
   }
 
   /**
@@ -1235,7 +1265,11 @@ export class PageFlip extends EventObject {
     this.dispatch('flip', {
       page: newPage,
       pageCount: this.pages === null ? 0 : this.pages.getPageCount(),
-      orientation: this.renderOrThrow.getOrientation(),
+      // Optional, not `renderOrThrow`: this is an EMIT path, and a dispatch
+      // that can throw is a hazard class this engine does not otherwise have.
+      // No caller of `showSpread()` can reach it with a null render today —
+      // traced — but the guard costs nothing and the throw would be new.
+      orientation: this.render?.getOrientation() ?? 'landscape',
     });
   }
 

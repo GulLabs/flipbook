@@ -474,7 +474,17 @@ export class Flip {
    * @param {number} page - New page number
    * @param {FlipCorner} corner - Active page corner when turning
    */
-  public flipToPage(page: number, corner: FlipCorner): void {
+  /**
+   * MIN-10. Returns `false` when a newer turn overtook this one.
+   *
+   * Both `return` sites below are deliberate non-errors — nothing about the
+   * request was invalid and the book IS moving, just not where this call asked.
+   * But `void` meant the caller could not tell, so the React binding's
+   * controlled `page` effect saw no change, did not re-run, and left the book
+   * resting somewhere the prop had not asked for with nothing reported. A hole
+   * in "`page` without `onPageChange` is a genuinely locked book".
+   */
+  public flipToPage(page: number, corner: FlipCorner): boolean {
     const collection = this.app.getPageCollection();
 
     // Finish any turn already in flight *before* reading the index. Policy:
@@ -495,7 +505,7 @@ export class Flip {
     // phantom index below is computed against a spread the nested turn has
     // already left, `runFlip` refuses, and the caller gets a spurious
     // `FLIP_SETUP` throw for a book that is working correctly.
-    if (!this.finishOutgoingTurn()) return;
+    if (!this.finishOutgoingTurn()) return false;
 
     const current = collection.getCurrentSpreadIndex();
     const next = collection.getSpreadIndexByPage(page);
@@ -537,7 +547,8 @@ export class Flip {
     // makes `flip(5)` immediately followed by `flip(4)` settle correctly when
     // the two share a spread.
     if (next === current) {
-      return;
+      // The postcondition is already satisfied, so this SUCCEEDED.
+      return true;
     }
 
     const dir = next > current ? FlipDirection.FORWARD : FlipDirection.BACK;
@@ -582,10 +593,12 @@ export class Flip {
       // guard at the top: `PageFlip.flip` is driven straight from the React
       // binding's controlled `page` prop, and nothing about the request was
       // invalid — the book is moving, just not where this call asked.
-      if (refusal === 'superseded') return;
+      if (refusal === 'superseded') return false;
 
       throw new PageFlipError(`Flip setup failed for page ${page}`, 'FLIP_SETUP');
     }
+
+    return true;
   }
 
   /**

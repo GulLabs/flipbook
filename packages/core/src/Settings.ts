@@ -70,6 +70,7 @@ export interface FlipOptions {
   minWidth?: number;
   maxWidth?: number;
   minHeight?: number;
+  maxHeight?: number;
 
   drawShadow?: boolean;
   /**
@@ -148,12 +149,7 @@ export interface FlipOptions {
  */
 export type LiveSetting = Omit<FlipOptions, 'hardCovers' | 'initialPage'>;
 
-/**
- * The resolved, fully-populated settings the engine reads. Every key present.
- *
- * `maxHeight` is gone: it was validated, defaulted, echoed back by
- * `getSettings()` and never read by anything.
- */
+/** The resolved, fully-populated settings the engine reads. Every key present. */
 export interface FlipSetting {
   initialPage: number;
   sizing: SizeMode;
@@ -162,6 +158,7 @@ export interface FlipSetting {
   minWidth: number;
   maxWidth: number;
   minHeight: number;
+  maxHeight: number;
   drawShadow: boolean;
   flippingTime: number;
   usePortrait: boolean;
@@ -203,7 +200,7 @@ const BOOLEAN_SETTINGS = [
 ] as const satisfies readonly (keyof FlipSetting)[];
 
 /** Bounds that only mean something under `sizing: 'responsive'`. */
-const RESPONSIVE_ONLY_BOUNDS = ['minWidth', 'maxWidth', 'minHeight'] as const;
+const RESPONSIVE_ONLY_BOUNDS = ['minWidth', 'maxWidth', 'minHeight', 'maxHeight'] as const;
 
 /**
  * `Partial<T>` permits an *explicit* `undefined`, and a spread copies that key
@@ -250,6 +247,7 @@ const DEFAULTS: Omit<FlipSetting, 'width' | 'height'> = {
   minWidth: 0,
   maxWidth: 0,
   minHeight: 0,
+  maxHeight: 0,
   drawShadow: true,
   flippingTime: 1000,
   usePortrait: true,
@@ -317,7 +315,8 @@ export class Settings {
         // WOULD derive keeps the diagnostic for the real error
         // (`sizing:'fixed', width: 400, minWidth: 200` does nothing) while
         // making `resolve` idempotent, which is what the round-trip needs.
-        const derived = bound === 'minHeight' ? result.height : result.width;
+        const derived =
+          bound === 'minHeight' || bound === 'maxHeight' ? result.height : result.width;
         if (authored !== derived) {
           reject(
             bound,
@@ -424,10 +423,12 @@ export class Settings {
       // never able to reach its own declared minimum, silently.
       if (result.maxWidth < result.minWidth) result.maxWidth = Math.max(2000, result.minWidth);
       if (result.minHeight <= 0) result.minHeight = 100;
+      if (result.maxHeight < result.minHeight) result.maxHeight = Math.max(2000, result.minHeight);
     } else {
       result.minWidth = result.width;
       result.maxWidth = result.width;
       result.minHeight = result.height;
+      result.maxHeight = result.height;
     }
 
     return result;

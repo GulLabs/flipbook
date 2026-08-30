@@ -41,6 +41,15 @@ export interface TurnRejected {
   direction: 'next' | 'prev' | null;
   /** The page the caller asked for, for an absolute navigation. */
   targetPage: number | null;
+  /**
+   * Where the book actually ended up, when the refusal came with a clamp.
+   *
+   * Restored after the design sprint dropped it: `onNavigationError` carried it
+   * as `actual`, and folding that event into this one was the single place the
+   * consolidation genuinely subtracted. "We clamped you to page 40 of 40" is
+   * not derivable from `targetPage` alone.
+   */
+  landedOn: number | null;
   code?: PageFlipErrorCode;
 }
 
