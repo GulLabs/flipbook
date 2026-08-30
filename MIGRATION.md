@@ -333,8 +333,11 @@ orientation change that genuinely moves the head (portrait page `3` → landscap
 spread `[2,3]`, head `2`). And `clear()` still does not emit `flip`, which it
 never did.
 
-If you were using `flip` as a "the book repainted" signal, use `update` — that
-is what it means, and you lose nothing.
+If you were using `flip` as a "the book repainted" signal, **there is currently
+no replacement.** An earlier version of this note said to use `update`; that was
+wrong. `update` fires only when the page collection is replaced or cleared — not
+on a repaint, a resize, or `PageFlip.update()`, which shares its name and does
+not cause it.
 
 The React binding needs no change: `HTMLFlipBook` and `usePageFlip` already
 re-derive the index and page count from the engine on `collectionRebuild`

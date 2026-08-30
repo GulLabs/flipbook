@@ -150,8 +150,21 @@ the section above argues against.
   firing conditions is the highest-risk fork divergence there is: it compiles,
   it type-checks, every test that does not count events passes, and it surfaces
   in a consumer's analytics weeks later.
-- Anyone who used `flip` as a "the book repainted" signal should use `update`,
-  which legitimately means exactly that. Nobody loses a capability.
+- **Correction, 2026-08-30.** This section originally said anyone using `flip`
+  as a "the book repainted" signal should use `update`, "which legitimately
+  means exactly that", and that nobody loses a capability. **That was wrong.**
+  `dispatch('update', …)` exists at exactly one site — inside
+  `dispatchCollectionChange` — so it fires only when the page collection is
+  replaced or cleared, never on a repaint, a resize, or `PageFlip.update()`
+  (which shares its name and does not cause it). A consumer following that
+  advice binds a handler that never fires for the thing they wanted.
+
+  There is at present **no repaint event**, and a consumer who was using `flip`
+  as one does lose that capability. `update` is misnamed for what it does and is
+  a candidate for renaming or removal; a real repaint signal is a separate
+  question. Left stated rather than quietly patched, because this instruction
+  shipped in the document that justifies the change.
+
 - **No change is needed in `HTMLFlipBook.tsx` or `usePageFlip.ts`.** That is a
   finding, not an omission: both already re-derive index and count from the
   engine on `collectionRebuild` rather than trusting the flip stream, which is
