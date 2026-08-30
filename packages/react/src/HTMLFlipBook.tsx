@@ -363,6 +363,9 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
      */
     const slotsRef = useRef<Array<HTMLElement | null>>([]);
     const childCount = useRef(0);
+    /** Monotonic stamp; `pages.gen` matches once the filling commit has run. */
+    const slotGeneration = useRef(0);
+    const warnedNonHost = useRef(false);
 
     /**
      * The page nodes, or a thrown error naming the child that could not be
@@ -393,7 +396,27 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     }, []);
     /** Page nodes currently loaded into the engine. */
     const loadedNodes = useRef<HTMLElement[] | null>(null);
-    const [pages, setPages] = useState<ReactElement[]>([]);
+    /**
+     * The rendered leaves, STAMPED with the generation whose refs fill
+     * `slotsRef`. R-1b.
+     *
+     * Comparing lengths was not proof of freshness, and the failure was the
+     * ordinary case rather than an edge: `childCount.current` is advanced in
+     * the children effect of the SAME commit while `pages` still holds the
+     * previous list, so whenever the child count is unchanged the two are
+     * trivially equal. `children` is a fresh array identity on every parent
+     * render, so a turn — which re-renders the parent, and which React 18
+     * batches together with the consumer's own `onPageChange` setState —
+     * republished an empty slot array and then let the inert effect read it.
+     *
+     * Measured: a book with `onPageChange` threw on its FIRST turn; the same
+     * book without it walked cleanly. Identity of a monotonic stamp is the only
+     * thing that actually says "these slots belong to this list".
+     */
+    const [pages, setPages] = useState<{ gen: number; list: ReactElement[] }>({
+      gen: 0,
+      list: [],
+    });
     const [hydrated, setHydrated] = useState(false);
     /**
      * The engine's `.stf__block`. Pages are portalled into it so React's idea of
@@ -571,9 +594,36 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       };
       const next = wrapChildren(children, lazyAnchors, lazyRadius, collect);
 
+      // MIN-9. A component child that swallows its ref cannot be DETECTED
+      // until it renders inside the lazy window — a far leaf renders a
+      // placeholder host element whose ref always fires, so the slot is full
+      // and the book mounts cleanly, then throws several turns later when the
+      // reader arrives. That is inherent.
+      //
+      // What is cheap is the SIGNAL: `wrapChildren` already knows which
+      // children are not host elements, so say so once at mount rather than
+      // letting the reader find out. A warning, not a throw — a component that
+      // forwards its ref correctly is perfectly legal here.
+      if (!warnedNonHost.current) {
+        const suspects: number[] = [];
+        Children.forEach(children, (child, index) => {
+          if (isValidElement(child) && typeof child.type !== 'string') suspects.push(index);
+        });
+
+        if (suspects.length > 0) {
+          warnedNonHost.current = true;
+          console.warn(
+            `[flipbook] page child ${suspects.join(', ')} is a component, not a host element. ` +
+              'It must forward its ref to a DOM node, or the engine cannot position it. ' +
+              'Wrap it in a <div> if you are not sure.',
+          );
+        }
+      }
+
+      const gen = (slotGeneration.current += 1);
       slotsRef.current = slots;
       childCount.current = next.length;
-      setPages(next);
+      setPages({ gen, list: next });
     }, [children, lazyAnchors, lazyRadius]);
 
     // Handlers are dispatched through a ref so `bindHandlers` is stable. With
@@ -746,8 +796,11 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // which fills the slots has happened: `pages` is state, so it only holds
       // the new list after that commit, and the refs fire during it. Softening
       // the throw instead would have thrown away the whole point of D1.
-      if (!engine || !pageHost || pages.length === 0) return;
-      if (pages.length !== childCount.current) return;
+      if (!engine || !pageHost || pages.list.length === 0) return;
+      // R-1b. Identity of the stamp, not equality of lengths. `pages` is state,
+      // so it only carries this generation after the commit that fired the refs
+      // filling `slotsRef` for it.
+      if (pages.gen !== slotGeneration.current) return;
 
       const nodes = readNodes();
       if (nodes.length === 0) return;
@@ -817,7 +870,8 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // Before the collection loads there is no spread yet, and inerting every
       // leaf for that one commit would blank the tab order of a mounting book.
       // Same commit-ordering guard as the load effect — see R-1 there.
-      if (pageCount <= 0 || pages.length === 0 || pages.length !== childCount.current) return;
+      if (pageCount <= 0 || pages.list.length === 0) return;
+      if (pages.gen !== slotGeneration.current) return;
 
       const nodes = readNodes();
       if (nodes.length === 0) return;
@@ -1038,7 +1092,9 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         // the positioning context mid-session. The engine's add stays (it is
         // idempotent, and the engine must work without React); this makes React
         // aware of a class it was silently clobbering.
-        className={className === undefined ? 'stf__parent' : `${className} stf__parent`}
+        className={
+          className === undefined || className === '' ? 'stf__parent' : `${className} stf__parent`
+        }
         style={style}
         data-flipbook-placeholder={hydrated ? undefined : ''}
         aria-label={ariaLabel}
@@ -1068,7 +1124,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
             `height:auto!important;margin:0!important;overflow:visible!important;` +
             `clip:auto!important;clip-path:none!important;white-space:normal!important}`}
         </style>
-        {pageHost ? createPortal(pages, pageHost) : null}
+        {pageHost ? createPortal(pages.list, pageHost) : null}
         {/*
           H4. REAL BUTTONS, and this is a defect fix rather than a convenience.
 

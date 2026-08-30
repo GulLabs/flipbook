@@ -430,6 +430,20 @@ export class PageFlip extends EventObject {
       this.pages.show(target);
     }
 
+    // The third collection-replacing path. `attachMode` defers its
+    // announcement when the load is empty and `updateFromHtml` picks it up;
+    // without this, `loadFromHTML([])` followed by `replacePages(nonEmpty)`
+    // left a working book whose `ready` / `loaded` never fired. An `@internal`
+    // seam nothing in-tree calls today — but an invariant held by two of three
+    // paths is not an invariant.
+    if (!this.readyAnnounced && pageCount > 0) {
+      this.announceLoad(this.loadGeneration, {
+        page: this.resolvedPageIndex(this.pages),
+        pageCount,
+        orientation: render.getOrientation(),
+      });
+    }
+
     this.dispatchPagesChanged(
       this.resolvedPageIndex(this.pages),
       pageCount,
@@ -873,7 +887,9 @@ export class PageFlip extends EventObject {
     }
 
     const nextAuthored: FlipOptions = { ...this.authored, ...effective };
-    const next = new Settings().resolve(nextAuthored);
+    // Only the keys THIS call named are re-validated. See `Settings.resolve`.
+    const named = new Set(Object.keys(effective) as Array<keyof FlipOptions>);
+    const next = new Settings().resolve(nextAuthored, named);
     // Compared as a SET. Elementwise, `['mouse','touch'] -> ['touch','mouse']`
     // counted as a change and called `refreshHandlers()`, which runs
     // `removeHandlers() -> cancelGesture()` and abandons an in-flight gesture —

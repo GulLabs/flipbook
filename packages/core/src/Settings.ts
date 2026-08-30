@@ -271,7 +271,21 @@ export class Settings {
    * Validate authored input and resolve it. Throws `PageFlipError` with
    * `code: 'INVALID_SETTING'` and a machine-readable `setting` key.
    */
-  public resolve(authored: FlipOptions): FlipSetting {
+  /**
+   * @param named - The keys the CURRENT call actually supplied. Omit to
+   *   validate every authored key, which is what the constructor wants.
+   *
+   *   `updateSettings` passes only its own keys, because `authored` records
+   *   what a caller wrote at some earlier point and re-validating it against
+   *   the CURRENT value of a different setting makes a stored intent's validity
+   *   depend on state it was never written against. Concretely: a responsive
+   *   book with an authored `minWidth: 150` could not transition to
+   *   `sizing: 'fixed'` — an authored responsive bound essentially never equals
+   *   `width`, which is precisely why it was authored — and a round-trip
+   *   through `getSettings()` absorbed the derived bounds, arming the NEXT
+   *   plain resize to throw.
+   */
+  public resolve(authored: FlipOptions, named?: ReadonlySet<keyof FlipOptions>): FlipSetting {
     const supplied = definedOnly(authored);
     const result = { ...DEFAULTS, ...supplied } as FlipSetting;
 
@@ -294,8 +308,10 @@ export class Settings {
     // fail every later `updateSettings`.
     if (result.sizing === SizeMode.FIXED) {
       for (const bound of RESPONSIVE_ONLY_BOUNDS) {
-        const authored = supplied[bound];
-        if (authored === undefined) continue;
+        const authoredBound = supplied[bound];
+        if (authoredBound === undefined) continue;
+        // Inherited from an earlier call, not stated now — see `named`.
+        if (named !== undefined && !named.has(bound)) continue;
 
         // REJECT ONLY A CONFLICT, not the mere presence of the key.
         //
@@ -317,10 +333,10 @@ export class Settings {
         // making `resolve` idempotent, which is what the round-trip needs.
         const derived =
           bound === 'minHeight' || bound === 'maxHeight' ? result.height : result.width;
-        if (authored !== derived) {
+        if (authoredBound !== derived) {
           reject(
             bound,
-            authored,
+            authoredBound,
             `either ${derived} or nothing under sizing: 'fixed', where bounds derive from width/height`,
           );
         }

@@ -71,8 +71,13 @@ const INITIAL: FlipbookState = {
  * The last leaf on screen is `head + 1` when a second leaf fits: landscape,
  * past the cover, and not the trailing odd leaf.
  */
-function withBounds(state: FlipbookState): FlipbookState {
-  const pairs = state.orientation === 'landscape';
+function withBounds(state: FlipbookState, hardCovers: boolean): FlipbookState {
+  // MIN-A. The cover is a spread of ONE, so pairing from the head is wrong
+  // exactly when `hardCovers` is set — on a two-leaf hard-cover book it made
+  // the head pair with leaf 1 and reported `canGoNext: false` while a real
+  // turn was available. `HTMLFlipBook` gets this right via `spreadPages`; this
+  // is the same rule, and the two should not drift.
+  const pairs = state.orientation === 'landscape' && !(hardCovers && state.page === 0);
   const lastVisible = pairs && state.page + 1 <= state.pageCount - 1 ? state.page + 1 : state.page;
 
   return {
@@ -82,10 +87,11 @@ function withBounds(state: FlipbookState): FlipbookState {
   };
 }
 
-export function usePageFlip(initialPage = 0) {
+export function usePageFlip(initialPage = 0, options: { hardCovers?: boolean } = {}) {
+  const hardCovers = options.hardCovers === true;
   const ref = useRef<FlipBookHandle | null>(null);
   const [state, setState] = useState<FlipbookState>(() =>
-    withBounds({ ...INITIAL, page: initialPage }),
+    withBounds({ ...INITIAL, page: initialPage }, hardCovers),
   );
 
   /**
@@ -93,17 +99,23 @@ export function usePageFlip(initialPage = 0) {
    * successful TURN, which is what the field documents; clearing it on every
    * `loaded` swallowed the refusal a consumer was about to render.
    */
-  const apply = useCallback((snapshot: BookSnapshot, clearRejection = true) => {
-    setState((previous) =>
-      withBounds({
-        ...previous,
-        page: snapshot.page,
-        pageCount: snapshot.pageCount,
-        orientation: snapshot.orientation === 'portrait' ? 'portrait' : 'landscape',
-        lastRejection: clearRejection ? null : previous.lastRejection,
-      }),
-    );
-  }, []);
+  const apply = useCallback(
+    (snapshot: BookSnapshot, clearRejection = true) => {
+      setState((previous) =>
+        withBounds(
+          {
+            ...previous,
+            page: snapshot.page,
+            pageCount: snapshot.pageCount,
+            orientation: snapshot.orientation === 'portrait' ? 'portrait' : 'landscape',
+            lastRejection: clearRejection ? null : previous.lastRejection,
+          },
+          hardCovers,
+        ),
+      );
+    },
+    [hardCovers],
+  );
 
   const flipNext = useCallback((corner?: FlipCorner) => ref.current?.flipNext(corner) ?? false, []);
   const flipPrev = useCallback((corner?: FlipCorner) => ref.current?.flipPrev(corner) ?? false, []);
@@ -160,7 +172,7 @@ export function usePageFlip(initialPage = 0) {
   const bookProps: Pick<
     IEventProps,
     'onPageChange' | 'onPagesChanged' | 'onChangeOrientation' | 'onLoaded' | 'onTurnRejected'
-  > & { initialPage: number } = useMemo(
+  > & { initialPage: number; hardCovers: boolean } = useMemo(
     () => ({
       onPageChange: apply,
       onPagesChanged,
@@ -168,16 +180,22 @@ export function usePageFlip(initialPage = 0) {
       // local state only, and the first `loaded` overwrote it with page 0 —
       // while the comment below implied it drove the engine.
       initialPage,
+      hardCovers,
       onLoaded: (snapshot: BookSnapshot) => apply(snapshot, false),
       onChangeOrientation: ({ orientation }) =>
-        setState((previous) => ({
-          ...previous,
-          orientation: orientation === 'portrait' ? 'portrait' : 'landscape',
-        })),
+        setState((previous) =>
+          withBounds(
+            {
+              ...previous,
+              orientation: orientation === 'portrait' ? 'portrait' : 'landscape',
+            },
+            hardCovers,
+          ),
+        ),
       // Previously omitted, so an out-of-range page clamped with no signal.
       onTurnRejected,
     }),
-    [apply, onPagesChanged, onTurnRejected, initialPage],
+    [apply, onPagesChanged, onTurnRejected, initialPage, hardCovers],
   );
 
   return {
