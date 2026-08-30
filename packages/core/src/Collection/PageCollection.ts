@@ -17,6 +17,17 @@ type NumberArray = number[];
 /**
  * Сlass representing a collection of pages
  */
+/**
+ * Capability key for {@link PageCollection[INHERIT_PAGE_INDEX]}.
+ *
+ * Deliberately NOT re-exported from `src/index.ts`: a consumer cannot obtain
+ * this symbol, so the seam is reachable from inside the engine and nowhere
+ * else. See the method's own comment for what a public setter cost.
+ *
+ * @internal
+ */
+export const INHERIT_PAGE_INDEX = Symbol('flipbook.inheritPageIndex');
+
 export abstract class PageCollection {
   protected readonly app: PageFlip;
   protected readonly render: Render;
@@ -43,25 +54,32 @@ export abstract class PageCollection {
   }
 
   /**
-   * Adopt the page index the collection this one REPLACES was reporting.
+   * Inherit the page index the collection this one REPLACES was reporting.
    *
    * ADR 0003 made `flip` fire only when the index changes, and a replacement
    * collection breaks that predicate unless it is told where the book already
    * was. `updateFromHtml` / `replacePages` preserve the outgoing index, build a
    * fresh collection — which starts at 0 — and re-show the preserved index. The
-   * guard then compares 0 against 2 and announces a turn to page 2 for a reader
-   * who was already on page 2 and never moved. Swapping the page nodes under a
-   * React book is the common case, so that fired constantly.
+   * guard then compared 0 against 2 and announced a turn to page 2 for a reader
+   * already on page 2 and never moved. Swapping page nodes under a React book
+   * is the common case, so that fired on essentially every re-render.
    *
    * Seeding closes it without weakening anything: if the new book is shorter
    * and the index clamps, the comparison is against the real outgoing index and
-   * the change is announced, correctly.
+   * the change IS announced.
    *
-   * Not a general setter — it does not move the book, and calling it anywhere
-   * but immediately after a replacement fabricates the baseline the `flip`
-   * guard measures against.
+   * **Keyed by a module-private symbol, and that is the point.** The first
+   * shape of this fix was a public `adoptCurrentPageIndex(n)`, which was worse
+   * than the bug: `PageCollection` is exported and handed out by
+   * `getPageCollection()`, so a consumer could pre-load the baseline and then
+   * SUPPRESS a real `flip` — set 4 while on page 2, call `update()`, and the
+   * guard sees 4 === 4 and stays silent through a visible 2 -> 4 change. The
+   * symbol is not re-exported from the package index, so a consumer cannot name
+   * it and cannot reach this.
+   *
+   * @internal
    */
-  public adoptCurrentPageIndex(index: number): void {
+  public [INHERIT_PAGE_INDEX](index: number): void {
     this.currentPageIndex = index;
   }
 

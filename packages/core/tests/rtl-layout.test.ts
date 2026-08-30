@@ -321,6 +321,22 @@ describe('RTL spread layout is mirrored', () => {
       );
     };
 
+    /** A mouse move with no button held — a hover, not a drag. */
+    const hover = (hx: number, hy: number): void => {
+      dist.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          button: 0,
+          buttons: 0,
+          pointerType: 'mouse',
+          clientX: hx,
+          clientY: hy,
+        }),
+      );
+    };
+
     // Press and drag, but do NOT release — the gesture is live.
     pointer('pointerdown', startX);
     pointer('pointermove', startX - 40);
@@ -329,28 +345,20 @@ describe('RTL spread layout is mirrored', () => {
     book.book.updateSettings({ direction: 'rtl' });
     expect(book.book.getState()).toBe(FlippingState.READ);
 
-    // And the gesture flags are cleared, which is what `resetUserGesture()`
-    // exists for. Asserting the FIELDS rather than a behaviour is a concession,
-    // and it is recorded rather than hidden — AGENTS.md §2 asks for a
-    // non-discriminating test to be reported, not quietly kept.
+    // The observable that actually discriminates: corner hover.
     //
-    // Two behavioural assertions were drafted first and both were MEASURED to
-    // pass with `resetUserGesture()` deleted, i.e. to prove nothing:
-    //   - "the next pointermove resumes the fold" — it does not; the state
-    //     machine refuses to fold from READ without a fresh press, so the stale
-    //     flag is invisible here.
-    //   - "a hover then folds the page corner" — `userMove` does guard
-    //     `showCorner` behind `!isUserTouch`, so this is the real downstream
-    //     symptom, but `FOLD_CORNER` is not reachable in this jsdom fixture
-    //     even with the flags correctly cleared, so the assertion fails for the
-    //     wrong reason.
-    // What a stuck `isUserTouch` actually costs a user is corner hover, dead
-    // for the rest of the book's life. That belongs in an e2e test with a real
-    // pointer, not here.
-    const gesture = book.book as unknown as { isUserTouch: boolean; isUserMove: boolean };
-    expect(gesture.isUserTouch).toBe(false);
-    expect(gesture.isUserMove).toBe(false);
-
+    // `userMove` guards `showCorner` behind `!isUserTouch`, so a stuck flag
+    // routes a buttonless hover into `fold()` instead — the page follows the
+    // cursor with nothing held down, and the corner peel is dead for the life
+    // of the book.
+    //
+    // Recorded because I got this wrong once and Codex caught it: an earlier
+    // version of this test asserted the private FLAGS and claimed in a comment
+    // that `FOLD_CORNER` was unreachable in jsdom. It is reachable — my probe
+    // had simply hovered 10px inside the edge, outside the corner band. The
+    // claim was wrong, and a wrong claim in a comment outlives the test.
+    hover(rect.left + 4, rect.top + 4);
+    expect(book.book.getState()).toBe(FlippingState.FOLD_CORNER);
     book.destroy();
   });
 

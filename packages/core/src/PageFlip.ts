@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { INHERIT_PAGE_INDEX } from './Collection/PageCollection';
 import type { PageCollection } from './Collection/PageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
 import type { PageRect, Point } from './BasicTypes';
@@ -49,8 +50,11 @@ const CONSTRUCTION_TIME_SETTINGS = ['showCover', 'startPage'] as const;
  * public setting silently not take effect for as long as a gesture is held,
  * which is the `swipeDistance` failure this repo already fixed once.
  *
- * `satisfies` so that adding a geometry setting without listing it here is a
- * compile error rather than a book that splits under one specific gesture.
+ * `satisfies` catches a MISSPELLED or removed key, and nothing more. It does
+ * NOT catch an omission: adding a new geometry setting to `FlipSetting` without
+ * listing it here compiles cleanly and re-creates the mid-fold split, silently.
+ * Stated rather than implied, because the first version of this comment claimed
+ * the stronger guarantee and would have been believed.
  */
 const FOLD_INVALIDATING_SETTINGS = [
   'direction',
@@ -477,7 +481,7 @@ export class PageFlip extends EventObject {
 
     // ADR 0003: the new collection starts at 0, so it has to inherit where the
     // book already was or `show(target)` announces a turn that never happened.
-    this.pages.adoptCurrentPageIndex(current);
+    this.pages[INHERIT_PAGE_INDEX](current);
 
     if (pageCount === 0) {
       // Same hole as `updateFromHtml`: `show()` returns early for any index on
@@ -740,7 +744,7 @@ export class PageFlip extends EventObject {
       // it only recreates the shadow elements.
       render.releasePages();
     } else {
-      pages.adoptCurrentPageIndex(current);
+      pages[INHERIT_PAGE_INDEX](current);
       pages.show(target);
     }
 

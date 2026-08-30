@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest';
-import { PageFlip } from '@gullabs/flipbook-core';
+import { HTMLPageCollection, PageFlip } from '@gullabs/flipbook-core';
 import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
 
 /**
@@ -75,6 +75,36 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     const replacement = makePages(6);
     for (const p of replacement) book.host.appendChild(p);
     book.book.updateFromHtml(replacement);
+
+    expect(book.book.getCurrentPageIndex()).toBe(2);
+    expect(seen).toEqual([]);
+
+    book.destroy();
+  });
+
+  test('replacePages seeds too — its own call site, its own test', () => {
+    // `updateFromHtml` and `replacePages` seed at SEPARATE call sites, so the
+    // test above covers only one of them: deleting the `replacePages` seed
+    // passed the whole suite. `replacePages` is the public entry a non-HTML
+    // renderer would use, and it takes an already-built collection, which is
+    // why the seed cannot simply live in a constructor.
+    const book = makeHtmlBook({ ...landscape, flippingTime: 0 });
+    book.book.turnToPage(2);
+    expect(book.book.getCurrentPageIndex()).toBe(2);
+
+    const seen = watch(book.book);
+
+    const replacement = makePages(6);
+    for (const p of replacement) book.host.appendChild(p);
+    book.book.replacePages(
+      new HTMLPageCollection(
+        book.book,
+        book.book.getRender(),
+        book.book.getUI().getDistElement(),
+        replacement,
+      ),
+      2,
+    );
 
     expect(book.book.getCurrentPageIndex()).toBe(2);
     expect(seen).toEqual([]);
