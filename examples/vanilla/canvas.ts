@@ -148,14 +148,10 @@ const settings: ConstructorParameters<typeof PageFlip>[1] = {
   respectReducedMotion: params.get('reducedMotion') !== '0',
 };
 
-// Book-level fit / inset when the engine exposes them (ADR Decision 4).
-const settingsRecord = settings as Record<string, unknown>;
-if (fit === 'contain' || fit === 'cover' || fit === 'fill') {
-  settingsRecord['imageFit'] = fit;
-}
-if (inset !== undefined && Number.isFinite(inset)) {
-  settingsRecord['imageInset'] = inset;
-}
+// Do NOT inject imageFit/imageInset into constructor options before we know
+// Phase 2 Settings owns them. Stuffing the keys made hasOwnProperty detection
+// lie, loadFromImages received descriptors, and pre-Phase-2 coerced them to
+// "[object Object]" — every leaf paper forever.
 
 const book = new PageFlip(root, settings);
 
@@ -199,71 +195,72 @@ try {
 }
 
 /**
- * Prefer the ADR descriptor list. If the engine still only accepts `string[]`
- * (pre-Phase 2), strip to URLs so the harness keeps working. Blank leaves have
- * no URL — those fixtures require Phase 2 and surface as a ready=unsupported
- * flag rather than a false green.
+ * Phase 2 detection. Pre-Phase-2 loadFromImages does NOT reject descriptors —
+ * it stringifies them to "[object Object]" and "succeeds". Gate on settings.
  */
-function toLoadArg(): unknown {
-  const hasBlank = descriptors.some((d) => d.blank === true);
-  const needsDescriptor =
-    hasBlank ||
-    descriptors.some(
-      (d) => d.fit !== undefined || d.inset !== undefined || d.background !== undefined,
-    );
+function engineAcceptsDescriptors(): boolean {
+  const settings = book.getSettings() as unknown as Record<string, unknown>;
+  return (
+    Object.prototype.hasOwnProperty.call(settings, 'imageFit') ||
+    Object.prototype.hasOwnProperty.call(settings, 'imageLoadRadius') ||
+    Object.prototype.hasOwnProperty.call(settings, 'imageKeepRadius')
+  );
+}
 
-  // Try descriptors first when the fixture actually needs them.
-  if (needsDescriptor || fit !== null || inset !== undefined) {
-    return descriptors;
-  }
-
-  // Default identity pages: bare strings still compile against today's API.
+function urlsOnly(): string[] {
   return descriptors.map((d) => d.src).filter((s): s is string => typeof s === 'string');
 }
 
-const loadArg = toLoadArg();
+const phase2 = engineAcceptsDescriptors();
+const hasBlank = descriptors.some((d) => d.blank === true);
 
-book
-  .loadFromImages(loadArg as string[])
-  .then(() => {
-    // Heuristic: if we passed objects and nothing threw, descriptors landed.
-    window.flipbookDescriptors = Array.isArray(loadArg) && typeof loadArg[0] === 'object';
-    document.body.dataset['ready'] = '1';
-    document.body.dataset['descriptors'] = window.flipbookDescriptors ? '1' : '0';
-    document.body.dataset['page'] = String(book.getCurrentPageIndex());
-    document.body.dataset['state'] = book.getState();
-    const fitSetting = (book.getSettings() as unknown as Record<string, unknown>)['imageFit'];
-    document.body.dataset['fit'] = typeof fitSetting === 'string' ? fitSetting : 'legacy-fill';
-  })
-  .catch((err: unknown) => {
-    // Descriptor rejection (pre-Phase 2 engine) — retry with bare strings so
-    // Phase 0 tests still run, and mark the Phase 2 surface unsupported.
-    const message = err instanceof Error ? err.message : String(err);
-    const wasDescriptors = Array.isArray(loadArg) && typeof loadArg[0] === 'object';
-    if (wasDescriptors) {
-      const urls = descriptors.map((d) => d.src).filter((s): s is string => typeof s === 'string');
-      if (urls.length === 0) {
-        window.flipbookError = message;
-        document.body.dataset['ready'] = 'unsupported';
-        document.body.dataset['descriptors'] = '0';
-        return;
-      }
-      return book
-        .loadFromImages(urls)
-        .then(() => {
-          window.flipbookDescriptors = false;
-          document.body.dataset['ready'] = '1';
-          document.body.dataset['descriptors'] = '0';
-          document.body.dataset['page'] = String(book.getCurrentPageIndex());
-          document.body.dataset['state'] = book.getState();
-          document.body.dataset['fit'] = 'legacy-fill';
-          document.body.dataset['phase2'] = 'pending';
-        })
-        .catch((err2: unknown) => {
-          window.flipbookError = err2 instanceof Error ? err2.message : String(err2);
-          document.body.dataset['ready'] = 'error';
-        });
+function markReady(usedDescriptors: boolean): void {
+  window.flipbookDescriptors = usedDescriptors;
+  document.body.dataset['ready'] = '1';
+  document.body.dataset['descriptors'] = usedDescriptors ? '1' : '0';
+  document.body.dataset['page'] = String(book.getCurrentPageIndex());
+  document.body.dataset['state'] = book.getState();
+  const fitSetting = (book.getSettings() as unknown as Record<string, unknown>)['imageFit'];
+  document.body.dataset['fit'] = typeof fitSetting === 'string' ? fitSetting : 'legacy-fill';
+  if (!usedDescriptors) document.body.dataset['phase2'] = 'pending';
+}
+
+if (phase2) {
+  // Apply book-level fit/inset only after we know Settings owns the keys.
+  try {
+    const partial: Record<string, unknown> = {};
+    if (fit === 'contain' || fit === 'cover' || fit === 'fill') partial['imageFit'] = fit;
+    if (inset !== undefined && Number.isFinite(inset)) partial['imageInset'] = inset;
+    if (Object.keys(partial).length > 0) {
+      book.updateSettings(partial as Parameters<PageFlip['updateSettings']>[0]);
     }
-    window.flipbookError = message;
-    document.body.dataset['ready'] = 'error';
-  });
+  } catch {
+    // ignore
+  }
+  book
+    .loadFromImages(descriptors as unknown as string[])
+    .then(() => markReady(true))
+    .catch((err: unknown) => {
+      window.flipbookError = err instanceof Error ? err.message : String(err);
+      document.body.dataset['ready'] = 'error';
+    });
+} else if (hasBlank && urlsOnly().length === 0) {
+  // Blank-only fixture cannot run without descriptors.
+  document.body.dataset['ready'] = 'unsupported';
+  document.body.dataset['descriptors'] = '0';
+  document.body.dataset['phase2'] = 'pending';
+} else {
+  const urls = urlsOnly();
+  if (urls.length === 0) {
+    document.body.dataset['ready'] = 'unsupported';
+    document.body.dataset['descriptors'] = '0';
+  } else {
+    book
+      .loadFromImages(urls)
+      .then(() => markReady(false))
+      .catch((err: unknown) => {
+        window.flipbookError = err instanceof Error ? err.message : String(err);
+        document.body.dataset['ready'] = 'error';
+      });
+  }
+}

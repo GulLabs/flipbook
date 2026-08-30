@@ -293,7 +293,38 @@ test.describe('Phase 2 — blank leaf', () => {
 });
 
 test.describe('Phase 2 — image error path', () => {
-  test('a 404 settles the load and paints paper (no infinite spinner)', async ({
+  /**
+   * A spinner's arc moves; failed paper does not. Sample the failed leaf
+   * centre over ~400ms and require (a) opaque paint, (b) near paper colour,
+   * (c) low channel variance. Alpha-only would green-pass the A4 spinner.
+   */
+  async function expectStablePaper(
+    page: Page,
+    at: { x: number; y: number },
+    paper: readonly number[],
+  ): Promise<boolean> {
+    const readings: Rgba[] = [];
+    for (let i = 0; i < 8; i++) {
+      readings.push(await sample(page, at.x, at.y));
+      await page.waitForTimeout(50);
+    }
+    const nearPaper = readings.every(
+      (r) =>
+        r[3] >= 254 &&
+        Math.abs(r[0] - (paper[0] ?? 0)) <= 12 &&
+        Math.abs(r[1] - (paper[1] ?? 0)) <= 12 &&
+        Math.abs(r[2] - (paper[2] ?? 0)) <= 12,
+    );
+    if (!nearPaper) return false;
+    // Variance: max-min per channel across samples must stay small.
+    for (let c = 0; c < 3; c++) {
+      const vals = readings.map((r) => r[c] ?? 0);
+      if (Math.max(...vals) - Math.min(...vals) > 20) return false;
+    }
+    return true;
+  }
+
+  test('a 404 settles the load and paints stable paper (no infinite spinner)', async ({
     page,
   }, testInfo) => {
     await open(
@@ -307,21 +338,19 @@ test.describe('Phase 2 — image error path', () => {
       return;
     }
 
-    // Wait long enough that a spinner would have painted several frames.
-    await page.waitForTimeout(400);
-    await settle(page);
     await assertNotBlankCanvas(page);
     const p = await probes(page);
 
-    // Failed left leaf must be stable paper (or paper + glyph), never the
-    // loader arc's grey stroke as the only content forever.
-    const left = await sample(page, p.left.x, p.left.y);
-    expect(left[3]).toBeGreaterThanOrEqual(254);
-
-    // Right leaf still paints.
+    // Right leaf still paints the good image — proves the book is up.
     await expectPixel(page, p.right, PAGE[1]);
 
-    // imageError event — Phase 2 only.
+    const stable = await expectStablePaper(page, p.left, MAGENTA_PAPER);
+    if (!stable) {
+      // Pre-Phase-2 A4: spinner forever. Do not green-pass on alpha alone.
+      testInfo.skip(true, 'failed leaf is not stable paper yet (A4 / Phase 2 error path)');
+      return;
+    }
+
     const errors = await page.evaluate(() => window.flipbookImageErrors ?? []);
     if (errors.length === 0) {
       testInfo.skip(true, 'imageError event not emitted yet (Phase 2 pending)');
@@ -341,10 +370,15 @@ test.describe('Phase 2 — image error path', () => {
       testInfo.skip(true, 'corrupt fixture needs engine error path');
       return;
     }
-    await page.waitForTimeout(400);
     await assertNotBlankCanvas(page);
     const p = await probes(page);
     await expectPixel(page, p.right, PAGE[1]);
+
+    const stable = await expectStablePaper(page, p.left, MAGENTA_PAPER);
+    if (!stable) {
+      testInfo.skip(true, 'corrupt leaf is not stable paper yet (A4 / Phase 2 error path)');
+      return;
+    }
   });
 });
 

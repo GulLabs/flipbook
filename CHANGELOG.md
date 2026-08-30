@@ -40,6 +40,32 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — accessibility: zoom, browser shortcuts, and focus on a turn
+
+- **Pinch-to-zoom was disabled across the entire book.**
+  `.stf__parent{touch-action:pan-y}` tells the browser vertical panning is the
+  only gesture it may handle, which silently kills two-finger zoom over the whole
+  book. For a low-vision reader magnification _is_ how they read, and a picture
+  book is the archetypal zoom target — WCAG 1.4.4 / 1.4.10, and disabling zoom is
+  the textbook failure. Now `pan-y pinch-zoom`; single-finger horizontal drags,
+  the only gesture `pan-y` existed to protect, still reach the engine.
+- **The book swallowed modified browser shortcuts.** The keydown handler tested
+  `event.key` with no modifier check and called `preventDefault()`, so with the
+  book focused **Alt+Left / Cmd+Left (Back)** and **Ctrl+Home / Ctrl+End** — the
+  standard way a screen-reader user escapes a widget — turned a page _and_ were
+  cancelled.
+- **Arrow-key ownership was decided by the wrong list.** The handler deferred to
+  a selector built for _pointer_ targets, which under-matches badly as a keyboard
+  rule: a `tabindex="0"` scroll region, `<video controls>`, `<audio>`, an
+  `<iframe>` or any custom focusable widget is not on it, so the book stole and
+  cancelled its arrow keys. Focus is the authority now.
+- **A page turn dropped focus to `<body>`.** When `inert` lands on an ancestor of
+  the active element the browser blurs it, so any turn while focus sat on a
+  control in the outgoing leaf silently teleported the keyboard user to the top
+  of the document and the next Tab restarted from there (WCAG 2.4.3). Focus is
+  rescued to the book root before `inert` is applied, and only when the leaf
+  losing its freedom actually contains the active element.
+
 ### Fixed — the load path dispatches too
 
 - **A listener on the book's first `flip` could leave a zombie render loop.**

@@ -110,20 +110,18 @@ book.on('turnRejected', (e) => {
 async function loadBook(): Promise<void> {
   const fit = readFit();
   const inset = readInset();
-  const descriptors = IMAGES.map((img) => ({ ...img, fit, inset }));
-
-  try {
-    await book.loadFromImages(descriptors as unknown as string[]);
-    usedDescriptors = true;
-  } catch {
-    await book.loadFromImages(IMAGES.map((img) => img.src));
-    usedDescriptors = false;
-  }
-
   const settings = settingsBag();
-  fitSupported = 'imageFit' in settings || 'imageInset' in settings;
+  // Do not try descriptors and catch: pre-Phase-2 coerces objects to
+  // "[object Object]" and resolves. Gate on settings the ADR adds.
+  fitSupported =
+    Object.prototype.hasOwnProperty.call(settings, 'imageFit') ||
+    Object.prototype.hasOwnProperty.call(settings, 'imageInset') ||
+    Object.prototype.hasOwnProperty.call(settings, 'imageLoadRadius');
 
   if (fitSupported) {
+    const descriptors = IMAGES.map((img) => ({ ...img, fit, inset }));
+    await book.loadFromImages(descriptors as unknown as string[]);
+    usedDescriptors = true;
     try {
       book.updateSettings({
         imageFit: fit,
@@ -132,6 +130,9 @@ async function loadBook(): Promise<void> {
     } catch {
       fitSupported = false;
     }
+  } else {
+    await book.loadFromImages(IMAGES.map((img) => img.src));
+    usedDescriptors = false;
   }
 
   refreshStatus(

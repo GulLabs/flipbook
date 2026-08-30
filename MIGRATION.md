@@ -29,7 +29,8 @@ import { ImageFlipBook } from '@gullabs/react-flipbook';
   strings and drops blank leaves with one `console.warn` per book.
 
 See `docs/adr/0001-image-page-api.md` for the full image-page contract
-(`imageFit`, `imageInset`, `imageError`, `replaceImage` / `retryImage`).
+(`imageFit`, `imageInset`, `imageError`, `replaceImage`, `retryImage` — the
+last two are engine Phase 2, not yet on this binding).
 
 ## 3.0.0 — engine lifecycle and settings validation
 

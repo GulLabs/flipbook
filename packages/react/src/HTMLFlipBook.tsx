@@ -19,7 +19,6 @@ import {
 } from 'react';
 import {
   FlipCorner,
-  FLIPBOOK_INTERACTIVE_SELECTOR,
   PageFlip,
   PageFlipError,
   type FlipSetting,
@@ -643,6 +642,34 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
 
       const visible = new Set(visiblePages);
 
+      /*
+       * Rescue focus BEFORE inerting, not after.
+       *
+       * A turn can happen while focus sits on a control inside the leaf that is
+       * turning away — a click on the consumer's "next" button, a programmatic
+       * `turnToPage`, an autoplay, or the reader's own Arrow key after tabbing
+       * back out. The moment `inert` lands on an ancestor of
+       * `document.activeElement` the browser blurs it and focus resets to
+       * `<body>`: the keyboard user is silently teleported to the top of the
+       * document and the next Tab restarts from there (WCAG 2.4.3 Focus Order,
+       * and 3.2.x — a context change nobody asked for).
+       *
+       * Moving focus to the book root keeps it where the reader is, keeps the
+       * root's own Arrow/Home/End handler live, and — because the root is
+       * `role="group"` with `aria-roledescription` and a name — gives AT
+       * something meaningful to announce instead of "HTML content".
+       *
+       * The root therefore carries `tabIndex={-1}` even when `useKeyboard` is
+       * off: without it `focus()` on a plain <div> is a no-op and focus would
+       * still land on <body>.
+       */
+      const active = typeof document === 'undefined' ? null : document.activeElement;
+      const losesFocus =
+        active !== null &&
+        nodes.some((node, index) => !visible.has(index) && node.contains(active));
+
+      if (losesFocus) rootRef.current?.focus({ preventScroll: true });
+
       nodes.forEach((node, index) => {
         if (visible.has(index)) node.removeAttribute('inert');
         else node.setAttribute('inert', '');
@@ -707,14 +734,30 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       if (!useKeyboard) return;
       const engine = engineRef.current;
       if (!engine) return;
-      const target = event.target;
-      if (
-        target instanceof Element &&
-        target !== event.currentTarget &&
-        target.closest(FLIPBOOK_INTERACTIVE_SELECTOR)
-      ) {
-        return;
-      }
+
+      // A MODIFIED arrow is somebody else's shortcut, and swallowing it (with
+      // `preventDefault`, no less) takes a documented browser behaviour away
+      // from the keyboard user who needs it most: Alt+ArrowLeft / Alt+ArrowRight
+      // are Back and Forward on Windows and Linux, Cmd+ArrowLeft is Back on
+      // macOS, and Ctrl+Home / Ctrl+End jump to the top and bottom of the
+      // document — the two keys a screen-reader user presses to get out of a
+      // widget. Ours are the UNMODIFIED keys only, which is also what
+      // `aria-keyshortcuts="ArrowLeft ArrowRight Home End"` promises.
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+
+      // A keydown only reaches this handler by bubbling up from
+      // `document.activeElement`. If that is not the root itself, focus is on
+      // some focusable thing INSIDE a page, and arrow keys belong to it.
+      //
+      // This used to ask `FLIPBOOK_INTERACTIVE_SELECTOR` instead — a list built
+      // for POINTER targets (what should not start a fold). As a keyboard rule
+      // it under-matches badly: a `tabindex="0"` scroll region, `<video
+      // controls>`, `<audio>`, an `<iframe>`, a `<details>` body, or any custom
+      // widget that is focusable without one of those roles is not on it, so
+      // the book stole its arrow keys and called `preventDefault`. Focus is the
+      // authority on who owns a key press; a selector is not.
+      if (event.target !== event.currentTarget) return;
+
       const rtl = props.direction === 'rtl';
       if (event.key === 'ArrowRight') {
         event.preventDefault();
@@ -771,8 +814,12 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         // trade available. Browse-mode users turn pages with real controls.
         role="group"
         aria-roledescription={roleDescription}
+        // `-1` rather than absent when keyboard turning is off: the root is the
+        // focus target the inert effect falls back to when a turn takes the
+        // leaf holding focus away, and `focus()` on a div with no tabindex is a
+        // no-op. `-1` keeps it out of the tab order, so nothing else changes.
         // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- see above
-        tabIndex={useKeyboard ? 0 : undefined}
+        tabIndex={useKeyboard ? 0 : -1}
         aria-keyshortcuts={useKeyboard ? 'ArrowLeft ArrowRight Home End' : undefined}
         data-flipbook-kb={useKeyboard ? '' : undefined}
         onKeyDown={useKeyboard ? onKeyDown : undefined}

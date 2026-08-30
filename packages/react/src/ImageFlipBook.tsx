@@ -180,6 +180,21 @@ function toStringSources(images: readonly ImagePageLeaf[]): string[] {
   return out;
 }
 
+/**
+ * Phase 2 detection. Do NOT "try descriptors and catch": pre-Phase-2
+ * `loadFromImages` accepts any array and coerces objects to
+ * `"[object Object]"` as the image URL — the promise resolves, the catch
+ * never runs, and every leaf 404s. Gate on settings the ADR adds instead.
+ */
+function engineAcceptsDescriptors(engine: PageFlip): boolean {
+  const settings = engine.getSettings() as unknown as Record<string, unknown>;
+  return (
+    Object.prototype.hasOwnProperty.call(settings, 'imageFit') ||
+    Object.prototype.hasOwnProperty.call(settings, 'imageLoadRadius') ||
+    Object.prototype.hasOwnProperty.call(settings, 'imageKeepRadius')
+  );
+}
+
 export const ImageFlipBook = forwardRef<FlipBookHandle | null, Omit<ImageFlipBookProps, 'ref'>>(
   function ImageFlipBook(props, ref) {
     const {
@@ -206,6 +221,9 @@ export const ImageFlipBook = forwardRef<FlipBookHandle | null, Omit<ImageFlipBoo
 
     const rootRef = useRef<HTMLDivElement>(null);
     const engineRef = useRef<PageFlip | null>(null);
+    /** Read by the load effect so the initial controlled `page` applies after settle. */
+    const controlledPageRef = useRef(controlledPage);
+    controlledPageRef.current = controlledPage;
     const [hydrated, setHydrated] = useState(false);
     const [enginePage, setEnginePage] = useState(props.startPage ?? 0);
     const [pageCount, setPageCount] = useState(0);
@@ -400,41 +418,70 @@ export const ImageFlipBook = forwardRef<FlipBookHandle | null, Omit<ImageFlipBoo
         const stillCurrent = () => !cancelled && !engine.isDestroyed();
 
         try {
-          // Prefer ADR descriptors.
-          await engine.loadFromImages(images as unknown as string[]);
-        } catch {
-          if (!stillCurrent()) return;
-          const urls = toStringSources(images);
-          if (urls.length === 0) return;
-          try {
+          if (engineAcceptsDescriptors(engine)) {
+            await engine.loadFromImages(images as unknown as string[]);
+          } else {
+            const urls = toStringSources(images);
+            if (urls.length === 0) return;
             await engine.loadFromImages(urls);
-          } catch (err) {
-            if (!stillCurrent()) return;
-            const code = err instanceof PageFlipError ? err.code : 'UNKNOWN';
-            let actual = -1;
-            try {
-              actual = engine.getCurrentPageIndex();
-            } catch {
-              actual = -1;
-            }
-            eventHandlersRef.current.onNavigationError?.({
-              code: String(code),
-              requested: 0,
-              actual,
-            });
-            return;
           }
+        } catch (err) {
+          if (!stillCurrent()) return;
+          const code = err instanceof PageFlipError ? err.code : 'UNKNOWN';
+          let actual = -1;
+          try {
+            actual = engine.getCurrentPageIndex();
+          } catch {
+            actual = -1;
+          }
+          eventHandlersRef.current.onNavigationError?.({
+            code: String(code),
+            requested: 0,
+            actual,
+          });
+          return;
         }
         if (!stillCurrent()) return;
 
-        setPageCount(engine.getPageCount());
-        const landed = engine.getCurrentPageIndex();
-        setEnginePage(landed);
-        setOrientation(engine.getOrientation() === 'portrait' ? 'portrait' : 'landscape');
+        try {
+          setPageCount(engine.getPageCount());
+          setOrientation(engine.getOrientation() === 'portrait' ? 'portrait' : 'landscape');
 
-        if (!startPageAppliedRef.current) {
-          startPageAppliedRef.current = true;
-          eventHandlersRef.current.onPageChange?.(landed);
+          // Apply controlled page AFTER load. The controlled-page effect alone
+          // exits while NOT_LOADED and does not re-run when load finishes.
+          let landed = engine.getCurrentPageIndex();
+          const wanted = controlledPageRef.current;
+          if (wanted !== undefined && wanted !== landed) {
+            try {
+              engine.turnToPage(wanted);
+              landed = engine.getCurrentPageIndex();
+            } catch (err) {
+              if (err instanceof PageFlipError) {
+                eventHandlersRef.current.onNavigationError?.({
+                  code: err.code,
+                  requested: wanted,
+                  actual: landed,
+                });
+              }
+            }
+          }
+          setEnginePage(landed);
+
+          if (!startPageAppliedRef.current) {
+            startPageAppliedRef.current = true;
+            eventHandlersRef.current.onPageChange?.(landed);
+          }
+        } catch (err) {
+          // Attach/load can leave getters throwing in hostile hosts (jsdom
+          // without canvas). Surface via onNavigationError; do not throw out
+          // of the effect.
+          if (err instanceof PageFlipError) {
+            eventHandlersRef.current.onNavigationError?.({
+              code: err.code,
+              requested: controlledPageRef.current ?? 0,
+              actual: -1,
+            });
+          }
         }
       })();
 
@@ -445,7 +492,9 @@ export const ImageFlipBook = forwardRef<FlipBookHandle | null, Omit<ImageFlipBoo
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [imagesIdentity]);
 
-    // Controlled `page`.
+    // Live controlled `page` after the book is loaded. Initial apply happens
+    // in the load effect above (via controlledPageRef) so a first paint with
+    // page={n} is not stuck on 0.
     useEffect(() => {
       const engine = engineRef.current;
       if (!engine || engine.isDestroyed()) return;
@@ -466,7 +515,8 @@ export const ImageFlipBook = forwardRef<FlipBookHandle | null, Omit<ImageFlipBoo
 
       try {
         engine.turnToPage(controlledPage);
-        setEnginePage(safeIndex() >= 0 ? engine.getCurrentPageIndex() : controlledPage);
+        const next = safeIndex();
+        setEnginePage(next >= 0 ? next : controlledPage);
       } catch (err) {
         if (err instanceof PageFlipError) {
           eventHandlersRef.current.onNavigationError?.({
@@ -476,7 +526,7 @@ export const ImageFlipBook = forwardRef<FlipBookHandle | null, Omit<ImageFlipBoo
           });
         }
       }
-    }, [controlledPage]);
+    }, [controlledPage, pageCount]);
 
     const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
       if (!useKeyboard) return;
