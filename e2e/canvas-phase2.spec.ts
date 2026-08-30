@@ -294,34 +294,59 @@ test.describe('Phase 2 — blank leaf', () => {
 
 test.describe('Phase 2 — image error path', () => {
   /**
-   * A spinner's arc moves; failed paper does not. Sample the failed leaf
-   * centre over ~400ms and require (a) opaque paint, (b) near paper colour,
-   * (c) low channel variance. Alpha-only would green-pass the A4 spinner.
+   * A spinner's arc is a ring ~20 CSS-px from the leaf centre (ImagePage
+   * drawLoader). Sampling only the centre 5×5 lands on paper fill under the
+   * arc and green-passes A4. Probe the ring + centre over time.
    */
-  async function expectStablePaper(
+  async function expectStablePaperNoSpinner(
     page: Page,
-    at: { x: number; y: number },
+    center: { x: number; y: number },
     paper: readonly number[],
-  ): Promise<boolean> {
-    const readings: Rgba[] = [];
-    for (let i = 0; i < 8; i++) {
-      readings.push(await sample(page, at.x, at.y));
-      await page.waitForTimeout(50);
+  ): Promise<'stable' | 'spinner' | 'other'> {
+    const ring = [
+      { x: center.x + 20, y: center.y },
+      { x: center.x - 20, y: center.y },
+      { x: center.x, y: center.y + 20 },
+      { x: center.x, y: center.y - 20 },
+      center,
+    ];
+    const GREY = 200; // drawLoader strokeStyle rgb(200,200,200)
+    let sawGreyArc = false;
+    let allPaper = true;
+    const series: Rgba[][] = ring.map(() => []);
+
+    for (let t = 0; t < 10; t++) {
+      for (let i = 0; i < ring.length; i++) {
+        const pt = ring[i];
+        if (!pt) continue;
+        const r = await sample(page, pt.x, pt.y);
+        series[i]?.push(r);
+        const nearGrey =
+          Math.abs(r[0] - GREY) <= 25 && Math.abs(r[1] - GREY) <= 25 && Math.abs(r[2] - GREY) <= 25;
+        if (nearGrey) sawGreyArc = true;
+        const nearPaper =
+          r[3] >= 254 &&
+          Math.abs(r[0] - (paper[0] ?? 0)) <= 12 &&
+          Math.abs(r[1] - (paper[1] ?? 0)) <= 12 &&
+          Math.abs(r[2] - (paper[2] ?? 0)) <= 12;
+        if (!nearPaper) allPaper = false;
+      }
+      await page.waitForTimeout(40);
     }
-    const nearPaper = readings.every(
-      (r) =>
-        r[3] >= 254 &&
-        Math.abs(r[0] - (paper[0] ?? 0)) <= 12 &&
-        Math.abs(r[1] - (paper[1] ?? 0)) <= 12 &&
-        Math.abs(r[2] - (paper[2] ?? 0)) <= 12,
-    );
-    if (!nearPaper) return false;
-    // Variance: max-min per channel across samples must stay small.
-    for (let c = 0; c < 3; c++) {
-      const vals = readings.map((r) => r[c] ?? 0);
-      if (Math.max(...vals) - Math.min(...vals) > 20) return false;
+
+    // Motion on the ring: spinner angle advances.
+    let ringMotion = false;
+    for (const readings of series.slice(0, 4)) {
+      if (readings.length < 2) continue;
+      for (let c = 0; c < 3; c++) {
+        const vals = readings.map((r) => r[c] ?? 0);
+        if (Math.max(...vals) - Math.min(...vals) > 25) ringMotion = true;
+      }
     }
-    return true;
+
+    if (sawGreyArc || ringMotion) return 'spinner';
+    if (allPaper) return 'stable';
+    return 'other';
   }
 
   test('a 404 settles the load and paints stable paper (no infinite spinner)', async ({
@@ -344,16 +369,32 @@ test.describe('Phase 2 — image error path', () => {
     // Right leaf still paints the good image — proves the book is up.
     await expectPixel(page, p.right, PAGE[1]);
 
-    const stable = await expectStablePaper(page, p.left, MAGENTA_PAPER);
-    if (!stable) {
-      // Pre-Phase-2 A4: spinner forever. Do not green-pass on alpha alone.
-      testInfo.skip(true, 'failed leaf is not stable paper yet (A4 / Phase 2 error path)');
+    const verdict = await expectStablePaperNoSpinner(page, p.left, MAGENTA_PAPER);
+    const phase2 = await page.evaluate(
+      () =>
+        document.body.dataset['descriptors'] === '1' ||
+        (document.body.dataset['fit'] !== undefined &&
+          document.body.dataset['fit'] !== 'legacy-fill'),
+    );
+
+    if (verdict === 'spinner' || verdict === 'other') {
+      // Pre-Phase-2: A4 is known open — skip, do not green-pass.
+      // Phase-2 engine claiming ready must paint stable paper: hard fail.
+      if (phase2) {
+        expect(verdict, 'Phase 2 failed leaf must be stable paper, not a spinner').toBe('stable');
+      } else {
+        testInfo.skip(true, `failed leaf is ${verdict} (A4 / Phase 2 error path pending)`);
+      }
       return;
     }
 
     const errors = await page.evaluate(() => window.flipbookImageErrors ?? []);
     if (errors.length === 0) {
-      testInfo.skip(true, 'imageError event not emitted yet (Phase 2 pending)');
+      if (phase2) {
+        expect(errors.length, 'Phase 2 must emit imageError on 404').toBeGreaterThan(0);
+      } else {
+        testInfo.skip(true, 'imageError event not emitted yet (Phase 2 pending)');
+      }
       return;
     }
     expect(errors[0]?.page).toBe(0);
@@ -374,10 +415,19 @@ test.describe('Phase 2 — image error path', () => {
     const p = await probes(page);
     await expectPixel(page, p.right, PAGE[1]);
 
-    const stable = await expectStablePaper(page, p.left, MAGENTA_PAPER);
-    if (!stable) {
-      testInfo.skip(true, 'corrupt leaf is not stable paper yet (A4 / Phase 2 error path)');
-      return;
+    const verdict = await expectStablePaperNoSpinner(page, p.left, MAGENTA_PAPER);
+    const phase2 = await page.evaluate(
+      () =>
+        document.body.dataset['descriptors'] === '1' ||
+        (document.body.dataset['fit'] !== undefined &&
+          document.body.dataset['fit'] !== 'legacy-fill'),
+    );
+    if (verdict !== 'stable') {
+      if (phase2) {
+        expect(verdict).toBe('stable');
+      } else {
+        testInfo.skip(true, `corrupt leaf is ${verdict} (A4 / Phase 2 pending)`);
+      }
     }
   });
 });

@@ -44,6 +44,7 @@ import type {
   PageOrientation,
 } from './types';
 
+/** Settings safe at construction on both pre- and post-Phase-2 engines. */
 const ENGINE_SETTING_KEYS = [
   'startPage',
   'size',
@@ -67,7 +68,15 @@ const ENGINE_SETTING_KEYS = [
   'pageBackground',
   'respectReducedMotion',
   'direction',
-  // Canvas-only (ADR). Present when core has landed them; ignored otherwise.
+] as const;
+
+/**
+ * Canvas-only (ADR). Must NOT be passed at construction: stuffing them onto
+ * the options object makes `engineAcceptsDescriptors` lie (hasOwnProperty
+ * true) and then loadFromImages receives descriptors that pre-Phase-2 coerces
+ * to "[object Object]". Applied via updateSettings only after detection.
+ */
+const CANVAS_SETTING_KEYS = [
   'imageFit',
   'imageInset',
   'imageLoadRadius',
@@ -85,6 +94,15 @@ function pickSettings(props: ImageFlipBookProps): Partial<FlipSetting> {
     if (value !== undefined) {
       (out as Record<string, unknown>)[key] = value;
     }
+  }
+  return out;
+}
+
+function pickCanvasSettings(props: ImageFlipBookProps): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of CANVAS_SETTING_KEYS) {
+    const value = (props as Record<string, unknown>)[key];
+    if (value !== undefined) out[key] = value;
   }
   return out;
 }
@@ -371,6 +389,17 @@ export const ImageFlipBook = forwardRef<FlipBookHandle | null, Omit<ImageFlipBoo
       const engine = engineRef.current;
       if (!engine) return;
       engine.updateSettings(settings);
+      // Canvas keys only after Phase 2 Settings owns them — never at construct.
+      if (engineAcceptsDescriptors(engine)) {
+        const canvas = pickCanvasSettings(props);
+        if (Object.keys(canvas).length > 0) {
+          try {
+            engine.updateSettings(canvas);
+          } catch {
+            // pre-Phase-2 updateSettings may reject unknown keys
+          }
+        }
+      }
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [
       props.width,

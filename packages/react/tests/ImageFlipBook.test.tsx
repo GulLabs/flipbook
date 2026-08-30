@@ -74,8 +74,19 @@ describe('ImageFlipBook', () => {
 
   test('loads bare string URLs, never object descriptors, before Phase 2', async () => {
     // Pre-Phase-2 engines accept any array and coerce objects to
-    // "[object Object]". ImageFlipBook must strip to src strings itself.
-    render(<ImageFlipBook width={200} height={150} flippingTime={0} images={IMAGES} />);
+    // "[object Object]". ImageFlipBook must strip to src strings itself —
+    // including when the caller passes imageFit (which must not poison
+    // construction-time capability detection).
+    render(
+      <ImageFlipBook
+        width={200}
+        height={150}
+        flippingTime={0}
+        images={IMAGES}
+        imageFit="contain"
+        imageInset={0.028}
+      />,
+    );
 
     await waitFor(() => {
       expect(loadSpy).toHaveBeenCalled();
