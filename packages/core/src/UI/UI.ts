@@ -346,7 +346,9 @@ export abstract class UI {
     // Bound before the return, removed unconditionally in `removeHandlers`.
     this.distElement.addEventListener('dragstart', this.onDragStart);
 
-    if (!this.app.getSettings().useMouseEvents) return;
+    // D2. A LIST, not a boolean. The old flag gated the one pointer path, so
+    // `useMouseEvents: false` silently disabled touch and pen too.
+    if (this.app.getSettings().pointerInput.length === 0) return;
 
     this.distElement.addEventListener('pointerdown', this.onPointerDown);
     this.distElement.addEventListener('pointermove', this.onPointerMove);
@@ -463,7 +465,7 @@ export abstract class UI {
   }
 
   private checkTarget(targer: EventTarget | null): boolean {
-    if (!this.app.getSettings().clickEventForward) return true;
+    if (!this.app.getSettings().respectInteractiveContent) return true;
     if (!(targer instanceof Element)) return true;
     return targer.closest(FLIPBOOK_INTERACTIVE_SELECTOR) === null;
   }
@@ -536,7 +538,7 @@ export abstract class UI {
   }
 
   private swipeDirection(dx: number): 'prev' | 'next' {
-    const rtl = this.app.getSettings().direction === 'rtl';
+    const rtl = this.app.getSettings().readingDirection === 'rtl';
 
     if (dx > 0) {
       return rtl ? 'next' : 'prev';
@@ -664,7 +666,7 @@ export abstract class UI {
 
     this.app.startUserTouch(pos);
 
-    if (!this.app.getSettings().mobileScrollSupport && e.pointerType !== 'mouse') {
+    if (!this.app.getSettings().allowTouchScroll && e.pointerType !== 'mouse') {
       if (e.cancelable) e.preventDefault();
     }
   };
@@ -686,7 +688,7 @@ export abstract class UI {
     const pos = this.getMousePos(e.clientX, e.clientY);
     const isTouch = e.pointerType !== 'mouse';
 
-    if (this.app.getSettings().mobileScrollSupport && isTouch) {
+    if (this.app.getSettings().allowTouchScroll && isTouch) {
       if (this.touchPoint !== null) {
         if (
           Math.abs(this.touchPoint.point.x - pos.x) > 10 ||

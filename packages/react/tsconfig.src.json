@@ -1,0 +1,5 @@
+{
+  // Round-scoped: `src` only. See packages/core/tsconfig.src.json.
+  "extends": "./tsconfig.json",
+  "include": ["src"]
+}

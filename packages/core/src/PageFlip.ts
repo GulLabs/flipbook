@@ -20,9 +20,9 @@ import { HTMLUI } from './UI/HTMLUI';
 import { distanceBetween } from './Helper';
 import type { Page } from './Page/Page';
 import { EventObject } from './Event/EventObject';
-import type { FlipbookEventMap } from './Event/EventObject';
+import type { BookSnapshot, FlipbookEventMap } from './Event/EventObject';
 import { HTMLRender } from './Render/HTMLRender';
-import type { FlipSetting } from './Settings';
+import type { FlipOptions, FlipSetting, LiveSetting } from './Settings';
 import { Settings } from './Settings';
 import type { UI } from './UI/UI';
 import { PageFlipError } from './errors';
@@ -36,7 +36,7 @@ import { PageFlipError } from './errors';
  * including `size` / `width` / `height`: `updateSettings` restamps those via
  * `ui.applyHostSize`, so they are live.
  */
-const CONSTRUCTION_TIME_SETTINGS = ['showCover', 'startPage'] as const;
+const CONSTRUCTION_TIME_SETTINGS = ['hardCovers', 'initialPage'] as const;
 
 /**
  * Settings a turn in flight was built against, and cannot absorb a change to.
@@ -65,14 +65,13 @@ const CONSTRUCTION_TIME_SETTINGS = ['showCover', 'startPage'] as const;
  * the stronger guarantee and would have been believed.
  */
 const FOLD_INVALIDATING_SETTINGS = [
-  'direction',
-  'size',
+  'readingDirection',
+  'sizing',
   'width',
   'height',
   'minWidth',
   'maxWidth',
   'minHeight',
-  'maxHeight',
   'usePortrait',
   'autoSize',
 ] as const satisfies readonly (keyof FlipSetting)[];
@@ -117,6 +116,19 @@ export class PageFlip extends EventObject {
   private isUserMove = false;
 
   private readonly setting: FlipSetting;
+
+  /**
+   * What the CALLER wrote, kept for the life of the engine.
+   *
+   * `updateSettings` re-resolves from this rather than from the resolved
+   * object, so "was this bound explicitly supplied?" stays answerable — merging
+   * into resolved settings makes every synthesised bound look authored, and a
+   * rule about explicit bounds would then fail an unrelated
+   * `updateSettings({ drawShadow })`. It is also what makes `getSettings()`
+   * round-trip: `responsive -> fixed -> responsive` used to return bounds
+   * pinned to width/height instead of the ones the caller declared.
+   */
+  private authored: FlipOptions;
   private readonly block: HTMLElement; // Root HTML Element
 
   // Nullable, not `!`: these only exist after `loadFromHTML`.
@@ -130,7 +142,10 @@ export class PageFlip extends EventObject {
   private render: Render | null = null;
 
   private ui: UI | null = null;
-  private initTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * `ready` is once per ENGINE, `loaded` once per load. See {@link FlipbookEventMap}.
+   */
+  private readyAnnounced = false;
   private destroyed = false;
 
   /**
@@ -148,10 +163,11 @@ export class PageFlip extends EventObject {
    * @param {HTMLElement} inBlock - Root HTML Element
    * @param {Object} setting - Configuration object
    */
-  constructor(inBlock: HTMLElement, setting: Partial<FlipSetting>) {
+  constructor(inBlock: HTMLElement, setting: FlipOptions) {
     super();
 
-    this.setting = new Settings().getSettings(setting);
+    this.authored = { ...setting };
+    this.setting = new Settings().resolve(this.authored);
     this.block = inBlock;
   }
 
@@ -219,7 +235,6 @@ export class PageFlip extends EventObject {
     // the cleanup with it. See `EventObject.trigger`.
     this.deferListenerErrors();
     try {
-      this.cancelPendingInit();
       // May be called before create() finishes wiring render/ui.
       this.render?.stop();
       this.ui?.destroy();
@@ -277,117 +292,23 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Announce a collection change as ONE event pair (`update`, then
-   * `collectionRebuild`), whatever the listeners do.
+   * Announce that the collection was replaced.
    *
-   * `replacePages`, `updateFromHtml` and `clear` all swap the collection and
-   * then emit both events. Emitting them as two plain calls meant a listener on
-   * the FIRST that threw took the second down with it: the exception unwound
-   * out of the public method between the two, so the collection had already
-   * been replaced and only half the pair had been delivered. Every *other*
-   * listener — including well-behaved ones on `collectionRebuild` — was then
-   * permanently desynced from a book that had already changed, and no later
-   * event ever re-announces it.
+   * D10. This was a PAIR — `update` then `collectionRebuild` — always fired
+   * together, atomically, with the same page. Roughly sixty lines existed to
+   * guarantee a cross-event property that one event does not have: an `update`
+   * listener that threw taking `collectionRebuild` with it, and an `update`
+   * listener that REPLACED the collection leaving the second half to report a
+   * count for a book that no longer existed.
    *
-   * So the pair is atomic and the throw still propagates. Swallowing it was the
-   * other candidate and is worse: a listener that throws is a consumer defect,
-   * and this engine's rule (see `requestTurn`) is that a failure which is not
-   * the engine's own is never converted into silence. The caller sees the same
-   * error it sees today; what changes is that the listener at fault no longer
-   * decides what the rest of the consumer's code gets told.
-   *
-   * If both listeners throw, the first error is the one rethrown — it is the
-   * one that actually happened first, and it is what a caller catching today
-   * already gets.
-   *
-   * E7, scope narrowed. This used to describe the loss WITHIN one event as well
-   * — two `update` listeners, the first throwing, the second never called. That
-   * half is now `EventObject.trigger`'s job: every listener for an event runs,
-   * and the first error is rethrown afterwards. What is left here is the
-   * CROSS-event guarantee, and it is still load-bearing for exactly the reason
-   * above: `trigger` rethrows synchronously, so without this try/catch an
-   * `update` listener that throws would still take `collectionRebuild` with it.
-   * Do not delete it as redundant.
+   * Both failures are structural consequences of splitting one fact across two
+   * dispatches. One event has neither, so the machinery is gone rather than
+   * fixed. `update` also shared its name with `PageFlip.update()`, which does
+   * not cause it, and is now free for a real repaint signal if one is ever
+   * wanted.
    */
-  private dispatchCollectionChange(page: number, pageCount: number, mode: Orientation): void {
-    let failure: { err: unknown } | null = null;
-
-    // RE-2. The pair is atomic; it also has to be TRUE.
-    //
-    // `update` dispatches to consumer code, and a listener is entitled to
-    // replace the collection from it — `updateFromHtml`, `replacePages`,
-    // `clear` and every load are all reachable. When one does, the second half
-    // of this pair used to fire anyway, carrying the numbers this call captured
-    // before the swap. Measured: an `update` listener calling `updateFromHtml`
-    // again produced
-    //
-    //   update{page:0}  update{page:0}  rebuild{pageCount:2}  rebuild{pageCount:4}
-    //
-    // for a book that ends with TWO pages — `collectionRebuild` arriving last,
-    // with the count of a collection that no longer exists. A consumer
-    // rendering "page N of M" is then permanently wrong, which is precisely the
-    // desync E7's atomicity exists to prevent: delivering both halves is not
-    // worth much if the second half is a lie.
-    //
-    // `loadGeneration` is the existing stamp for "the collection was replaced",
-    // and every mutating path claims it. If it moved, the newer operation has
-    // already emitted its own complete, correct pair — so this one stops rather
-    // than appending stale data after it.
-    const generation = this.loadGeneration;
-
-    try {
-      this.dispatch('update', { page, mode });
-    } catch (err: unknown) {
-      failure = { err };
-    }
-
-    if (this.loadGeneration !== generation) {
-      // RE-DERIVED, NOT SKIPPED. The first version returned here, on the
-      // reasoning that the newer operation emits its own complete pair. That is
-      // true of `updateFromHtml`, `replacePages` and `clear` — and FALSE of a
-      // full load: `loadFromHTML` / `attachMode` announce `init`, never
-      // `collectionRebuild`. So an `update` listener calling `loadFromHTML()`
-      // suppressed the outer rebuild and nothing replaced it, leaving a
-      // consumer with no page-count event at all. The original RE-2 test only
-      // covered nested `updateFromHtml`, which does emit a pair, so it could
-      // not see the difference.
-      //
-      // Reading the live collection instead satisfies both halves of what this
-      // method is for: the pair still completes, and it describes the book that
-      // actually exists rather than the one this call was told about.
-      const live = this.pages;
-
-      page = live === null ? 0 : this.resolvedPageIndex(live);
-      pageCount = live === null ? 0 : live.getPageCount();
-    }
-
-    try {
-      this.dispatch('collectionRebuild', { page, pageCount });
-    } catch (err: unknown) {
-      failure ??= { err };
-    }
-
-    if (failure !== null) throw failure.err;
-  }
-
-  /**
-   * Drop a scheduled `init`.
-   *
-   * `init` is a one-shot "the book is ready" announcement, so this is
-   * deliberately NOT called from `updateFromHtml` / `replacePages`: those keep
-   * the same `ui` and `render` the pending callback closed over, and the
-   * callback reads the resolved index when it fires — so a pending `init`
-   * simply reports the newer collection, correctly. Cancelling it there would
-   * suppress `init` entirely for the React binding, which loads an empty book
-   * (`loadFromHTML([])`) and fills it with `updateFromHtml` in the same tick.
-   *
-   * `clear()` is the opposite case: there is no book left to announce.
-   */
-  private cancelPendingInit(): void {
-    if (this.initTimer !== null) {
-      clearTimeout(this.initTimer);
-      this.initTimer = null;
-    }
+  private dispatchPagesChanged(page: number, pageCount: number, orientation: Orientation): void {
+    this.dispatch('pagesChanged', { page, pageCount, orientation });
   }
 
   /**
@@ -508,7 +429,7 @@ export class PageFlip extends EventObject {
       this.pages.show(target);
     }
 
-    this.dispatchCollectionChange(
+    this.dispatchPagesChanged(
       this.resolvedPageIndex(this.pages),
       pageCount,
       render.getOrientation(),
@@ -606,7 +527,7 @@ export class PageFlip extends EventObject {
     // desynced. Clamping also keeps `Render` from being left with no pages set
     // at all, which is what "silently returns" costs on the render side.
     const pageCount = pages.getPageCount();
-    const start = resolveStartPage(pages, pageCount, this.setting.startPage);
+    const start = resolveStartPage(pages, pageCount, this.setting.initialPage);
 
     // C2. `outgoing` is 0 for a first load, on the reasoning that a book with
     // no previous index has not moved. True — but the book does not OPEN at 0,
@@ -628,22 +549,40 @@ export class PageFlip extends EventObject {
 
     pages.show(start);
 
-    this.cancelPendingInit();
-    this.initTimer = setTimeout(() => {
-      this.initTimer = null;
-      if (this.destroyed) return;
-      ui.update();
-      // Read the resolved index HERE, not at `show()` time. The resolved index
-      // is not the clamped request either — in landscape `show(1)` settles on
-      // spread [0, 1], whose canonical index is 0 — and `ui.update()` above can
-      // still change the orientation (the host is often measured only after the
-      // load), which re-resolves the spread. Reporting what the book actually
-      // shows when the event fires is the only version a consumer can trust.
-      this.dispatch('init', {
-        page: this.resolvedPageIndex(this.pages),
-        mode: render.getOrientation(),
-      });
-    }, 1);
+    // D17. SYNCHRONOUS, and `ready` / `loaded` rather than `init`.
+    //
+    // `init` named a moment this engine has two of: it fired per LOAD, so a
+    // reload emitted a second one indistinguishable from the first, and a
+    // consumer seeding state from it was re-seeded by every `loadFromHTML`.
+    //
+    // It was also scheduled on `setTimeout(…, 1)`, which made it a RACE in the
+    // React binding — that binding loads an empty book and adds pages in a
+    // later effect, so whether `init` described the real book or an empty one
+    // depended on timer ordering. `ui.update()` is what the timer was actually
+    // waiting for; calling it directly is the same thing without the race.
+    //
+    // And it carried no `pageCount`, so it could not render "page 1 of N".
+    // Both events now carry the full snapshot.
+    ui.update();
+
+    // Read the resolved index HERE, not at `show()` time. It is not the clamped
+    // request either — in landscape `show(1)` settles on spread [0, 1], whose
+    // canonical index is 0 — and `ui.update()` above can still change the
+    // orientation (the host is often measured only after the load), which
+    // re-resolves the spread. What the book actually shows is the only version
+    // a consumer can trust.
+    const snapshot: BookSnapshot = {
+      page: this.resolvedPageIndex(this.pages),
+      pageCount: pages.getPageCount(),
+      orientation: render.getOrientation(),
+    };
+
+    if (!this.readyAnnounced) {
+      this.readyAnnounced = true;
+      this.dispatch('ready', snapshot);
+    }
+
+    this.dispatch('loaded', snapshot);
   }
 
   /** Claim the next generation; the caller's continuation must still match it. */
@@ -793,7 +732,23 @@ export class PageFlip extends EventObject {
     // *request* either: in landscape `show(3)` settles on spread [2, 3], whose
     // canonical index is 2.
     const pageCount = pages.getPageCount();
-    const target = pageCount === 0 ? 0 : Math.min(Math.max(current, 0), pageCount - 1);
+    // C7 / D17. Filling an EMPTY book is an opening, not a turn.
+    //
+    // The React binding mounts with `loadFromHTML([])` and adds pages in a
+    // later effect, so `initialPage` — read only by `attachMode` — never
+    // applied, and the binding compensated with its own `turnToPage`, which
+    // ANNOUNCES. An uncontrolled `<HTMLFlipBook initialPage={1}>` therefore
+    // fired `onPageChange` on mount, which is ADR 0003's defect one layer up.
+    //
+    // An empty outgoing collection is the same "no reader was anywhere" case
+    // `attachMode` already treats as a first load, so it gets the same
+    // treatment: honour `initialPage`, and seed the baseline so the guard stays
+    // silent.
+    const openingFresh = previous.getPageCount() === 0 && pageCount > 0;
+    const requested = openingFresh
+      ? resolveStartPage(pages, pageCount, this.setting.initialPage)
+      : current;
+    const target = pageCount === 0 ? 0 : Math.min(Math.max(requested, 0), pageCount - 1);
 
     if (pageCount === 0) {
       // `show()` returns early for ANY index on an empty collection, so
@@ -802,11 +757,13 @@ export class PageFlip extends EventObject {
       // it only recreates the shadow elements.
       render.releasePages();
     } else {
-      pages[INHERIT_PAGE_INDEX](current);
+      if (openingFresh) pages[SEED_OPENING_INDEX](target);
+      else pages[INHERIT_PAGE_INDEX](current);
+
       pages.show(target);
     }
 
-    this.dispatchCollectionChange(
+    this.dispatchPagesChanged(
       this.resolvedPageIndex(this.pages),
       pageCount,
       render.getOrientation(),
@@ -814,10 +771,15 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Merge settings at runtime. Input handlers rebind when `useMouseEvents` changes;
-   * layout is recalculated for portrait / size updates.
+   * Merge settings at runtime. Input handlers rebind when `pointerInput`
+   * changes; layout is recalculated for portrait / sizing updates.
+   *
+   * D19. Typed `LiveSetting`, so passing `hardCovers` or `initialPage` is a
+   * COMPILE error rather than a runtime `console.warn` naming a method the
+   * consumer did call. The runtime refusal below stays for JavaScript callers
+   * and for anyone handing a whole settings object back in.
    */
-  public updateSettings(partial: Partial<FlipSetting>): FlipSetting {
+  public updateSettings(partial: Partial<LiveSetting>): FlipSetting {
     // L4: `showCover` is baked into `PageCollection` when the spreads are
     // created and `startPage` is read once, in `attachMode` — neither is read
     // again, so merging a new value changed nothing except what `getSettings()`
@@ -831,13 +793,14 @@ export class PageFlip extends EventObject {
     // the getter stays honest about what is actually in force) and reported
     // once, and only when it actually DIFFERS — echoing back the current value
     // is not a mistake and must stay silent.
+    const asAny = partial as Partial<FlipOptions>;
     const refused = CONSTRUCTION_TIME_SETTINGS.filter(
       (key) =>
-        key in partial &&
-        partial[key] !== undefined &&
-        (partial[key] as unknown) !== (this.setting[key] as unknown),
+        key in asAny &&
+        asAny[key] !== undefined &&
+        (asAny[key] as unknown) !== (this.setting[key] as unknown),
     );
-    const effective: Partial<FlipSetting> = { ...partial };
+    const effective: Partial<FlipOptions> = { ...partial };
 
     if (refused.length > 0) {
       for (const key of refused) delete effective[key];
@@ -847,11 +810,15 @@ export class PageFlip extends EventObject {
       );
     }
 
-    const next = new Settings().getSettings({ ...this.setting, ...effective });
-    const mouseChanged = next.useMouseEvents !== this.setting.useMouseEvents;
+    const nextAuthored: FlipOptions = { ...this.authored, ...effective };
+    const next = new Settings().resolve(nextAuthored);
+    const mouseChanged =
+      next.pointerInput.length !== this.setting.pointerInput.length ||
+      next.pointerInput.some((k, i) => k !== this.setting.pointerInput[i]);
     const foldInvalidated = FOLD_INVALIDATING_SETTINGS.some(
       (key) => (next[key] as unknown) !== (this.setting[key] as unknown),
     );
+    this.authored = nextAuthored;
     Object.assign(this.setting, next);
 
     // A changed geometry setting settles an in-flight fold before applying.
@@ -971,7 +938,6 @@ export class PageFlip extends EventObject {
     // later — and since `PageCollection.destroy()` does not reset
     // `currentPageIndex`, it announced a NON-ZERO page for a book that no
     // longer has any pages. There is nothing left to initialise; drop it.
-    this.cancelPendingInit();
 
     // EVERY DESTRUCTIVE STEP FIRST, THEN THE ANNOUNCEMENTS.
     //
@@ -1008,7 +974,7 @@ export class PageFlip extends EventObject {
     // needs no special case: `update` because what is rendered changed,
     // `collectionRebuild` because the collection did. Not `flip` (no turn
     // happened) and not `init` (the book is not becoming ready).
-    this.dispatchCollectionChange(0, 0, render.getOrientation());
+    this.dispatchPagesChanged(0, 0, render.getOrientation());
   }
 
   /**
@@ -1049,11 +1015,17 @@ export class PageFlip extends EventObject {
    * @param {FlipCorner} corner - Active page corner when turning
    */
   public flipNext(corner: FlipCorner = FlipCorner.TOP): boolean {
-    return this.requestTurn((flip) => flip.flipNext(corner));
+    return this.requestTurn((flip) => flip.flipNext(corner), {
+      direction: 'next',
+      targetPage: null,
+    });
   }
 
   public flipPrev(corner: FlipCorner = FlipCorner.TOP): boolean {
-    return this.requestTurn((flip) => flip.flipPrev(corner));
+    return this.requestTurn((flip) => flip.flipPrev(corner), {
+      direction: 'prev',
+      targetPage: null,
+    });
   }
 
   /**
@@ -1084,24 +1056,37 @@ export class PageFlip extends EventObject {
   private requestUserTurn(pos: Point): void {
     const flip = this.flipController;
 
-    if (flip !== null && this.setting.disableFlipByClick && !flip.isPointOnCorners(pos)) {
-      this.dispatch('turnRejected', { reason: 'disabled' });
+    if (flip !== null && this.setting.flipOnClick === 'corners' && !flip.isPointOnCorners(pos)) {
+      this.dispatch('turnRejected', { reason: 'disabled', direction: null, targetPage: null });
       return;
     }
 
     // Falls through to `requestTurn` when there is no controller yet, so a
     // click before load reports `NOT_LOADED` like every other turn does.
-    this.requestTurn((f) => f.flip(pos));
+    // A click has no declared direction — the engine picks one from the point.
+    this.requestTurn((f) => f.flip(pos), { direction: null, targetPage: null });
   }
 
-  private requestTurn(run: (flip: Flip) => boolean): boolean {
+  /**
+   * D16. `context` carries what the refusal has to be able to say.
+   *
+   * The canonical use for `turnRejected` — the one the README recommends it
+   * for — is disabling a next/prev button at a boundary, and `reason:
+   * 'boundary'` alone cannot tell a consumer WHICH button. Re-deriving it from
+   * the engine is rejected alternative (d) of ADR 0003 in a new place.
+   */
+  private requestTurn(
+    run: (flip: Flip) => boolean,
+    context: { direction: 'next' | 'prev' | null; targetPage: number | null },
+  ): boolean {
     const flip = this.flipController;
 
     if (flip === null) {
       // Same distinction `requireLoaded` draws: "not loaded yet" is a retry,
       // "destroyed" never will be.
       this.dispatch('turnRejected', {
-        reason: 'setup',
+        ...context,
+        reason: 'notReady',
         code: this.destroyed ? 'DESTROYED' : 'NOT_LOADED',
       });
       return false;
@@ -1121,7 +1106,7 @@ export class PageFlip extends EventObject {
       // would hide it from the consumer and from us.
       if (!(err instanceof PageFlipError)) throw err;
 
-      this.dispatch('turnRejected', { reason: 'setup', code: err.code });
+      this.dispatch('turnRejected', { ...context, reason: 'setup', code: err.code });
       return false;
     }
 
@@ -1134,7 +1119,7 @@ export class PageFlip extends EventObject {
     // `Flip.finishOutgoingTurn`). Reporting that as `boundary` tells a consumer
     // the book is at its end while it is mid-turn, which is the shape of
     // failure that disables "next" buttons.
-    this.dispatch('turnRejected', { reason: flip.takeRefusal() });
+    this.dispatch('turnRejected', { ...context, reason: flip.takeRefusal() });
     return false;
   }
 
@@ -1161,7 +1146,7 @@ export class PageFlip extends EventObject {
    * @param {FlippingState} newState - New  state of the object
    */
   public [EMIT_STATE](newState: FlippingState): void {
-    this.dispatch('changeState', newState);
+    this.dispatch('changeState', { state: newState });
   }
 
   /**
@@ -1175,7 +1160,11 @@ export class PageFlip extends EventObject {
    * @param {number} newPage - New page Number
    */
   public [EMIT_PAGE_INDEX](newPage: number): void {
-    this.dispatch('flip', newPage);
+    this.dispatch('flip', {
+      page: newPage,
+      pageCount: this.pages === null ? 0 : this.pages.getPageCount(),
+      orientation: this.renderOrThrow.getOrientation(),
+    });
   }
 
   /**
@@ -1190,7 +1179,7 @@ export class PageFlip extends EventObject {
   public [ADOPT_ORIENTATION](newOrientation: Orientation): void {
     this.uiOrThrow[SET_ORIENTATION_STYLE](newOrientation);
     this.update();
-    this.dispatch('changeOrientation', newOrientation);
+    this.dispatch('changeOrientation', { orientation: newOrientation });
   }
 
   /**
@@ -1363,7 +1352,7 @@ export class PageFlip extends EventObject {
    * @param {boolean} isTouch - True if there was a touch event, not a mouse click
    */
   public userMove(pos: Point, isTouch: boolean): void {
-    if (!this.isUserTouch && !isTouch && this.setting.showPageCorners) {
+    if (!this.isUserTouch && !isTouch && this.setting.foldCornerOnHover) {
       this.flipController?.showCorner(pos); // fold Page Corner
     } else if (this.isUserTouch) {
       if (distanceBetween(this.mousePosition, pos) > 5) {

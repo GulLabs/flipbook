@@ -3,8 +3,16 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export { PageFlip } from './PageFlip';
-export { Settings, SizeType } from './Settings';
-export type { FlipSetting, FlipDirectionSetting } from './Settings';
+export { Settings, SizeMode, ALL_POINTERS } from './Settings';
+export type {
+  FlipOptions,
+  FlipSetting,
+  LiveSetting,
+  ReadingDirection,
+  SizeMode as SizeModeValue,
+  FlipOnClick,
+  PointerKind,
+} from './Settings';
 export { Flip, FlipDirection, FlipCorner, FlippingState } from './Flip/Flip';
 export { Orientation } from './Render/Render';
 export { HTMLRender } from './Render/HTMLRender';
@@ -14,7 +22,7 @@ export { HTMLPageCollection } from './Collection/HTMLPageCollection';
 export { HTMLPage } from './Page/HTMLPage';
 export { Page, PageDensity, PageOrientation } from './Page/Page';
 export { PageFlipError } from './errors';
-export type { PageFlipErrorCode } from './errors';
+export type { PageFlipErrorCode, PageFlipErrorKind } from './errors';
 export {
   convertPageToGlobal,
   portraitCurlLocal,
@@ -36,6 +44,13 @@ export { ensureFlipbookStyles, FLIPBOOK_CSS } from './styles';
 // `FlipbookEventName` alongside the map: a consumer writing a helper that takes
 // "an event name" could not type its parameter, because the union existed in
 // the module and never reached the published `.d.ts`.
-export type { WidgetEvent, FlipbookEventMap, FlipbookEventName } from './Event/EventObject';
+export type {
+  WidgetEvent,
+  FlipbookEventMap,
+  FlipbookEventName,
+  BookSnapshot,
+  TurnRejected,
+  TurnRejectedReason,
+} from './Event/EventObject';
 export type { Point, PageRect, Rect, RectPoints, Segment } from './BasicTypes';
 export { FLIPBOOK_INTERACTIVE_SELECTOR, isInteractivePointerTarget } from './interactive';

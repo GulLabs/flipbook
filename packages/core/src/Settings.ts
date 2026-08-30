@@ -2,92 +2,182 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { DEFAULT_PAGE_BACKGROUND, safePageBackground } from './Render/pageBackground';
+import { DEFAULT_PAGE_BACKGROUND, isOpaquePageBackground } from './Render/pageBackground';
 import { PageFlipError } from './errors';
 
 /**
- * Book size calculation type
+ * How the book decides its own size.
+ *
+ * `'stretch'` was the old name for `'responsive'` and it stated something
+ * false: the book does not stretch, it fits the host while preserving the
+ * declared aspect ratio. Someone reading `stretch` expects distortion.
  */
-export type SizeType = 'fixed' | 'stretch';
+export type SizeMode = 'fixed' | 'responsive';
 
-export const SizeType = {
+export const SizeMode = {
   FIXED: 'fixed' as const,
-  STRETCH: 'stretch' as const,
+  RESPONSIVE: 'responsive' as const,
 };
 
-export type FlipDirectionSetting = 'ltr' | 'rtl';
+/**
+ * Which way the book reads and binds.
+ *
+ * Named `readingDirection`, not `direction`, because `FlipDirection`
+ * (`FORWARD` / `BACK`) is a different axis and the two autocompleted together.
+ * The bare word "direction" now never appears unqualified in the public API.
+ */
+export type ReadingDirection = 'ltr' | 'rtl';
 
 /**
- * Configuration object
+ * What a click on the book does.
+ *
+ * Replaces `disableFlipByClick`, which was false as written: with it `true`,
+ * clicking a CORNER still flipped. Three states, one of which — "drag only" —
+ * was previously unreachable.
  */
-export interface FlipSetting {
-  /** Page number from which to start viewing */
-  startPage: number;
-  /** Whether the book will be stretched under the parent element or not */
-  size: SizeType;
+export type FlipOnClick = 'anywhere' | 'corners' | 'never';
 
+/** Pointer hardware the book responds to. */
+export type PointerKind = 'mouse' | 'touch' | 'pen';
+
+export const ALL_POINTERS: readonly PointerKind[] = ['mouse', 'touch', 'pen'];
+
+/**
+ * What a CALLER writes. Every key optional except the two that are not.
+ *
+ * Kept separately from the resolved settings for the whole life of the engine,
+ * and that is load-bearing rather than tidiness:
+ *
+ *  - `updateSettings` re-resolves from AUTHORED input, so "was this bound
+ *    explicitly supplied?" stays answerable. Merging into the already-resolved
+ *    object made every synthesised bound look authored, so a rule about
+ *    explicit bounds would have failed an unrelated `updateSettings({ drawShadow })`.
+ *  - `getSettings()` can round-trip. Previously `responsive → fixed →
+ *    responsive` returned bounds pinned to width/height rather than the ones
+ *    the caller declared, because the fixed pass overwrote them in place.
+ */
+export interface FlipOptions {
+  /** Required. A book with no declared page size cannot lay out. */
   width: number;
+  /** Required. */
   height: number;
 
+  /** Page the book OPENS on. Opening is not turning: it emits no `flip`. */
+  initialPage?: number;
+  sizing?: SizeMode;
+
+  /** Only meaningful under `sizing: 'responsive'`. */
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+
+  drawShadow?: boolean;
+  /**
+   * Upper bound on a turn's duration in ms — NOT the duration of an ordinary
+   * turn, which is scaled by how far the leaf actually travels. A typical move
+   * runs at roughly 40% of this. `0` is instant and is not an error.
+   */
+  flippingTime?: number;
+
+  usePortrait?: boolean;
+  startZIndex?: number;
+  autoSize?: boolean;
+  /** Shadow intensity, 0..1. */
+  maxShadowOpacity?: number;
+
+  /**
+   * First and last leaves are hard and shown alone. This is the LAYOUT switch
+   * for the whole book, not a visibility toggle — the old name `showCover`
+   * read as one.
+   */
+  hardCovers?: boolean;
+
+  /**
+   * Let a touch or pen drag scroll the page instead of turning a leaf.
+   * Formerly `mobileScrollSupport`, which named a device class it never tested:
+   * the check is `pointerType !== 'mouse'`, so it covers pen and every touch
+   * surface including a desktop touchscreen.
+   */
+  allowTouchScroll?: boolean;
+
+  /**
+   * Do not start a fold on buttons, links and form controls. Formerly
+   * `clickEventForward`, which claimed to forward an event; nothing is
+   * forwarded — the engine simply declines to fold.
+   */
+  respectInteractiveContent?: boolean;
+
+  /**
+   * Pointer hardware that can turn a page. Defaults to all three.
+   *
+   * Formerly the boolean `useMouseEvents`, which gated the ONE pointer path, so
+   * `false` silently disabled touch and pen as well — a consumer wanting "no
+   * mouse turning, keep swipe on tablets" shipped a book that could not be
+   * turned on a phone. A list is the smallest thing that expresses that; `[]`
+   * disables pointer turning entirely.
+   */
+  pointerInput?: readonly PointerKind[];
+
+  swipeDistance?: number;
+
+  /**
+   * Peel a corner up when the pointer hovers it. Formerly `showPageCorners`,
+   * which showed nothing — the corners are always visible; this enables the
+   * hover peel.
+   */
+  foldCornerOnHover?: boolean;
+
+  flipOnClick?: FlipOnClick;
+
+  /**
+   * Opaque fill behind every leaf, so content cannot bleed through a fold.
+   *
+   * NOT renamed to `foldBackground`: it paints the static leaves too, so that
+   * name would describe half the contract.
+   */
+  pageBackground?: string;
+
+  respectReducedMotion?: boolean;
+  readingDirection?: ReadingDirection;
+}
+
+/**
+ * Settings that are consumed while the book is BUILT and never read again, so
+ * `updateSettings` cannot make them take effect. Rejected at compile time
+ * rather than warned about at runtime.
+ */
+export type LiveSetting = Omit<FlipOptions, 'hardCovers' | 'initialPage'>;
+
+/**
+ * The resolved, fully-populated settings the engine reads. Every key present.
+ *
+ * `maxHeight` is gone: it was validated, defaulted, echoed back by
+ * `getSettings()` and never read by anything.
+ */
+export interface FlipSetting {
+  initialPage: number;
+  sizing: SizeMode;
+  width: number;
+  height: number;
   minWidth: number;
   maxWidth: number;
   minHeight: number;
-  maxHeight: number;
-
-  /** Draw shadows or not when page flipping */
   drawShadow: boolean;
-  /**
-   * Flipping animation time in ms. `0` is instant (no throw).
-   * Combined with `respectReducedMotion`.
-   */
   flippingTime: number;
-
-  /** Enable switching to portrait mode */
   usePortrait: boolean;
-  /** Initial value to z-index */
   startZIndex: number;
-  /** If this value is true, the parent element will be equal to the size of the book */
   autoSize: boolean;
-  /** Shadow intensity (1: max intensity, 0: hidden shadows) */
   maxShadowOpacity: number;
-
-  /** If this value is true, the first and the last pages will be marked as hard and will be shown in single page mode */
-  showCover: boolean;
-  /** Disable content scrolling when touching a book on mobile devices */
-  mobileScrollSupport: boolean;
-
-  /** Set the forward event of clicking on child elements (buttons, links) */
-  clickEventForward: boolean;
-
-  /** Using pointer events to page flipping */
-  useMouseEvents: boolean;
-
+  hardCovers: boolean;
+  allowTouchScroll: boolean;
+  respectInteractiveContent: boolean;
+  pointerInput: readonly PointerKind[];
   swipeDistance: number;
-
-  /** if this value is true, fold the corners of the book when the mouse pointer is over them. */
-  showPageCorners: boolean;
-
-  /** if this value is true, flipping by clicking on the whole book will be locked. Only on corners */
-  disableFlipByClick: boolean;
-
-  /**
-   * Opaque fill for the turning leaf / temporary copy so content cannot bleed
-   * through the fold. Default `#fff`.
-   */
+  foldCornerOnHover: boolean;
+  flipOnClick: FlipOnClick;
   pageBackground: string;
-
-  /**
-   * When true (default), `prefers-reduced-motion: reduce` makes turns instant.
-   */
   respectReducedMotion: boolean;
-
-  /**
-   * Reading direction. `rtl` mirrors the *turn direction* for user input —
-   * click, corner fold, drag and swipe all treat the left edge as "next" — while
-   * pointer coordinates stay unmirrored so the fold follows the finger.
-   * Programmatic `flipNext`/`flipPrev` still advance by page index.
-   */
-  direction: FlipDirectionSetting;
+  readingDirection: ReadingDirection;
 }
 
 /**
@@ -95,37 +185,32 @@ export interface FlipSetting {
  * NaN then flows into the bounds rect and out as `min-width: NaNpx`.
  */
 const isPositive = (value: number): boolean => Number.isFinite(value) && value > 0;
-
 const isNonNegative = (value: number): boolean => Number.isFinite(value) && value >= 0;
 
 /**
  * Every boolean setting, listed once so the validator cannot drift from the
- * type. Adding a boolean to `FlipSetting` without adding it here leaves it
- * unvalidated — which is exactly how all ten of these went unchecked until S6.
- *
- * `satisfies` is doing real work: it makes the list a compile error if a name
- * here is not a key of `FlipSetting`, while keeping the tuple's literal types
- * so the loop below indexes precisely.
+ * type. `satisfies` makes a misspelled or removed key a compile error.
  */
 const BOOLEAN_SETTINGS = [
   'drawShadow',
   'usePortrait',
   'autoSize',
-  'showCover',
-  'mobileScrollSupport',
-  'clickEventForward',
-  'useMouseEvents',
-  'showPageCorners',
-  'disableFlipByClick',
+  'hardCovers',
+  'allowTouchScroll',
+  'respectInteractiveContent',
+  'foldCornerOnHover',
   'respectReducedMotion',
 ] as const satisfies readonly (keyof FlipSetting)[];
 
+/** Bounds that only mean something under `sizing: 'responsive'`. */
+const RESPONSIVE_ONLY_BOUNDS = ['minWidth', 'maxWidth', 'minHeight'] as const;
+
 /**
- * `Partial<FlipSetting>` permits an *explicit* `undefined`, and a spread copies
- * that key over the default instead of falling through to it. Dropping the
- * undefined-valued keys first makes `{ width: undefined }` mean "not supplied".
+ * `Partial<T>` permits an *explicit* `undefined`, and a spread copies that key
+ * over the default instead of falling through to it. Dropping undefined-valued
+ * keys makes `{ width: undefined }` mean "not supplied".
  */
-function definedOnly(setting: Partial<FlipSetting>): Partial<FlipSetting> {
+function definedOnly<T extends object>(setting: T): Partial<T> {
   const out: Record<string, unknown> = {};
 
   for (const key of Object.keys(setting)) {
@@ -133,181 +218,194 @@ function definedOnly(setting: Partial<FlipSetting>): Partial<FlipSetting> {
     if (value !== undefined) out[key] = value;
   }
 
-  return out;
+  return out as Partial<T>;
 }
 
+/**
+ * Say what arrived and what was expected, not merely which category failed.
+ *
+ * `'Invalid width or height'` does not say which one, what came in, or what to
+ * do — and it is the first error a new consumer hits, typically because a prop
+ * arrived as a string from a CMS or as `NaN` from a layout measurement. The
+ * byte budget these were golfed for returned 19 bytes.
+ */
+function reject(key: keyof FlipSetting, received: unknown, expected: string): never {
+  const shown =
+    typeof received === 'string'
+      ? JSON.stringify(received)
+      : typeof received === 'number' || typeof received === 'boolean' || received === null
+        ? String(received)
+        : Array.isArray(received)
+          ? `an array`
+          : typeof received;
+
+  throw new PageFlipError(`${key}: expected ${expected}, received ${shown}`, 'INVALID_SETTING', {
+    setting: key,
+  });
+}
+
+const DEFAULTS: Omit<FlipSetting, 'width' | 'height'> = {
+  initialPage: 0,
+  sizing: SizeMode.FIXED,
+  minWidth: 0,
+  maxWidth: 0,
+  minHeight: 0,
+  drawShadow: true,
+  flippingTime: 1000,
+  usePortrait: true,
+  startZIndex: 0,
+  autoSize: true,
+  maxShadowOpacity: 1,
+  hardCovers: false,
+  allowTouchScroll: true,
+  respectInteractiveContent: true,
+  pointerInput: ALL_POINTERS,
+  swipeDistance: 30,
+  foldCornerOnHover: true,
+  flipOnClick: 'anywhere',
+  pageBackground: DEFAULT_PAGE_BACKGROUND,
+  respectReducedMotion: true,
+  readingDirection: 'ltr',
+};
+
 export class Settings {
-  private readonly _default: FlipSetting = {
-    startPage: 0,
-    size: SizeType.FIXED,
-    width: 0,
-    height: 0,
-    minWidth: 0,
-    maxWidth: 0,
-    minHeight: 0,
-    maxHeight: 0,
-    drawShadow: true,
-    flippingTime: 1000,
-    usePortrait: true,
-    startZIndex: 0,
-    autoSize: true,
-    maxShadowOpacity: 1,
-    showCover: false,
-    mobileScrollSupport: true,
-    swipeDistance: 30,
-    clickEventForward: true,
-    useMouseEvents: true,
-    showPageCorners: true,
-    disableFlipByClick: false,
-    pageBackground: DEFAULT_PAGE_BACKGROUND,
-    respectReducedMotion: true,
-    direction: 'ltr',
-  };
-
   /**
-   * Processing parameters received from the user. Substitution default values
+   * Validate authored input and resolve it. Throws `PageFlipError` with
+   * `code: 'INVALID_SETTING'` and a machine-readable `setting` key.
    */
-  public getSettings(userSetting: Partial<FlipSetting>): FlipSetting {
-    const result: FlipSetting = { ...this._default, ...definedOnly(userSetting) };
+  public resolve(authored: FlipOptions): FlipSetting {
+    const supplied = definedOnly(authored);
+    const result = { ...DEFAULTS, ...supplied } as FlipSetting;
 
-    const size = result.size as string;
-    if (size !== SizeType.STRETCH && size !== SizeType.FIXED) {
-      throw new PageFlipError('Invalid size (fixed|stretch)', 'INVALID_SIZE');
+    const sizing = result.sizing as string;
+    if (sizing !== SizeMode.RESPONSIVE && sizing !== SizeMode.FIXED) {
+      reject('sizing', result.sizing, `'fixed' or 'responsive'`);
     }
 
-    if (!isPositive(result.width) || !isPositive(result.height)) {
-      throw new PageFlipError('Invalid width or height', 'INVALID_DIMENSIONS');
+    if (!isPositive(result.width)) reject('width', result.width, 'a positive number of pixels');
+    if (!isPositive(result.height)) reject('height', result.height, 'a positive number of pixels');
+
+    // A fixed book derives all its bounds from width/height, so a bound
+    // supplied alongside `sizing: 'fixed'` does nothing. It used to be
+    // overwritten silently and then echoed back by `getSettings()` as though
+    // the caller had written it — a config a reasonable person writes, that has
+    // no effect and no signal.
+    //
+    // Answerable only because `supplied` is the AUTHORED object. Asking this of
+    // the resolved settings would see the synthesised bounds as authored and
+    // fail every later `updateSettings`.
+    if (result.sizing === SizeMode.FIXED) {
+      for (const bound of RESPONSIVE_ONLY_BOUNDS) {
+        if (supplied[bound] !== undefined) {
+          reject(
+            bound,
+            supplied[bound],
+            `no value under sizing: 'fixed' (it derives from width/height)`,
+          );
+        }
+      }
     }
 
-    // `0` is the documented "unset" value for the stretch bounds below, so the
-    // constraint is non-negative-and-finite rather than positive.
-    if (
-      !isNonNegative(result.minWidth) ||
-      !isNonNegative(result.maxWidth) ||
-      !isNonNegative(result.minHeight) ||
-      !isNonNegative(result.maxHeight)
-    ) {
-      throw new PageFlipError('Invalid min/max width or height', 'INVALID_BOUNDS');
+    for (const bound of RESPONSIVE_ONLY_BOUNDS) {
+      if (!isNonNegative(result[bound])) {
+        reject(bound, result[bound], 'a non-negative number of pixels, or 0 for unset');
+      }
     }
 
-    // `0` is documented as instant, so only negatives and non-numbers are bad.
     if (!isNonNegative(result.flippingTime)) {
-      throw new PageFlipError('Invalid flipping time', 'INVALID_FLIPPING_TIME');
+      reject('flippingTime', result.flippingTime, 'a non-negative number of ms (0 is instant)');
     }
 
-    // A negative threshold can never be met (`distY < -swipeDistance` is never
-    // true for a real gesture), so it silently disables swiping. `0` is a
-    // legitimate "no threshold".
     if (!isNonNegative(result.swipeDistance)) {
-      throw new PageFlipError('Invalid swipe distance', 'INVALID_SWIPE_DISTANCE');
+      reject('swipeDistance', result.swipeDistance, 'a non-negative number of pixels');
     }
 
-    // Interpolated straight into `z-index:${startZIndex + n}`. A negative base
-    // is valid CSS and is left alone. `NaN`/`Infinity` produce a declaration
-    // the browser drops, silently losing the whole z-order — and so does a
-    // FRACTION: `z-index` takes an integer, so `z-index:5.5` is discarded just
-    // as quietly. Finiteness alone was not enough.
+    // Interpolated into `z-index:${startZIndex + n}`. `z-index` takes an
+    // integer, so a fraction is discarded by the browser just as quietly as a
+    // NaN — losing the whole z-order. Finiteness alone was not enough.
     if (!Number.isInteger(result.startZIndex)) {
-      throw new PageFlipError('Invalid start z-index (must be an integer)', 'INVALID_Z_INDEX');
+      reject('startZIndex', result.startZIndex, 'an integer');
     }
 
-    // NOT validated here, deliberately. Codex flagged that a fractional or NaN
-    // `startPage` reaches `PageCollection.show()`, which silently declines it —
-    // but the load path ALREADY reports that as `INVALID_PAGE`, and the React
-    // binding surfaces it through `onNavigationError` with the requested and
-    // actual page. A test pins that behaviour, and it is better than throwing:
-    // the book still renders, and the consumer is told precisely what happened.
-    // Throwing from the constructor would replace a good diagnostic with a
-    // dead component.
-
-    // Feeds `opacity` on the shadow elements and the alpha of the canvas
-    // gradients. A non-finite value produces a declaration the browser drops,
-    // which reads as a shadow at FULL opacity rather than as an error.
-    // The declared range is [0, 1] — 1 is documented as maximum intensity — and
-    // the value flows straight into a computed alpha. Rejecting only negatives
-    // let `2` through to produce alphas above 1, which browsers clamp silently,
-    // so the setting appeared to do nothing past 1 rather than to be wrong.
+    // The declared range is 0..1. Rejecting only negatives let `2` through to
+    // produce alphas above 1, which browsers clamp — so the setting appeared to
+    // do nothing past 1 rather than to be wrong.
     if (
       !Number.isFinite(result.maxShadowOpacity) ||
       result.maxShadowOpacity < 0 ||
       result.maxShadowOpacity > 1
     ) {
-      throw new PageFlipError('Invalid max shadow opacity (0..1)', 'INVALID_SHADOW_OPACITY');
+      reject('maxShadowOpacity', result.maxShadowOpacity, 'a number from 0 to 1');
     }
 
-    // S6. Every boolean setting, validated as a BOOLEAN and nothing else.
-    //
     // Not validated at all before this, and the failure was silent and
-    // backwards: `drawShadow: 'false'` survived verbatim, and `'false'` is a
-    // truthy string, so shadows stayed ON for someone who had just written
-    // "false". The author gets the opposite of what they asked for and no
-    // signal at all.
-    //
-    // That is not a hypothetical typo. Every ordinary source of configuration
-    // hands over strings — `data-*` attributes, URL query parameters,
-    // `JSON.parse` of a settings file or CMS response — and `data-draw-shadow="false"`
-    // is exactly what a person writes.
-    //
-    // TypeScript does not help here and cannot: `FlipSetting.drawShadow` has
-    // been typed `boolean` the whole time, but types are erased at runtime, so
-    // they protect the developer writing a literal and nobody else. The type
-    // and this check cover two different paths and both are needed.
-    //
-    // THROWING, not coercing or warning, and deliberately unlike the `alt`
-    // decision elsewhere in this engine: there the engine could still proceed
-    // truthfully without the value, so a warning was right. Here it cannot —
-    // `'false'` means the opposite of the intent, and silently doing the
-    // opposite is worse than a loud failure.
-    //
-    // `0` and `1` throw too. They were accepted since 2.x, which makes this a
-    // break, and the owner took it deliberately (2026-08-30): a boolean is a
-    // datatype a schema can validate, and accepting two spellings of it invites
-    // the third and fourth.
+    // BACKWARDS: `drawShadow: 'false'` survived verbatim, and `'false'` is a
+    // truthy string, so shadows stayed on for someone who had just written
+    // "false". Every ordinary configuration source hands over strings —
+    // `data-*` attributes, query parameters, `JSON.parse` of a CMS response.
     for (const key of BOOLEAN_SETTINGS) {
-      if (typeof result[key] !== 'boolean') {
-        throw new PageFlipError(
-          `Invalid ${key}: expected true or false, got ${typeof result[key]}`,
-          'INVALID_BOOLEAN',
-        );
+      if (typeof result[key] !== 'boolean') reject(key, result[key], 'true or false');
+    }
+
+    const reading = result.readingDirection as string;
+    if (reading !== 'ltr' && reading !== 'rtl') {
+      reject('readingDirection', result.readingDirection, `'ltr' or 'rtl'`);
+    }
+
+    const click = result.flipOnClick as string;
+    if (click !== 'anywhere' && click !== 'corners' && click !== 'never') {
+      reject('flipOnClick', result.flipOnClick, `'anywhere', 'corners' or 'never'`);
+    }
+
+    const pointers: unknown = result.pointerInput;
+    if (!Array.isArray(pointers)) {
+      reject('pointerInput', pointers, `an array of 'mouse' | 'touch' | 'pen'`);
+    }
+    for (const kind of pointers as readonly unknown[]) {
+      if (typeof kind !== 'string' || !ALL_POINTERS.includes(kind as PointerKind)) {
+        reject('pointerInput', kind, `only 'mouse', 'touch' or 'pen'`);
       }
     }
 
-    const direction = result.direction as string;
-    if (direction !== 'ltr' && direction !== 'rtl') {
-      throw new PageFlipError('Invalid direction (ltr|rtl)', 'INVALID_DIRECTION');
+    if (!Number.isInteger(result.initialPage) || result.initialPage < 0) {
+      reject('initialPage', result.initialPage, 'a non-negative integer');
     }
 
-    // `safePageBackground` reads `.trim()` off whatever it is handed, so a
-    // JS caller passing a non-string (`0`, `{}`, an array) got a bare
-    // `TypeError: pageBackground.trim is not a function` out of the PageFlip
-    // constructor — the one input in this whole function that did not produce
-    // a `PageFlipError`. `null` already meant "not supplied" and fell through
-    // to the opaque default; a value of the wrong type is no more usable than
-    // `null`, so it takes the same route. This is the sanitising job only —
-    // the opacity check still runs inside `safePageBackground`, on the
-    // caller's own value.
-    const suppliedBackground: unknown = result.pageBackground;
-    result.pageBackground = safePageBackground(
-      typeof suppliedBackground === 'string' ? suppliedBackground : undefined,
-    );
+    // D3. THROW here, rather than substituting white and saying nothing.
+    //
+    // This was the one setting in the whole engine that failed silently, and
+    // the accepted grammar is a narrow legacy subset — so an ordinary 2026
+    // colour (`oklch(...)`, `color-mix(...)`, modern `rgb(... / ...)`) produced
+    // a white fold with no diagnostic whatsoever.
+    //
+    // The draw-time fallback in `HTMLPage` STAYS. It guards the untyped path
+    // and the fold-opacity invariant, which outranks syntactic convenience;
+    // this check is about telling the author, not about the pixel.
+    const background: unknown = result.pageBackground;
+    if (typeof background !== 'string') {
+      reject('pageBackground', background, 'a CSS colour string');
+    }
+    if (background.trim() !== '' && !isOpaquePageBackground(background)) {
+      reject(
+        'pageBackground',
+        background,
+        'an opaque CSS colour (a translucent fold lets the page underneath bleed through)',
+      );
+    }
+    result.pageBackground = background.trim() === '' ? DEFAULT_PAGE_BACKGROUND : background;
 
-    if (result.size === SizeType.STRETCH) {
+    if (result.sizing === SizeMode.RESPONSIVE) {
       if (result.minWidth <= 0) result.minWidth = 100;
-      // `Math.max`, not a bare 2000: the fallback exists to fill in an absent
-      // upper bound, and a flat 2000 put it BELOW a `minWidth` the caller
-      // declared above it. `Render.computeBounds` reads both — it goes
-      // portrait under `minWidth * 2` (Render.ts:506) and then clamps
-      // `pageWidth` to `maxWidth` (Render.ts:511) — so `minWidth: 3000` gave a
-      // book that was "too narrow" below 6000px and simultaneously capped at
-      // 2000px, i.e. never able to reach its own declared minimum, silently.
+      // `Math.max`, not a bare 2000: a flat 2000 put the upper bound BELOW a
+      // `minWidth` the caller declared above it, so `minWidth: 3000` gave a book
+      // that was "too narrow" below 6000px and simultaneously capped at 2000px —
+      // never able to reach its own declared minimum, silently.
       if (result.maxWidth < result.minWidth) result.maxWidth = Math.max(2000, result.minWidth);
       if (result.minHeight <= 0) result.minHeight = 100;
-      if (result.maxHeight < result.minHeight) result.maxHeight = Math.max(2000, result.minHeight);
     } else {
       result.minWidth = result.width;
       result.maxWidth = result.width;
       result.minHeight = result.height;
-      result.maxHeight = result.height;
     }
 
     return result;

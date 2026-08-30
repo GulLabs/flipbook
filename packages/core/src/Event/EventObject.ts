@@ -5,15 +5,77 @@
 import type { PageFlip } from '../PageFlip';
 import type { FlippingState } from '../Flip/Flip';
 import type { Orientation } from '../Render/Render';
+import type { PageFlipErrorCode } from '../errors';
+
+/**
+ * What every event carries about where the book is.
+ *
+ * D18. There used to be five payload conventions — a bare number, a bare enum,
+ * `{page, mode}`, `{page, pageCount}`, `{reason, code?}` — and the React
+ * binding handed `onPageChange` an unwrapped number while every other handler
+ * received a `WidgetEvent` the consumer had to reach into. ADR 0003 identified
+ * that asymmetry as the reason consumers bound the wrong event in the first
+ * place. One shape now, everywhere.
+ */
+export interface BookSnapshot {
+  /** The spread HEAD — the first leaf on screen. */
+  page: number;
+  pageCount: number;
+  orientation: Orientation;
+}
+
+/** Why a turn did not happen. */
+export type TurnRejectedReason =
+  'boundary' | 'disabled' | 'superseded' | 'notReady' | 'invalidPage' | 'setup';
+
+/**
+ * D16. The payload the README already recommended this event for could not
+ * answer the question it was recommended for: disabling a next/prev button at a
+ * boundary needs to know WHICH boundary, and `reason: 'boundary'` alone does
+ * not say. Re-deriving it from the engine is rejected alternative (d) of ADR
+ * 0003 in a new place.
+ */
+export interface TurnRejected {
+  reason: TurnRejectedReason;
+  /** Which way the refused turn was going, when that is meaningful. */
+  direction: 'next' | 'prev' | null;
+  /** The page the caller asked for, for an absolute navigation. */
+  targetPage: number | null;
+  code?: PageFlipErrorCode;
+}
 
 export type FlipbookEventMap = {
-  flip: number;
-  changeOrientation: Orientation;
-  changeState: FlippingState;
-  init: { page: number; mode: Orientation };
-  update: { page: number; mode: Orientation };
-  collectionRebuild: { page: number; pageCount: number };
-  turnRejected: { reason: 'boundary' | 'setup' | 'disabled' | 'superseded'; code?: string };
+  /** The reader is now on a different page. Never fires for a repaint. */
+  flip: BookSnapshot;
+  changeOrientation: { orientation: Orientation };
+  changeState: { state: FlippingState };
+
+  /**
+   * D17. `ready` fires ONCE per engine; `loaded` fires on every load including
+   * the first.
+   *
+   * They replace `init`, which named a moment the engine has two of: it fired
+   * per LOAD, so a reload emitted a second one indistinguishable from the
+   * first. It was also scheduled on a timer, so in the React binding — which
+   * loads an empty book and adds pages in a later effect — whether it described
+   * the real book or an empty one was a race. And it carried no `pageCount`,
+   * so it could not render "page 1 of N"; this repo's own test hard-coded the
+   * count in its `onInit` handler, which is the strongest evidence available
+   * that the payload was wrong.
+   */
+  ready: BookSnapshot;
+  loaded: BookSnapshot;
+
+  /**
+   * D10. The collection was replaced. Replaces `update` + `collectionRebuild`,
+   * which always fired together, atomically, with the same page — so the
+   * ~60 lines of atomic-pair machinery existed to guarantee a property that one
+   * event does not need. `update` also shared its name with `PageFlip.update()`,
+   * which does not cause it.
+   */
+  pagesChanged: BookSnapshot;
+
+  turnRejected: TurnRejected;
 };
 
 /**

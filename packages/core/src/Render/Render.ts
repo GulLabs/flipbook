@@ -10,7 +10,7 @@ import { FlipDirection } from '../Flip/Flip';
 import type { Page } from '../Page/Page';
 import { PageOrientation } from '../Page/Page';
 import type { FlipSetting } from '../Settings';
-import { SizeType } from '../Settings';
+import { SizeMode } from '../Settings';
 import { convertPageToGlobal } from '../geometry';
 import { PageFlipError } from '../errors';
 
@@ -764,7 +764,7 @@ export abstract class Render {
     // ways to reach one value, latent until somebody clones the settings on the
     // way in and only ONE of the two readers keeps seeing updates. The test
     // beside it pins the invariant that makes both correct.
-    if (this.setting.size === SizeType.STRETCH) {
+    if (this.setting.sizing === SizeMode.RESPONSIVE) {
       if (blockWidth < this.setting.minWidth * 2 && this.setting.usePortrait)
         orientation = Orientation.PORTRAIT;
 
@@ -1028,7 +1028,7 @@ export abstract class Render {
   public setDirection(direction: FlipDirection): void {
     this.requestFrame();
 
-    this.direction = foldSide(direction, this.getSettings().direction === 'rtl');
+    this.direction = foldSide(direction, this.getSettings().readingDirection === 'rtl');
   }
 
   /**

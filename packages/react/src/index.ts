@@ -4,15 +4,16 @@ export { usePageFlip } from './usePageFlip';
 export type {
   HTMLFlipBookProps,
   FlipBookHandle,
-  IFlipSetting,
   IEventProps,
-  IBookState,
   PageState,
   PageOrientation,
   LiveRegionInfo,
   LiveRegionTextFn,
   WidgetEvent,
   FlipbookEventMap,
+  BookSnapshot,
+  TurnRejected,
+  PageTransition,
 } from './types';
 
 export { HTMLFlipBook as default } from './HTMLFlipBook';

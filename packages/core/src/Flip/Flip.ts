@@ -360,7 +360,7 @@ export class Flip {
     // is what stops the RTL mirror from being applied a second time inside
     // `convertToPage`, which derives local x FROM the direction it is given.
     this.calc = new FlipCalculation(
-      foldSide(direction, this.app.getSettings().direction === 'rtl'),
+      foldSide(direction, this.app.getSettings().readingDirection === 'rtl'),
       flipCorner,
       rect.pageWidth,
       rect.height,
@@ -940,7 +940,7 @@ export class Flip {
       direction = FlipDirection.BACK;
     }
 
-    if (this.app.getSettings().direction === 'rtl') {
+    if (this.app.getSettings().readingDirection === 'rtl') {
       direction = direction === FlipDirection.FORWARD ? FlipDirection.BACK : FlipDirection.FORWARD;
     }
 

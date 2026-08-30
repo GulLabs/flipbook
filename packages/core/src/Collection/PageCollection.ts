@@ -45,7 +45,7 @@ export abstract class PageCollection {
     this.app = app;
 
     this.currentPageIndex = 0;
-    this.isShowCover = this.app.getSettings().showCover;
+    this.isShowCover = this.app.getSettings().hardCovers;
   }
 
   /**
@@ -453,7 +453,7 @@ export abstract class PageCollection {
     //
     // Read live rather than cached: `direction` is not construction-time, so
     // `updateSettings({ direction })` must take effect on the next draw.
-    const rtl = this.app.getSettings().direction === 'rtl';
+    const rtl = this.app.getSettings().readingDirection === 'rtl';
 
     if (spread.length === 2) {
       const tailIdx = at(spread, 1);

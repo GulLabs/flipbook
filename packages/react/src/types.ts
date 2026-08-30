@@ -1,17 +1,23 @@
 import type { CSSProperties, ReactNode, Ref } from 'react';
 import type {
+  BookSnapshot,
   FlipCorner,
-  FlipSetting,
+  FlipOptions,
   FlipbookEventMap,
   PageFlip,
+  TurnRejected,
   WidgetEvent,
 } from '@gullabs/flipbook-core';
 
-export type { WidgetEvent, FlipbookEventMap };
+export type { WidgetEvent, FlipbookEventMap, BookSnapshot, TurnRejected };
 
-export type IFlipSetting = FlipSetting;
+/**
+ * `PageState` used to be declared here as a string union AND in core as an
+ * unrelated interface, so a consumer importing both got two types with one
+ * name. Re-exported from core instead of redeclared.
+ */
+export type { FlippingState as PageState } from '@gullabs/flipbook-core';
 
-export type PageState = 'user_fold' | 'fold_corner' | 'flipping' | 'read';
 export type PageOrientation = 'portrait' | 'landscape';
 
 /**
@@ -26,39 +32,65 @@ export type LiveRegionInfo = {
   pages: number[];
   orientation: PageOrientation;
   /** Whether leaf 0 is a cover rather than a numbered page. */
-  showCover: boolean;
+  hardCovers: boolean;
+};
+
+export type LiveRegionTextFn = (page: number, pageCount: number, info: LiveRegionInfo) => string;
+
+/**
+ * D18. Every handler receives the PAYLOAD, not a `WidgetEvent` wrapper.
+ *
+ * There used to be three conventions in this one type: `onPageChange` got an
+ * unwrapped number, every other handler got a `WidgetEvent` the consumer had to
+ * reach into, and `onNavigationError` got a bare object. ADR 0003 identified
+ * that asymmetry as *why* consumers bound the wrong event. The engine's `on()`
+ * keeps its wrapper; the binding unwraps uniformly.
+ *
+ * `onFlip` is gone — it and `onPageChange` named one occurrence, and two props
+ * for one event is a support burden forever. `onPageChange` is the name that
+ * matches what ADR 0003 made the event mean.
+ *
+ * `onNavigationError` is gone too: it was a React-only fourth channel for a
+ * condition the engine already reports through `turnRejected`, and it hardcoded
+ * `code: 'INVALID_PAGE'`, discarding the `PAGE_NOT_IN_SPREAD` distinction the
+ * core paid for.
+ */
+export type IEventProps = {
+  /** The reader is now on a different page. Never fires for a repaint. */
+  onPageChange?: (snapshot: BookSnapshot) => void;
+  onChangeOrientation?: (info: FlipbookEventMap['changeOrientation']) => void;
+  onChangeState?: (info: FlipbookEventMap['changeState']) => void;
+  /** Once per engine. */
+  onReady?: (snapshot: BookSnapshot) => void;
+  /** Every load, including the first. */
+  onLoaded?: (snapshot: BookSnapshot) => void;
+  /** The page collection was replaced. */
+  onPagesChanged?: (snapshot: BookSnapshot) => void;
+  onTurnRejected?: (info: TurnRejected) => void;
 };
 
 /**
- * `page` and `pageCount` come first so a consumer's existing two-argument
- * function keeps type-checking and keeps working.
+ * D15. One failure contract.
+ *
+ * `flipNext`/`flipPrev` returned `boolean` and never threw, while
+ * `turnToPage`/`flipToPage` threw after mount and were silent no-ops before it
+ * — so the same call was an uncaught throw that took down the React tree, or
+ * nothing, depending on timing. Every method now returns `boolean`, and a
+ * refusal is reported through `onTurnRejected` like any other. The engine keeps
+ * its throw, where the caller can catch it.
  */
-export type LiveRegionTextFn = (page: number, pageCount: number, info: LiveRegionInfo) => string;
-
-export type IBookState = {
-  page: number;
-  mode: PageOrientation;
-};
-
-export type IEventProps = {
-  onFlip?: (flipEvent: WidgetEvent<FlipbookEventMap['flip']>) => void;
-  onChangeOrientation?: (flipEvent: WidgetEvent<FlipbookEventMap['changeOrientation']>) => void;
-  onChangeState?: (flipEvent: WidgetEvent<FlipbookEventMap['changeState']>) => void;
-  onInit?: (flipEvent: WidgetEvent<FlipbookEventMap['init']>) => void;
-  onUpdate?: (flipEvent: WidgetEvent<FlipbookEventMap['update']>) => void;
-  onPageChange?: (page: number) => void;
-  onCollectionRebuild?: (flipEvent: WidgetEvent<FlipbookEventMap['collectionRebuild']>) => void;
-  onTurnRejected?: (flipEvent: WidgetEvent<FlipbookEventMap['turnRejected']>) => void;
-  onNavigationError?: (info: { code: string; requested: number; actual: number }) => void;
-};
-
 export type FlipBookHandle = {
   pageFlip: () => PageFlip | null;
   flipNext: (corner?: FlipCorner) => boolean;
   flipPrev: (corner?: FlipCorner) => boolean;
-  turnToPage: (page: number) => void;
-  flipToPage: (page: number) => void;
+  /** Jump with no animation. `false` if the engine refused or is not ready. */
+  turnToPage: (page: number) => boolean;
+  /** Animate to a page. `false` if the engine refused or is not ready. */
+  flipToPage: (page: number) => boolean;
 };
+
+/** How a controlled `page` change moves the book. */
+export type PageTransition = 'animate' | 'instant';
 
 export type HTMLFlipBookProps = {
   /** Required page width in CSS pixels. */
@@ -68,12 +100,34 @@ export type HTMLFlipBookProps = {
   className?: string;
   style?: CSSProperties;
   children?: ReactNode;
-  renderOnlyPageLengthChange?: boolean;
-  /** Controlled page index. */
+  /**
+   * Controlled page index. Genuinely controlled: the binding re-asserts it when
+   * the ENGINE moves, so `page` without `onPageChange` is a locked book.
+   */
   page?: number;
+  /**
+   * How a controlled `page` change moves the book. Defaults to `'animate'` —
+   * in a page-FLIP library, the declarative path opting out of the animation
+   * was an undiscoverable surprise. Use `'instant'` for deep links.
+   */
+  pageTransition?: PageTransition;
   /** Keyboard turning (Arrow/Home/End). Default true. */
   useKeyboard?: boolean;
-  /** Mount only leaves within this many pages of the current index. */
+  /**
+   * Render real previous/next buttons inside the book.
+   *
+   * H4, and it is not a convenience. A screen-reader user in BROWSE mode never
+   * receives the arrow keys — the virtual cursor consumes them — and the root
+   * deliberately does not use `role="application"`, which would take the
+   * virtual cursor away and make linear reading impossible. Without real
+   * controls such a reader had no way to turn a page at all.
+   *
+   * Default true. Set false only if you render your own controls.
+   */
+  controls?: boolean;
+  /** Labels for the built-in controls. Localise these. */
+  controlLabels?: { previous: string; next: string };
+  /** Mount only leaves within this many spreads of the current one. */
   lazyRadius?: number;
   /** Accessible name for the book. */
   'aria-label'?: string;
@@ -87,5 +141,5 @@ export type HTMLFlipBookProps = {
   liveRegion?: boolean;
   liveRegionText?: LiveRegionTextFn;
   ref?: Ref<FlipBookHandle | null>;
-} & Partial<Omit<FlipSetting, 'width' | 'height'>> &
+} & Omit<FlipOptions, 'width' | 'height'> &
   IEventProps;

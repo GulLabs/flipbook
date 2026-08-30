@@ -21,7 +21,7 @@ import {
   FlipCorner,
   PageFlip,
   PageFlipError,
-  type FlipSetting,
+  type FlipOptions,
   type WidgetEvent,
   type FlipbookEventMap,
 } from '@gullabs/flipbook-core';
@@ -29,39 +29,38 @@ import { createPortal } from 'react-dom';
 import type { FlipBookHandle, HTMLFlipBookProps, LiveRegionInfo, PageOrientation } from './types';
 
 const ENGINE_SETTING_KEYS = [
-  'startPage',
-  'size',
+  'initialPage',
+  'sizing',
   'minWidth',
   'maxWidth',
   'minHeight',
-  'maxHeight',
   'drawShadow',
   'flippingTime',
   'usePortrait',
   'startZIndex',
   'autoSize',
   'maxShadowOpacity',
-  'showCover',
-  'mobileScrollSupport',
-  'clickEventForward',
-  'useMouseEvents',
+  'hardCovers',
+  'allowTouchScroll',
+  'respectInteractiveContent',
+  'pointerInput',
   'swipeDistance',
-  'showPageCorners',
-  'disableFlipByClick',
+  'foldCornerOnHover',
+  'flipOnClick',
   'pageBackground',
   'respectReducedMotion',
-  'direction',
-] as const satisfies readonly (keyof FlipSetting)[];
+  'readingDirection',
+] as const satisfies readonly (keyof FlipOptions)[];
 
-function pickSettings(props: HTMLFlipBookProps): Partial<FlipSetting> {
-  const out: Partial<FlipSetting> = {
+function pickSettings(props: HTMLFlipBookProps): FlipOptions {
+  const out: FlipOptions = {
     width: props.width,
     height: props.height,
   };
   for (const key of ENGINE_SETTING_KEYS) {
     const value = props[key];
     if (value !== undefined) {
-      (out as Record<string, unknown>)[key] = value;
+      (out as unknown as Record<string, unknown>)[key] = value;
     }
   }
   return out;
@@ -76,7 +75,14 @@ function pickSettings(props: HTMLFlipBookProps): Partial<FlipSetting> {
  * every resize step, losing the current page and any in-flight turn.
  */
 function remountKeyOf(props: HTMLFlipBookProps): string {
-  return [props.showCover, props.size].join(':');
+  // D6. `initialPage` is here now. It is read once, by `attachMode`, so a
+  // change to it could never take effect — and the settings effect did not list
+  // it as a dependency, so changing it ALONE did nothing while changing it
+  // alongside any live prop produced a console warning naming an engine method
+  // the consumer never called. Two layers disagreeing by accident of a
+  // dependency array. Remounting is the honest reading of "open at a different
+  // page".
+  return [props.hardCovers, props.sizing, props.initialPage].join(':');
 }
 
 /**
@@ -118,7 +124,7 @@ function spreadPages(
   head: number,
   pageCount: number,
   orientation: PageOrientation,
-  showCover: boolean,
+  hardCovers: boolean,
 ): number[] {
   if (pageCount <= 0) return [];
 
@@ -126,7 +132,7 @@ function spreadPages(
 
   if (orientation === 'portrait') return [first];
   // The cover is a spread of its own, so it never pairs with leaf 1.
-  if (showCover && first === 0) return [0];
+  if (hardCovers && first === 0) return [0];
 
   return first + 1 <= pageCount - 1 ? [first, first + 1] : [first];
 }
@@ -152,7 +158,7 @@ function defaultLiveText(page: number, pageCount: number, info?: LiveRegionInfo)
 
   // With a cover, leaf 0 is not "page 1" — it is the front of the book, and the
   // final lone leaf is its back.
-  if (info?.showCover === true && second === undefined) {
+  if (info?.hardCovers === true && second === undefined) {
     if (first === 0) return 'Front cover';
     if (pageCount > 1 && first === pageCount - 1) return 'Back cover';
   }
@@ -194,7 +200,7 @@ function wrapChildren(
   children: ReactNode,
   visiblePages: number[],
   lazyRadius: number | undefined,
-  collect: (el: HTMLElement | null) => void,
+  collect: (index: number) => (el: HTMLElement | null) => void,
 ): ReactElement[] {
   const list: ReactElement[] = [];
 
@@ -242,7 +248,7 @@ function wrapChildren(
           key,
           'data-flipbook-lazy': '1',
           'aria-hidden': 'true',
-          ref: collect,
+          ref: collect(index),
         }),
       );
       return;
@@ -250,7 +256,7 @@ function wrapChildren(
 
     if (!isValidElement(child)) {
       list.push(
-        <div key={key} ref={collect}>
+        <div key={key} ref={collect(index)}>
           {child}
         </div>,
       );
@@ -262,7 +268,7 @@ function wrapChildren(
     list.push(
       cloneElement(element, {
         key,
-        ref: composeRefs(collect, element.props.ref ?? element.ref ?? null),
+        ref: composeRefs(collect(index), element.props.ref ?? element.ref ?? null),
       }),
     );
   });
@@ -277,15 +283,15 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       style,
       page: controlledPage,
       onPageChange,
-      onFlip,
       onChangeOrientation,
       onChangeState,
-      onInit,
-      onUpdate,
-      onCollectionRebuild,
+      onReady,
+      onLoaded,
+      onPagesChanged,
       onTurnRejected,
-      onNavigationError,
-      renderOnlyPageLengthChange,
+      pageTransition = 'animate',
+      controls = true,
+      controlLabels = { previous: 'Previous page', next: 'Next page' },
       useKeyboard = true,
       lazyRadius,
       liveRegion = true,
@@ -298,7 +304,40 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
 
     const rootRef = useRef<HTMLDivElement>(null);
     const engineRef = useRef<PageFlip | null>(null);
-    const childNodes = useRef<HTMLElement[]>([]);
+    /**
+     * One slot per child, by INDEX. `null` after commit means that child never
+     * called its ref — see the children effect.
+     */
+    const slotsRef = useRef<Array<HTMLElement | null>>([]);
+    const childCount = useRef(0);
+
+    /**
+     * The page nodes, or a thrown error naming the child that could not be
+     * reffed. Never a SHORTER list: a short list is the silent misalignment
+     * this exists to make impossible.
+     */
+    const readNodes = useCallback((): HTMLElement[] => {
+      const slots = slotsRef.current;
+      const missing: number[] = [];
+      const nodes: HTMLElement[] = [];
+
+      for (let i = 0; i < childCount.current; i += 1) {
+        const node = slots[i];
+        if (node == null) missing.push(i);
+        else nodes.push(node);
+      }
+
+      if (missing.length > 0) {
+        throw new PageFlipError(
+          `HTMLFlipBook: ${missing.length} page element(s) never reached the engine ` +
+            `(child index ${missing.join(', ')}). A page child must render a host element ` +
+            `and forward its ref. Wrap a component child in a <div>, or forward the ref.`,
+          'DETACHED_PAGE',
+        );
+      }
+
+      return nodes;
+    }, []);
     /** Page nodes currently loaded into the engine. */
     const loadedNodes = useRef<HTMLElement[] | null>(null);
     const [pages, setPages] = useState<ReactElement[]>([]);
@@ -309,7 +348,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
      * root element, and any later React removal/reorder threw NotFoundError.
      */
     const [pageHost, setPageHost] = useState<HTMLElement | null>(null);
-    const [enginePage, setEnginePage] = useState(props.startPage ?? 0);
+    const [enginePage, setEnginePage] = useState(props.initialPage ?? 0);
     const [pageCount, setPageCount] = useState(0);
     // The live region's text, held separately from `currentPage`/`pageCount` so
     // it can stay empty until a turn actually commits.
@@ -324,14 +363,14 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     const [orientation, setOrientation] = useState<PageOrientation>('landscape');
 
     const currentPage = controlledPage ?? enginePage;
-    const showCover = props.showCover === true;
+    const hardCovers = props.hardCovers === true;
     // `enginePage`, not `currentPage`: the engine's index is always the FIRST
     // leaf of the spread, while a controlled `page` may name either leaf of it.
     // Memoised so both the live region and the inert effect can depend on it by
     // identity; recomputed on every render it would re-announce constantly.
     const visiblePages = useMemo(
-      () => spreadPages(enginePage, pageCount, orientation, showCover),
-      [enginePage, pageCount, orientation, showCover],
+      () => spreadPages(enginePage, pageCount, orientation, hardCovers),
+      [enginePage, pageCount, orientation, hardCovers],
     );
 
     useEffect(() => {
@@ -342,11 +381,54 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         return;
       }
       setAnnounced(
-        liveRegionText(currentPage, pageCount, { pages: visiblePages, orientation, showCover }),
+        liveRegionText(currentPage, pageCount, { pages: visiblePages, orientation, hardCovers }),
       );
-    }, [currentPage, pageCount, liveRegionText, visiblePages, orientation, showCover]);
+    }, [currentPage, pageCount, liveRegionText, visiblePages, orientation, hardCovers]);
     const settings = pickSettings(props);
     const remountKey = remountKeyOf(props);
+
+    /**
+     * D15. One failure contract for all four.
+     *
+     * `flipNext`/`flipPrev` returned `boolean` and never threw, while
+     * `turnToPage`/`flipToPage` threw AFTER mount and were silent no-ops
+     * BEFORE it — so the same call was an uncaught exception that took down the
+     * React tree, or nothing at all, depending on timing the caller cannot see.
+     * The repo's own example app used three of the four at once, which is the
+     * honest signal that nothing was primary.
+     *
+     * The ref is the escape hatch; `page` + `onPageChange` is the primary path.
+     * A refusal is reported through `onTurnRejected` like every other refusal,
+     * so the boolean is a convenience rather than the only channel. The CORE
+     * keeps its throw, where a caller can catch it.
+     */
+    const runHandle = useCallback((page: number, animate: boolean): boolean => {
+      const engine = engineRef.current;
+      if (!engine || engine.getPageCount() <= 0) {
+        eventHandlersRef.current.onTurnRejected?.({
+          reason: 'notReady',
+          direction: null,
+          targetPage: page,
+          code: 'NOT_LOADED',
+        });
+        return false;
+      }
+
+      try {
+        if (animate) engine.flip(page);
+        else engine.turnToPage(page);
+        return true;
+      } catch (error: unknown) {
+        if (!(error instanceof PageFlipError)) throw error;
+        eventHandlersRef.current.onTurnRejected?.({
+          reason: error.code === 'PAGE_NOT_IN_SPREAD' ? 'invalidPage' : 'setup',
+          direction: null,
+          targetPage: page,
+          code: error.code,
+        });
+        return false;
+      }
+    }, []);
 
     const handle: FlipBookHandle = useMemo(
       () => ({
@@ -355,10 +437,10 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
           engineRef.current?.flipNext(corner ?? FlipCorner.TOP) ?? false,
         flipPrev: (corner?: FlipCorner) =>
           engineRef.current?.flipPrev(corner ?? FlipCorner.TOP) ?? false,
-        turnToPage: (page: number) => engineRef.current?.turnToPage(page),
-        flipToPage: (page: number) => engineRef.current?.flip(page),
+        turnToPage: (page: number) => runHandle(page, false),
+        flipToPage: (page: number) => runHandle(page, true),
       }),
-      [],
+      [runHandle],
     );
 
     useImperativeHandle(ref, () => handle, [handle]);
@@ -372,35 +454,34 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     );
 
     useEffect(() => {
-      const collect = (el: HTMLElement | null) => {
-        if (el) childNodes.current.push(el);
+      // D1. INDEX-KEYED SLOTS, not append order.
+      //
+      // `collect` was a bare push, so a child whose ref never fired simply did
+      // not appear — and `cloneElement(el, { ref })` never fires for a
+      // component that does not forward its ref. With SOME such children the
+      // node list is shorter than the page list, `updateFromHtml` succeeds, and
+      // every index this binding computes — `inert`, the live region,
+      // `visiblePages` — is against a different list than the engine's. Pages
+      // silently mis-inert and the announcement silently lies.
+      //
+      // The rule needed three examples and a README section to explain and
+      // produced no runtime signal, which is what makes it an API defect rather
+      // than a docs gap. A null slot after commit is now PROOF that a specific
+      // child could not be reffed, so it throws and names the index.
+      //
+      // Order comes from the index, so the append-order reset dance and its
+      // documented "bail out BEFORE clearing" hazard are gone, and StrictMode's
+      // double-invoke is idempotent — slot `i` is simply written twice.
+      const slots: Array<HTMLElement | null> = [];
+      const collect = (index: number) => (el: HTMLElement | null) => {
+        slots[index] = el;
       };
       const next = wrapChildren(children, lazyAnchors, lazyRadius, collect);
 
-      // Bail out BEFORE clearing `childNodes`: emptying it without re-rendering
-      // leaves it empty for good, and the load effect below then skips
-      // `loadFromHTML` on the next remount — a blank book.
-      //
-      // `renderOnlyPageLengthChange` must not apply while lazy mounting is on:
-      // turning a page moves the lazy window without changing the page count,
-      // so short-circuiting on equal length left every page outside the
-      // initial window as an empty placeholder for the life of the book.
-      const lazyWindowActive = lazyRadius !== undefined && Number.isFinite(lazyRadius);
-
-      if (
-        renderOnlyPageLengthChange === true &&
-        !lazyWindowActive &&
-        pages.length === next.length
-      ) {
-        return;
-      }
-
-      // Refs re-attach in DOM order during the commit `setPages` triggers.
-      childNodes.current = [];
+      slotsRef.current = slots;
+      childCount.current = next.length;
       setPages(next);
-      // pages.length is the previous render's count; intentional.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [children, lazyAnchors, lazyRadius, renderOnlyPageLengthChange]);
+    }, [children, lazyAnchors, lazyRadius]);
 
     // Handlers are dispatched through a ref so `bindHandlers` is stable. With
     // the props in the dependency list, an inline `onFlip={(e) => …}` gave the
@@ -409,58 +490,61 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     // turn, mid-animation.
     const eventHandlersRef = useRef({
       onPageChange,
-      onFlip,
       onChangeOrientation,
       onChangeState,
-      onInit,
-      onUpdate,
-      onCollectionRebuild,
+      onReady,
+      onLoaded,
+      onPagesChanged,
       onTurnRejected,
-      onNavigationError,
     });
 
     useEffect(() => {
       eventHandlersRef.current = {
         onPageChange,
-        onFlip,
         onChangeOrientation,
         onChangeState,
-        onInit,
-        onUpdate,
-        onCollectionRebuild,
+        onReady,
+        onLoaded,
+        onPagesChanged,
         onTurnRejected,
-        onNavigationError,
       };
     });
 
     const handlersBoundRef = useRef(false);
-    const startPageAppliedRef = useRef(false);
+    /**
+     * The FIRST controlled application is instant regardless of
+     * `pageTransition`: a book mounting at `page={7}` should open there, not
+     * animate through to it from page 0.
+     */
+    const firstControlledApply = useRef(true);
     const bindHandlers = useCallback((flip: PageFlip) => {
       if (handlersBoundRef.current) return;
       handlersBoundRef.current = true;
 
+      // D18. Every handler receives the PAYLOAD. The engine's `on()` keeps its
+      // `WidgetEvent` wrapper; the binding unwraps uniformly rather than for
+      // one prop, which is the asymmetry ADR 0003 blamed for consumers binding
+      // the wrong event.
       flip.on('flip', (e: WidgetEvent<FlipbookEventMap['flip']>) => {
-        const next = typeof e.data === 'number' ? e.data : 0;
-        setEnginePage(next);
-        setPageCount(flip.getPageCount());
-        eventHandlersRef.current.onPageChange?.(next);
-        eventHandlersRef.current.onFlip?.(e);
+        setEnginePage(e.data.page);
+        setPageCount(e.data.pageCount);
+        eventHandlersRef.current.onPageChange?.(e.data);
       });
       flip.on('changeOrientation', (e: WidgetEvent<FlipbookEventMap['changeOrientation']>) => {
         // Drives how many leaves count as "on screen" — see `spreadPages`.
-        setOrientation(e.data === 'portrait' ? 'portrait' : 'landscape');
-        eventHandlersRef.current.onChangeOrientation?.(e);
+        setOrientation(e.data.orientation === 'portrait' ? 'portrait' : 'landscape');
+        eventHandlersRef.current.onChangeOrientation?.(e.data);
       });
       flip.on('changeState', (e: WidgetEvent<FlipbookEventMap['changeState']>) => {
-        eventHandlersRef.current.onChangeState?.(e);
+        eventHandlersRef.current.onChangeState?.(e.data);
       });
-      flip.on('init', (e: WidgetEvent<FlipbookEventMap['init']>) => {
-        eventHandlersRef.current.onInit?.(e);
+      flip.on('ready', (e: WidgetEvent<FlipbookEventMap['ready']>) => {
+        eventHandlersRef.current.onReady?.(e.data);
       });
-      flip.on('update', (e: WidgetEvent<FlipbookEventMap['update']>) => {
-        eventHandlersRef.current.onUpdate?.(e);
+      flip.on('loaded', (e: WidgetEvent<FlipbookEventMap['loaded']>) => {
+        eventHandlersRef.current.onLoaded?.(e.data);
       });
-      flip.on('collectionRebuild', (e: WidgetEvent<FlipbookEventMap['collectionRebuild']>) => {
+      flip.on('pagesChanged', (e: WidgetEvent<FlipbookEventMap['pagesChanged']>) => {
         setPageCount(e.data.pageCount);
         // Re-derive the index too. A rebuild that shrinks the book below the
         // current index leaves the engine on a different leaf, and a
@@ -473,10 +557,10 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         // collection refused it. `getCurrentPageIndex()` is the one value that
         // is true on both paths.
         setEnginePage(flip.getCurrentPageIndex());
-        eventHandlersRef.current.onCollectionRebuild?.(e);
+        eventHandlersRef.current.onPagesChanged?.(e.data);
       });
       flip.on('turnRejected', (e: WidgetEvent<FlipbookEventMap['turnRejected']>) => {
-        eventHandlersRef.current.onTurnRejected?.(e);
+        eventHandlersRef.current.onTurnRejected?.(e.data);
       });
     }, []);
 
@@ -487,7 +571,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       const engine = new PageFlip(root, settings);
       engineRef.current = engine;
       handlersBoundRef.current = false;
-      startPageAppliedRef.current = false;
+      firstControlledApply.current = true;
       bindHandlers(engine);
 
       // Build the DOM shell with no leaves, so there is a portal target before
@@ -500,7 +584,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
 
       return () => {
         handlersBoundRef.current = false;
-        startPageAppliedRef.current = false;
+        firstControlledApply.current = true;
         engine.destroy();
         setPageHost(null);
         loadedNodes.current = null;
@@ -522,29 +606,28 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       props.width,
       props.height,
       props.usePortrait,
-      props.useMouseEvents,
+      props.pointerInput,
       props.flippingTime,
       props.respectReducedMotion,
-      props.direction,
+      props.readingDirection,
       props.pageBackground,
       props.drawShadow,
-      props.showPageCorners,
-      props.disableFlipByClick,
+      props.foldCornerOnHover,
+      props.flipOnClick,
       props.swipeDistance,
-      props.clickEventForward,
-      props.mobileScrollSupport,
+      props.respectInteractiveContent,
+      props.allowTouchScroll,
       props.maxShadowOpacity,
       props.startZIndex,
       props.autoSize,
       props.minWidth,
       props.maxWidth,
       props.minHeight,
-      props.maxHeight,
     ]);
 
     useEffect(() => {
       const engine = engineRef.current;
-      const nodes = childNodes.current;
+      const nodes = readNodes();
 
       if (!engine || !pageHost || pages.length === 0 || nodes.length === 0) {
         return;
@@ -569,44 +652,21 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // book that is landscape from the first layout never emits one.
       setOrientation(engine.getOrientation() === 'portrait' ? 'portrait' : 'landscape');
 
-      // Honor startPage once after the first real collection (FE-001).
-      if (controlledPage === undefined && !startPageAppliedRef.current) {
-        startPageAppliedRef.current = true;
-        const start = props.startPage ?? 0;
-
-        // Ask the engine rather than re-deriving its rules here. A numeric
-        // range check is not reachability: `startPage: 0.5` is inside the page
-        // count but belongs to no spread, and in landscape `startPage: 1`
-        // validly opens the spread [0, 1] whose canonical index is 0 — so
-        // comparing indices afterwards would flag a perfectly good page.
-        let honored = true;
-
-        if (start !== 0) {
-          try {
-            engine.turnToPage(start);
-          } catch (error: unknown) {
-            // Only the engine saying "no such page" means the start page was
-            // bad. A listener throwing, or a real render fault, must not be
-            // relabelled as an invalid `startPage`.
-            if (!(error instanceof PageFlipError)) throw error;
-            honored = false;
-          }
-        }
-
-        const resolved = engine.getCurrentPageIndex();
-        setEnginePage(resolved);
-
-        // Opening at page 0 without a word is the failure this event exists
-        // for: it reads as "the book has no such page".
-        if (!honored) {
-          eventHandlersRef.current.onNavigationError?.({
-            code: 'INVALID_PAGE',
-            requested: start,
-            actual: resolved,
-          });
-        }
-      }
-    }, [pages, pageHost, bindHandlers, remountKey, controlledPage, props.startPage]);
+      // C7 / D17. `initialPage` is honoured by the ENGINE now, not compensated
+      // for here.
+      //
+      // This used to call `engine.turnToPage(start)` after the first real
+      // collection, because `initialPage` is read only by `attachMode` and this
+      // binding mounts with `loadFromHTML([])`. A turn ANNOUNCES, so an
+      // uncontrolled `<HTMLFlipBook initialPage={1}>` fired `onPageChange` on
+      // mount for a page nobody had turned to — the same defect ADR 0003 fixed
+      // in the core, re-created one layer up.
+      //
+      // `updateFromHtml` now carries the opening index, so opening at a page is
+      // not a turn on either side of the boundary. `initialPage` is part of the
+      // remount key, so changing it rebuilds rather than being ignored (D6).
+      setEnginePage(engine.getCurrentPageIndex());
+    }, [pages, pageHost, bindHandlers, remountKey, controlledPage, readNodes]);
 
     /*
      * Every leaf is in the DOM at all times, stacked, so a link or button on a
@@ -635,7 +695,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
      * visually hidden anyway, so finding text on them was already misleading.
      */
     useEffect(() => {
-      const nodes = childNodes.current;
+      const nodes = readNodes();
       // Before the collection loads there is no spread yet, and inerting every
       // leaf for that one commit would blank the tab order of a mounting book.
       if (nodes.length === 0 || pageCount <= 0) return;
@@ -679,7 +739,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         // The nodes belong to the consumer; leave none of ours behind.
         for (const node of nodes) node.removeAttribute('inert');
       };
-    }, [pages, visiblePages, pageCount]);
+    }, [pages, visiblePages, pageCount, readNodes]);
 
     useEffect(() => {
       const engine = engineRef.current;
@@ -699,15 +759,32 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // Membership is asked of the collection rather than derived here: the
       // cover is a spread of one, so "pair the leaves two at a time" is wrong
       // exactly when `showCover` is set.
+      // Membership is asked of the collection rather than derived here: the
+      // cover is a spread of one, so "pair the leaves two at a time" is wrong
+      // exactly when `hardCovers` is set.
       const collection = engine.getPageCollection();
       const targetSpread = collection.getSpreadIndexByPage(controlledPage);
       if (targetSpread !== null && targetSpread === collection.getCurrentSpreadIndex()) return;
+
+      // D14. ANIMATE by default.
+      //
+      // The controlled path called `turnToPage` (instant) while the ref's
+      // `flipToPage` called `engine.flip` (animated) — so in a page-FLIP
+      // library the declarative path silently opted out of the entire point,
+      // undiscoverably. The engine's own comments describe the better design:
+      // `Flip.flipToPage` reasons explicitly about being "driven straight from
+      // the React binding's controlled `page` prop", which is not what the
+      // binding did. `pageTransition: 'instant'` is there for deep links.
+      const animate = pageTransition === 'animate' && !firstControlledApply.current;
+      firstControlledApply.current = false;
+
       try {
-        engine.turnToPage(controlledPage);
+        if (animate) engine.flip(controlledPage);
+        else engine.turnToPage(controlledPage);
       } catch (error: unknown) {
         // Only the engine refusing the page is a navigation error. A consumer
-        // `onPageChange` that throws, or a broken renderer, must not be
-        // relabelled as "invalid page" and hidden.
+        // handler that throws, or a broken renderer, must not be relabelled as
+        // "invalid page" and hidden.
         if (!(error instanceof PageFlipError)) throw error;
 
         const count = engine.getPageCount();
@@ -719,16 +796,31 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
           // report below. A non-engine failure is still a defect.
           if (!(clampError instanceof PageFlipError)) throw clampError;
         }
-        const resolved = engine.getCurrentPageIndex();
-        setEnginePage(resolved);
-        eventHandlersRef.current.onPageChange?.(resolved);
-        eventHandlersRef.current.onNavigationError?.({
-          code: 'INVALID_PAGE',
-          requested: controlledPage,
-          actual: resolved,
+        setEnginePage(engine.getCurrentPageIndex());
+
+        // D16/D18. Reported through `turnRejected` like every other refusal.
+        // `onNavigationError` was a React-only fourth channel for a condition
+        // the engine already reports, and it hardcoded `INVALID_PAGE`,
+        // discarding the `PAGE_NOT_IN_SPREAD` distinction the core paid for.
+        eventHandlersRef.current.onTurnRejected?.({
+          reason: error.code === 'PAGE_NOT_IN_SPREAD' ? 'invalidPage' : 'setup',
+          direction: null,
+          targetPage: controlledPage,
+          code: error.code,
         });
       }
-    }, [controlledPage, pages]);
+      // D13. `enginePage` IS a dependency, and that is what makes `page`
+      // controlled.
+      //
+      // The effect used to depend on `[controlledPage, pages]` only, so nothing
+      // re-asserted when the ENGINE moved: a swipe turned the book, the prop
+      // was unchanged, the effect never re-ran, and the book stayed where the
+      // user put it while the component knew it disagreed and said nothing.
+      // `<input value="a">` does not become `"b"`.
+      //
+      // With this, `page` without `onPageChange` is a genuinely locked book and
+      // `page` + `onPageChange` round-trips.
+    }, [controlledPage, pages, enginePage, pageTransition]);
 
     const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
       if (!useKeyboard) return;
@@ -758,7 +850,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // authority on who owns a key press; a selector is not.
       if (event.target !== event.currentTarget) return;
 
-      const rtl = props.direction === 'rtl';
+      const rtl = props.readingDirection === 'rtl';
       if (event.key === 'ArrowRight') {
         event.preventDefault();
         if (rtl) engine.flipPrev();
@@ -769,20 +861,14 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         else engine.flipPrev();
       } else if (event.key === 'Home') {
         event.preventDefault();
-        try {
-          engine.turnToPage(0);
-        } catch (error: unknown) {
-          // An empty or unloaded book has nowhere to go; anything else is real.
-          if (!(error instanceof PageFlipError)) throw error;
-        }
+        // D7. `runHandle` REPORTS the refusal. These two used to swallow it
+        // silently while `ArrowLeft`/`ArrowRight` reported theirs through
+        // `turnRejected` — the same gesture, two different contracts, decided
+        // by which key was pressed.
+        runHandle(0, false);
       } else if (event.key === 'End') {
         event.preventDefault();
-        try {
-          const last = Math.max(0, engine.getPageCount() - 1);
-          engine.turnToPage(last);
-        } catch (error: unknown) {
-          if (!(error instanceof PageFlipError)) throw error;
-        }
+        runHandle(Math.max(0, engine.getPageCount() - 1), false);
       }
     };
 
@@ -828,6 +914,48 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
           <style>{`[data-flipbook-kb]:focus{outline:none}[data-flipbook-kb]:focus-visible{outline:2px solid #2563eb;outline-offset:2px}`}</style>
         ) : null}
         {pageHost ? createPortal(pages, pageHost) : null}
+        {/*
+          H4. REAL BUTTONS, and this is a defect fix rather than a convenience.
+
+          A screen-reader user in BROWSE mode — the default for NVDA and JAWS,
+          and VoiceOver's equivalent — never receives our Arrow keys: the
+          virtual cursor consumes them for element-by-element reading. The one
+          role that would deliver them is `application`, which is precisely what
+          this component must not use, because it takes the virtual cursor away
+          for the whole subtree and linear reading is the entire value of a book
+          to that reader.
+
+          The comment on the root has said "browse-mode users turn pages with
+          the controls" since the keyboard work landed. There were no controls.
+          Until now that reader could not turn a page at all, by any means.
+
+          Rendered OUTSIDE the portal so they are not adopted, styled or
+          positioned by the engine, and placed after the pages so the reading
+          order is content-then-controls.
+        */}
+        {controls ? (
+          <div data-flipbook-controls="">
+            <button
+              type="button"
+              data-flipbook-control="prev"
+              onClick={() => engineRef.current?.flipPrev(FlipCorner.TOP)}
+              // A boundary disables the button rather than hiding it: a control
+              // that disappears moves everything after it and is announced as
+              // removed.
+              disabled={pageCount <= 0 || enginePage <= 0}
+            >
+              {controlLabels.previous}
+            </button>
+            <button
+              type="button"
+              data-flipbook-control="next"
+              onClick={() => engineRef.current?.flipNext(FlipCorner.TOP)}
+              disabled={pageCount <= 0 || enginePage >= pageCount - 1}
+            >
+              {controlLabels.next}
+            </button>
+          </div>
+        ) : null}
         {liveRegion ? (
           <div
             role="status"
