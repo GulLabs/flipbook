@@ -746,7 +746,42 @@ export class PageFlip extends EventObject {
 
     const next = new Settings().getSettings({ ...this.setting, ...effective });
     const mouseChanged = next.useMouseEvents !== this.setting.useMouseEvents;
+    const directionChanged = next.direction !== this.setting.direction;
     Object.assign(this.setting, next);
+
+    // A changed reading direction settles an in-flight fold before applying.
+    //
+    // `direction` is read live in two places that update at different moments.
+    // `PageCollection.showSpread` re-mirrors the STATIC spread on the next
+    // `update()`, which is immediate. The FOLD does not: `Render.direction` is
+    // the geometric side, stamped once per turn by `Render.setDirection`, and
+    // `FlipCalculation` is built from that same stamp — both frozen at turn
+    // start so the mirror is applied exactly once and cannot drift mid-turn.
+    //
+    // Toggling `direction` during a turn therefore split the book in half:
+    // begin an LTR landscape `flipNext()`, then flip to `rtl` after the first
+    // frame, and the resting pages swap sides instantly while the curl,
+    // the underside, the shadow gradients and the z-order stay LTR until the
+    // animation ends and snaps. Two readings on screen at once.
+    //
+    // Freezing the static side to match the fold would be the other repair,
+    // and it is the wrong one: it makes a public setting silently not take
+    // effect for as long as a gesture is held, which is the `swipeDistance`
+    // failure this repo already fixed once. So the fold yields instead — you
+    // cannot change which edge a book binds on halfway through turning a page.
+    // `cancelAnimation()` + `abandon()` is the same pair every other
+    // state-invalidating path uses (`replacePages`, `clear`, `destroy`).
+    //
+    // `abandon()` emits `changeState`, so a listener may destroy from inside
+    // it; the check below is why this sits ABOVE the RE-3 hoist rather than
+    // beside `update()`.
+    if (directionChanged && this.render !== null) {
+      this.render.cancelAnimation();
+      this.flipController?.abandon();
+      this.resetUserGesture();
+
+      if (this.destroyed) return this.setting;
+    }
 
     // updateSettings can run before create() wires render/ui (React effects).
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest';
-import { PageOrientation } from '@gullabs/flipbook-core';
+import { FlippingState, PageOrientation } from '@gullabs/flipbook-core';
 import type { Page, Render } from '@gullabs/flipbook-core';
 import { makeHtmlBook } from './html-book-fixture';
 
@@ -140,6 +140,105 @@ describe('RTL spread layout is mirrored', () => {
 
     ltr.destroy();
     rtl.destroy();
+  });
+
+  test('landscape: a spread PAST the first mirrors too', () => {
+    // Codex, reviewing the first draft of this file, named the half-fix it
+    // could not kill: `rtl && headIdx === 0`. Every side assertion above uses
+    // the opening spread `[0,1]`, and the navigation test below only ever
+    // checked the INDEX — so a mirror that fired on the cover spread alone
+    // passed the whole file while `turnToPage(2)` rendered left-to-right.
+    const ltr = makeHtmlBook({ ...landscape, direction: 'ltr' });
+    const rtl = makeHtmlBook({ ...landscape, direction: 'rtl' });
+
+    ltr.book.turnToPage(2);
+    rtl.book.turnToPage(2);
+
+    expect(drawn(ltr).leftPage).toBe(ltr.book.getPage(2));
+    expect(inner(ltr.book.getRender()).rightPage).toBe(ltr.book.getPage(3));
+
+    expect(drawn(rtl).rightPage).toBe(rtl.book.getPage(2));
+    expect(inner(rtl.book.getRender()).leftPage).toBe(rtl.book.getPage(3));
+
+    // …and the pixels swapped, not just the slots.
+    expect(drawnLeft(rtl.pages[2]!)).toBe(drawnLeft(ltr.pages[3]!));
+    expect(drawnLeft(rtl.pages[3]!)).toBe(drawnLeft(ltr.pages[2]!));
+
+    ltr.destroy();
+    rtl.destroy();
+  });
+
+  test('landscape: the TAIL singleton mirrors to the right, not just the cover', () => {
+    // The other half-fix Codex named: `onLeft = isTail || rtl`. That satisfies
+    // every LTR test and the RTL *cover* test above — a lone cover under rtl
+    // does belong on the left — while sending the RTL tail there as well.
+    //
+    // Five pages, no cover, landscape: spreads are [0,1], [2,3], [4]. The lone
+    // leaf 4 is the tail, so it sits away from the spine — left in a
+    // left-bound book, right in a right-bound one.
+    const ltr = makeHtmlBook({ ...landscape, pageCount: 5, direction: 'ltr' });
+    const rtl = makeHtmlBook({ ...landscape, pageCount: 5, direction: 'rtl' });
+
+    ltr.book.turnToPage(4);
+    rtl.book.turnToPage(4);
+
+    expect(drawn(ltr).leftPage).toBe(ltr.book.getPage(4));
+    expect(inner(ltr.book.getRender()).rightPage).toBeNull();
+
+    expect(drawn(rtl).rightPage).toBe(rtl.book.getPage(4));
+    expect(inner(rtl.book.getRender()).leftPage).toBeNull();
+
+    ltr.destroy();
+    rtl.destroy();
+  });
+
+  test('changing direction mid-turn settles the fold instead of splitting the book', () => {
+    // `showSpread` re-mirrors the static spread on the next `update()`, which
+    // is immediate. The fold cannot: `Render.direction` and `FlipCalculation`
+    // are stamped once at turn start, on purpose, so the mirror is applied
+    // exactly once. Toggling direction mid-turn therefore used to put two
+    // readings on screen at once — resting pages swapped instantly while the
+    // curl, underside, shadows and z-order stayed in the old reading until the
+    // animation ended and snapped.
+    //
+    // `updateSettings` now abandons the in-flight fold, the same
+    // `cancelAnimation()` + `abandon()` every other state-invalidating path
+    // uses. Asserting the STATE rather than a pixel is the point: the split is
+    // a disagreement between two subsystems, and only one of them draws.
+    const book = makeHtmlBook({ ...landscape, direction: 'ltr', flippingTime: 400 });
+
+    book.book.flipNext();
+    // Precondition, or the assertion below passes on a book that never turned.
+    expect(book.book.getState()).toBe(FlippingState.FLIPPING);
+
+    book.book.updateSettings({ direction: 'rtl' });
+
+    expect(book.book.getState()).toBe(FlippingState.READ);
+
+    // And the settled book is coherently mirrored — not left mid-fold.
+    drawn(book);
+    expect(inner(book.book.getRender()).rightPage).toBe(
+      book.book.getPage(book.book.getCurrentPageIndex()),
+    );
+
+    book.destroy();
+  });
+
+  test('an UNCHANGED direction does not abandon a turn in flight', () => {
+    // The negative control for the test above, and the reason it is not simply
+    // "updateSettings cancels turns". Pushing a settings object that merely
+    // echoes the current direction — which every React binding does on any
+    // prop change — must not kill the user's page turn.
+    const book = makeHtmlBook({ ...landscape, direction: 'ltr', flippingTime: 400 });
+
+    book.book.flipNext();
+    expect(book.book.getState()).toBe(FlippingState.FLIPPING);
+
+    book.book.updateSettings({ direction: 'ltr', drawShadow: false });
+
+    expect(book.book.getState()).toBe(FlippingState.FLIPPING);
+
+    book.destroy();
   });
 
   test('page indices are reading order in BOTH readings — no consumer state moves', () => {
