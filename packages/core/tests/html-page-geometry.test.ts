@@ -126,8 +126,12 @@ describe('C12 — hard pages rotate about the spine, not block-local pageWidth',
   });
 });
 
-describe('C6 — shipped CSS only claims the engine’s own canvas', () => {
-  test('a consumer canvas on an HTML page is left alone', () => {
+describe('C6 — shipped CSS does not restyle a consumer canvas', () => {
+  test('a canvas on an HTML page is left alone', () => {
+    // Canvas mode (and `.stf__canvas` rules) were removed (ADR 0002). This pins
+    // that a chart embedded in a page is not absolutely positioned by the
+    // engine stylesheet — the old `.stf__parent canvas` descendant selector
+    // used to stretch every nested canvas to the block.
     ensureFlipbookStyles();
 
     const parent = document.createElement('div');
@@ -136,12 +140,6 @@ describe('C6 — shipped CSS only claims the engine’s own canvas', () => {
     wrapper.className = 'stf__wrapper';
     parent.appendChild(wrapper);
 
-    // The engine's own canvas, exactly as CanvasUI builds it.
-    const engineCanvas = document.createElement('canvas');
-    engineCanvas.className = 'stf__canvas';
-    wrapper.appendChild(engineCanvas);
-
-    // A consumer chart living on an HTML-mode page inside the block.
     const block = document.createElement('div');
     block.className = 'stf__block';
     const page = document.createElement('div');
@@ -153,13 +151,6 @@ describe('C6 — shipped CSS only claims the engine’s own canvas', () => {
 
     document.body.appendChild(parent);
 
-    // Canvas mode still gets its layout.
-    const engineStyle = getComputedStyle(engineCanvas);
-    expect(engineStyle.position).toBe('absolute');
-    expect(engineStyle.width).toBe('100%');
-    expect(engineStyle.height).toBe('100%');
-
-    // The consumer's chart does not.
     const chartStyle = getComputedStyle(chart);
     expect(chartStyle.position).not.toBe('absolute');
     expect(chartStyle.width).not.toBe('100%');

@@ -454,26 +454,8 @@ function probeOn(dist: HTMLElement): ProbeRender {
   return new ProbeRender(app, setting);
 }
 
-describe('R8 — a canvas renderer keeps its loop', () => {
-  test('a canvas dist element never parks', () => {
-    // `ImagePage` paints a loader spinner from the wall clock for every page
-    // whose bitmap has not decoded, and the decode completes on an `img.onload`
-    // that touches no renderer state — there is no wake-up to hook. A parked
-    // canvas book would freeze its spinner and never paint the image that
-    // arrived, which is the "stops and never restarts" failure this whole
-    // change is most at risk of. So canvas keeps drawing.
-    const render = probeOn(document.createElement('canvas'));
-
-    render.start();
-    for (let i = 0; i < 5; i++) runFrames(1);
-
-    expect(render.frameDraws).toBe(5);
-    expect(scheduled()).toBe(true);
-  });
-
-  test('an HTML dist element does park — the two are told apart', () => {
-    // The negative control for the test above: without it, "canvas never parks"
-    // would also pass on an implementation that never parks at all.
+describe('R8 — an idle HTML renderer parks', () => {
+  test('an HTML dist element parks after the first frame', () => {
     const render = probeOn(document.createElement('div'));
 
     render.start();
@@ -481,6 +463,13 @@ describe('R8 — a canvas renderer keeps its loop', () => {
 
     expect(ran).toBe(1);
     expect(scheduled()).toBe(false);
+  });
+
+  test('needsContinuousFrames is false (canvas spinner path removed)', () => {
+    const render = probeOn(document.createElement('div'));
+    expect(
+      (render as unknown as { needsContinuousFrames: () => boolean }).needsContinuousFrames(),
+    ).toBe(false);
   });
 });
 

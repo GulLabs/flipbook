@@ -73,7 +73,7 @@ Per `AGENTS.md`:
 
 - [x] `tsconfig.base.json`: `"noUncheckedIndexedAccess": true`
 - [x] `at()` helper (`packages/core/src/arrayAccess.ts`) for spreads/pages/frames
-- [x] Hardened `PageCollection` / `FlipCalculation` / `Render` / `CanvasUI`
+- [x] Hardened `PageCollection` / `FlipCalculation` / `Render` / `HTMLUI`
 - [x] `pages` / `render` / `ui` are `T | null` privately
 - [x] Public getters throw `PageFlipError` with code `NOT_LOADED`
 - [x] Private choke points: `pagesOrThrow` / `renderOrThrow` / `uiOrThrow`
@@ -261,7 +261,7 @@ units that disagreed with what `size-limit` enforces.
 
 **Status:** `done` (measured 2026-08-28; floors only move UP)
 
-After the geometry / pointer / fold / canvas / React test climb, global and
+After the geometry / pointer / fold / React test climb, global and
 per-area floors were ratcheted to just under measured. `pnpm quality:ci` runs
 both `test:coverage` (global) and `test:coverage-areas` (critical files).
 
@@ -276,17 +276,16 @@ both `test:coverage` (global) and `test:coverage-areas` (critical files).
 
 ### Per-area (`scripts/check-coverage-areas.mjs`)
 
-| File               | Floor L/B | Role                                     |
-| ------------------ | --------- | ---------------------------------------- |
-| FlipCalculation.ts | 93 / 85   | Mirror-invariant fold math               |
-| UI.ts              | 86 / 66   | Pointer / swipe / capture                |
-| HTMLRender.ts      | 89 / 63   | Fold opacity, z-order (cssText)          |
-| HTMLPage.ts        | 98 / 73   | Page draw path                           |
-| Flip.ts            | 86 / 78   | State machine                            |
-| CanvasRender.ts    | 87 / 70   | Minority canvas path (above smoke floor) |
-| ImagePage.ts       | 86 / 64   | Image page draw                          |
-| HTMLFlipBook.tsx   | 92 / 77   | React binding                            |
-| usePageFlip.ts     | 98 / 98   | Hook actions + pre-attach no-ops         |
+| File               | Floor L/B | Role                             |
+| ------------------ | --------- | -------------------------------- |
+| FlipCalculation.ts | 93 / 85   | Mirror-invariant fold math       |
+| UI.ts              | 86 / 66   | Pointer / swipe / capture        |
+| HTMLRender.ts      | 89 / 63   | Fold opacity, z-order (cssText)  |
+| HTMLPage.ts        | 98 / 73   | Page draw path                   |
+| Flip.ts            | 86 / 78   | State machine                    |
+| ImagePage.ts       | 86 / 64   | Image page draw                  |
+| HTMLFlipBook.tsx   | 92 / 77   | React binding                    |
+| usePageFlip.ts     | 98 / 98   | Hook actions + pre-attach no-ops |
 
 Do **not** drop a floor to make CI green. If coverage falls, restore the test
 or the path — AGENTS.md §2.
@@ -316,17 +315,13 @@ nobody had measured. Here is the measurement. Both artifacts are terser-minified
 single-line ESM/UMD; `page-flip@2.0.7` was measured from its published tarball
 (`npm pack page-flip@2.0.7`, `dist/js/page-flip.browser.js`).
 
-|                                                            | raw (min) |   gzip | brotli |
-| ---------------------------------------------------------- | --------: | -----: | -----: |
-| `page-flip@2.0.7` (upstream, **includes** canvas)          |    44,058 | 10,360 |  9,261 |
-| `@gullabs/flipbook-core` HTML engine (**excludes** canvas) |    45,002 | 12,269 | 11,011 |
-| delta                                                      |     +2.1% | +18.4% | +18.9% |
+|                                                            | raw (min) |    gzip |  brotli |
+| ---------------------------------------------------------- | --------: | ------: | ------: |
+| `page-flip@2.0.7` (upstream)                               |    44,058 |  10,360 |   9,261 |
+| `@gullabs/flipbook-core` HTML engine (post canvas removal) |   ~55,700 | ~15,300 | ~13,600 |
+| delta                                                      |     +2.1% |  +18.4% |  +18.9% |
 
-Canvas ships here as a lazily-imported chunk (5,779 B raw / 1,698 B brotli) that
-upstream carried inline. So an HTML-mode consumer downloads **944 bytes more
-than upstream** and gets the flip-state-machine fixes, RTL, reduced motion,
-typed errors, `strictNullChecks` guards and `pageBackground` validation.
-A canvas-mode consumer pays ~+15% raw.
+Canvas mode was **removed** (ADR 0002). The HTML engine is the only renderer; ceilings were re-measured and lowered after the removal.
 
 **The §5 "≤ 35 kB minified" target was never achievable and is retired.**
 Upstream itself is 44 kB minified; the target asked this fork to be ~20% smaller
@@ -373,7 +368,7 @@ Splitting RTL / reduced motion behind opt-in subpath exports was considered and
 rejected: they are not separable modules but small conditionals threaded through
 `Flip` / `UI` / `Render` (`reducedMotion.ts` is 681 B of _source_), and they
 change input and animation semantics rather than decorating them. The one
-genuinely separable unit — the canvas renderer — is already split.
+Canvas mode was removed (ADR 0002); the HTML engine is the sole renderer.
 
 ### Still missing
 

@@ -14,11 +14,6 @@
 export const FLIPBOOK_CSS =
   '.stf__parent{position:relative;display:block;box-sizing:border-box;transform:translateZ(0);-ms-touch-action:pan-y pinch-zoom;touch-action:pan-y pinch-zoom}' +
   '.stf__wrapper{position:relative;width:100%;box-sizing:border-box}' +
-  // Scoped to the engine's OWN canvas (created by CanvasUI as a direct child of
-  // the wrapper). The old `.stf__parent canvas` descendant selector matched any
-  // consumer canvas on an HTML-mode page — a chart on a page was absolutely
-  // positioned at 0,0 and stretched to the block.
-  '.stf__parent>.stf__wrapper>.stf__canvas{position:absolute;width:100%;height:100%;left:0;top:0}' +
   '.stf__block{position:absolute;width:100%;height:100%;box-sizing:border-box;perspective:2000px;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;user-drag:none}' +
   '.stf__item{display:none;position:absolute;transform-style:preserve-3d}' +
   '.stf__outerShadow,.stf__innerShadow,.stf__hardShadow,.stf__hardInnerShadow{position:absolute;left:0;top:0}';

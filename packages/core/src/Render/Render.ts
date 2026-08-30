@@ -507,31 +507,13 @@ export abstract class Render {
   /**
    * Does this renderer paint something that changes without anyone telling it?
    *
-   * Exactly one thing does today: the canvas loader spinner. `ImagePage` draws
-   * it for every page whose bitmap has not decoded yet, at an angle derived
-   * from the wall clock, and the decode completes on an `img.onload` that
-   * touches no renderer state at all — so there is neither a per-frame state
-   * change to mark the scene dirty nor an event to wake a parked loop with. A
-   * canvas book that parked would freeze its spinner and then never paint the
-   * image that arrived.
-   *
-   * So canvas mode does not park, and the test is the dist element being a
-   * canvas: `CanvasUI` sets `distElement` to the canvas it created, `HTMLUI`
-   * sets it to a `div`. Deliberately NOT `instanceof CanvasUI` — importing
-   * `CanvasUI` here would drag the lazily-loaded canvas chunk into the HTML
-   * bundle, which is the one thing `loadCanvasModule` exists to prevent.
-   *
-   * This is the conservative answer, not the precise one: the precise predicate
-   * is "any page currently drawn is still loading", which only `CanvasRender`
-   * can ask. It is `protected` so that override can be added without touching
-   * this file. Until it is, an idle canvas book keeps the loop it has always
-   * had, and an idle HTML book — every React consumer, every default
-   * `loadFromHTML` — stops burning a frame budget it has nothing to spend on.
+   * HTML mode has nothing of the kind — an idle book parks. `protected` so a
+   * future renderer can override without touching this file. Canvas mode used
+   * to force continuous frames for its loader spinner; that path is gone
+   * (ADR 0002).
    */
   protected needsContinuousFrames(): boolean {
-    if (typeof HTMLCanvasElement === 'undefined') return false;
-
-    return this.app.getUI().getDistElement() instanceof HTMLCanvasElement;
+    return false;
   }
 
   /**
