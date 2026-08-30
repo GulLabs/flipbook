@@ -500,7 +500,24 @@ export abstract class Render {
     progress: number,
     direction: FlipDirection,
   ): void {
-    if (!this.app.getSettings().drawShadow) return;
+    if (!this.app.getSettings().drawShadow) {
+      // X3: turning `drawShadow` off mid-fold has to take the shadow that is
+      // already on screen with it. `CanvasRender` re-reads the setting at draw
+      // time and so recovered on the next frame; `HTMLRender.drawFrame` draws
+      // whatever `this.shadow` holds, so a bare `return` here froze the last
+      // computed shadow over the moving leaf until the turn ended and
+      // `clearShadow()` ran. The asymmetry is this method's, not the HTML
+      // renderer's: the setting is read here, so the state it guards is
+      // cleared here, and both renderers get the fix from one line.
+      //
+      // `clearShadow()`, not `this.shadow = null`: the HTML renderer overrides
+      // it to hide the four shadow ELEMENTS as well, and nothing else in
+      // `drawFrame` ever resets them — dropping the field alone would stop the
+      // shadow being recomputed while leaving the last one painted, which is
+      // the reported defect with an extra step.
+      this.clearShadow();
+      return;
+    }
 
     const maxShadowOpacity = 100 * this.getSettings().maxShadowOpacity;
 
@@ -726,7 +743,7 @@ export abstract class Render {
   public convertToPage(pos: Point, direction?: FlipDirection | null): Point {
     direction ??= this.direction;
 
-    const rect = this.getRect();
+    const rect = this.getFoldRect(direction);
     const x =
       direction === FlipDirection.FORWARD
         ? pos.x - rect.left - rect.width / 2
@@ -757,7 +774,63 @@ export abstract class Render {
    * hold a point.
    */
   public convertPointToGlobal(pos: Point, direction?: FlipDirection): Point {
-    return convertPageToGlobal(pos, direction ?? this.direction, this.getRect());
+    direction ??= this.direction;
+
+    return convertPageToGlobal(pos, direction, this.getFoldRect(direction));
+  }
+
+  /**
+   * X1. The bounds rect **re-anchored to the leaf this fold is actually
+   * pulling** — the frame every local↔global conversion is expressed in.
+   *
+   * The fold-local frame has its origin on the folded leaf's *spine* and runs
+   * `+x` towards that leaf's free edge, so the leaf occupies `[0, pageWidth]`
+   * and `FlipCalculation` can be direction-agnostic: `x = pageWidth` is
+   * untouched, `x = 0` is folded flat onto the spine, `x = -pageWidth` is
+   * turned. A BACK fold reads as a rightward on-screen curl purely because its
+   * frame is mirrored — its `+x` points left.
+   *
+   * Both conversions (`convertToPage` here, `convertPageToGlobal` in
+   * `geometry.ts`) put that origin at `left + width / 2`, which is right for
+   * three of the four cases and was wrong for the fourth:
+   *
+   * - **Landscape.** Both leaves meet at the middle of the bounds rect, so the
+   *   FORWARD leaf's left edge and the BACK leaf's right edge are the same
+   *   line. One axis serves both. Unchanged by this fix.
+   * - **Portrait FORWARD.** The single visible leaf sits on the RIGHT half of
+   *   the bounds rect (`computeBounds`: `left = middle.x - pageWidth / 2 -
+   *   pageWidth`), so `left + width / 2` is that leaf's own left edge — which
+   *   is exactly the spine a forward fold pivots on. Also unchanged.
+   * - **Portrait BACK.** The spine is the visible leaf's RIGHT edge, one whole
+   *   `pageWidth` further along, and nothing moved the axis there. The frame
+   *   was mirrored about the leaf's LEFT edge instead, so the entire visible
+   *   leaf mapped to *negative* local x: touching its left edge already read
+   *   `x = 0`, a 30 px inward drag read `-30` and **57.5 % progress**, and
+   *   `Flip.stopMove` commits on `pos.x <= 0` — so every portrait back drag,
+   *   however small, turned the page and could never snap back. The same
+   *   displacement moved the geometry it drew: the leaf underneath starts at
+   *   local `{ x: pageWidth }`, which converted to a global x one `pageWidth`
+   *   off the left of the visible page.
+   *
+   * This is the same split the `rtl` fix (I2) introduced, applied one level
+   * down: `direction` here is already the **geometric** fold side (see
+   * {@link Render.direction}), and this method answers the only remaining
+   * geometric question — *which leaf's spine is that side pivoting on*.
+   *
+   * Expressed as a shifted `left` rather than as a second formula on purpose:
+   * the forward and inverse conversions live in two files and both derive the
+   * origin from `left + width / 2`, so re-anchoring the rect keeps them exact
+   * inverses of each other by construction. Nothing here touches
+   * {@link Render.getRect} — the public {@link PageFlip.getBoundsRect} keeps
+   * meaning "the notional two-page area of the book", which is what layout,
+   * hit-testing, `simpleDraw` and the hard-page spine all read it as.
+   */
+  private getFoldRect(direction: FlipDirection): PageRect {
+    const rect = this.getRect();
+
+    return direction === FlipDirection.BACK && this.orientation === Orientation.PORTRAIT
+      ? { ...rect, left: rect.left + rect.pageWidth }
+      : rect;
   }
 
   /**
