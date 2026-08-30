@@ -60,6 +60,29 @@ orientation, shadow gradients, hard-page z-order — wanted that already. If you
 were reading it to learn which way a turn was heading, read the `flip` event or
 compare page indices instead.
 
+### `showCover: false` with an odd number of pages
+
+The last page is no longer promoted to a hard page.
+
+- **Landscape:** that leaf now curls like paper on the final turn instead of
+  swinging rigidly from the spine.
+- **Portrait:** the back turn from it now animates a copy of the current leaf —
+  this fork's corrected curl — instead of sliding the previous leaf in.
+
+If you relied on the old rigid rendering, mark the page explicitly with
+`data-density="hard"` on its element, which has always been the supported way to
+declare a hard leaf. Books with `showCover: true` are unaffected.
+
+Note `showCover: true` still only guarantees a hard **front** cover. Whether the
+back cover is hard depends on page-count parity (6 pages: hard; 5 pages: soft).
+That asymmetry is unchanged in this release.
+
+### `showCover: true` with exactly one page
+
+The cover now renders in the right half of the landscape spread, matching every
+longer book. There is no opt-out — the previous left-half placement was a
+tie-break accident, not a supported layout.
+
 ### `destroy()` no longer throws because of your event listener
 
 If one of your listeners throws while the engine is tearing down, `destroy()`

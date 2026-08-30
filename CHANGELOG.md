@@ -18,6 +18,27 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — the flagship portrait bug was reachable again through spread construction
+
+- **`showCover: false` no longer makes the last page of an odd-length book a hard
+  page.** `PageCollection.createSpread` hardened the final leaf whenever
+  landscape page-count parity left it alone in a spread, and `setDensity` writes
+  the page's _permanent_ density — the one portrait mode reads. In portrait that
+  put the BACK turn from the last page back onto upstream's previous-leaf
+  slide-in (`newTemporaryCopy()` returns `this` for a hard page) and then skipped
+  the bottom page, because the mover _was_ the bottom page. That is the §4.1
+  regression this fork exists to remove, reachable in HTML mode on any
+  odd-length book without a cover. Books with `showCover: true` are unchanged;
+  declare a hard leaf explicitly with `data-density="hard"`.
+- **A `showCover` book with exactly one page drew its cover on the left half of
+  the spread.** A single-leaf landscape spread was placed by
+  `index === pageCount - 1`, which is also true of the cover when the book has
+  one page. The cover now wins the tie and draws to the right of the spine, as
+  in every longer book.
+- **`PageCollection.destroy()` now clears the spread tables.** A destroyed
+  collection answered `getSpreadCount()` and `getSpreadIndexByPage()` for pages
+  it had already disposed while `getPageCount()` reported 0.
+
 ### Fixed — `destroy()` could be aborted by a consumer's own event listener
 
 - **A listener that read engine state threw out of `destroy()` itself.**

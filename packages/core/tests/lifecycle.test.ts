@@ -2011,6 +2011,15 @@ describe('Y2 — destroying from inside a handler does not truncate that dispatc
  */
 describe('L8 — destroy() completes even when a listener throws', () => {
   test('a state listener that reads engine state does not break destroy()', () => {
+    // FAKE TIMERS, and not for speed. The deferred error is real: L8 rethrows a
+    // teardown listener's error on a later task ON PURPOSE, so it reaches
+    // `window.onerror` rather than being silenced. In a test runner that same
+    // task surfaces as an UNHANDLED error and fails the suite — `pnpm test`
+    // reported `644 passed` and `Errors 1 error`, and exited non-zero, while
+    // every assertion here passed. Owning the timer is how the test consumes
+    // the error it is deliberately provoking.
+    vi.useFakeTimers();
+
     const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 400 });
     book.loadFromHTML(makePages(6));
 
@@ -2039,6 +2048,15 @@ describe('L8 — destroy() completes even when a listener throws', () => {
     expect(book.isDestroyed()).toBe(true);
     expect(() => book.getPageCollection()).toThrow(PageFlipError);
     expect(book.flipNext()).toBe(false);
+
+    // The listener's `DESTROYED` is still out there, on the task L8 put it on.
+    // Asserting it here is not bookkeeping — it is the other half of the
+    // contract: deferred, never swallowed.
+    expect(() => {
+      vi.runAllTimers();
+    }).toThrow(PageFlipError);
+
+    vi.useRealTimers();
   });
 
   test('the error is deferred, not swallowed', () => {

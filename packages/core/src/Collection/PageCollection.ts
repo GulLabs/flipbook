@@ -56,6 +56,21 @@ export abstract class PageCollection {
     for (const page of this.pages) page.dispose();
 
     this.pages = [];
+
+    // PC3. The spread tables outlived the pages they index, so a destroyed
+    // collection answered `getSpreadCount() === 4` and `getSpreadIndexByPage(3)
+    // === 3` while `getPageCount()` was 0 — three public methods, two of them
+    // describing a book that no longer exists. The tables are pure derived
+    // state and nothing reads them across a destroy, so clearing them is free.
+    //
+    // `currentPageIndex` / `currentSpreadIndex` are deliberately left alone:
+    // `PageFlip.clear()` and `updateFromHtml` both document reading the index
+    // back off the emptied collection (PF3 / L2). Resetting them here was tried
+    // and broke no test, so that dependency is no longer pinned by anything —
+    // which makes it a `PageFlip` decision to take deliberately, not one to
+    // change in passing from here.
+    this.landscapeSpread = [];
+    this.portraitSpread = [];
   }
 
   /**
@@ -82,7 +97,32 @@ export abstract class PageCollection {
       if (i < this.pages.length - 1) this.landscapeSpread.push([i, i + 1]);
       else {
         this.landscapeSpread.push([i]);
-        at(this.pages, i).setDensity(PageDensity.HARD);
+
+        // PC1. Upstream hardened this leaf unconditionally, and `setDensity`
+        // writes the page's PERMANENT density — the one portrait reads too.
+        //
+        // Portrait has no spreads of two and no covers, so a leaf is only ever
+        // here because of LANDSCAPE parity: a 4-page book gets no hard leaf, a
+        // 5-page book gets one, and neither has declared a cover. The cost is
+        // not cosmetic. `HTMLPage.newTemporaryCopy()` returns `this` for a hard
+        // page, so `getPortraitFlippingPage` sees `copy === current` and falls
+        // back to upstream's previous-leaf slide-in — measured on a 3-page
+        // portrait book: the BACK turn from the last page animated `pages[1]`,
+        // and `shouldDrawBottomPage` then skipped the bottom page because the
+        // mover WAS the bottom page. That is the §4.1 bug this fork exists to
+        // kill, reachable in HTML mode on any odd-length book with no cover.
+        //
+        // So the inference is gated on the one thing that makes a hard terminal
+        // leaf mean something: the book said it has covers. `showCover: false`
+        // is a statement that it does not, and the engine must not invent one.
+        // A `showCover` book is unchanged, INCLUDING the half this does not
+        // fix: whether the back cover lands in a singleton spread is still a
+        // parity accident (6 pages ⇒ page 5 hard, 5 pages ⇒ page 4 soft), so
+        // `showCover` still only guarantees a hard FRONT cover. Making the last
+        // leaf hard whenever `showCover` is set would be the coherent rule and
+        // is a deliberate behaviour change for existing books — an owner call,
+        // not a drive-by.
+        if (this.isShowCover) at(this.pages, i).setDensity(PageDensity.HARD);
       }
     }
   }
@@ -304,7 +344,24 @@ export abstract class PageCollection {
       this.render.setLeftPage(at(this.pages, leftIdx));
       this.render.setRightPage(at(this.pages, rightIdx));
     } else if (this.render.getOrientation() === Orientation.LANDSCAPE) {
-      if (leftIdx === this.pages.length - 1) {
+      // A landscape spread holding one leaf is either the front cover — which
+      // sits to the RIGHT of the spine, with nothing to its left — or the last
+      // leaf of the book, which sits to the left.
+      //
+      // PC2. That used to be decided by `leftIdx === pages.length - 1` alone,
+      // and for a ONE-page book with `showCover` both descriptions are true of
+      // the same leaf: index 0 is also index `length - 1`, so the last-leaf test
+      // won and the cover was placed on the left half with the right half empty.
+      // Measured on a 520x300 host (rect.left 60, pageWidth 200): the cover drew
+      // at `left: 60px` where every other cover draws at `left: 260px`.
+      // `createSpread` only ever emits a `[0]` spread for `showCover`, so the
+      // cover is the correct tie-break, and it is written as an exception to the
+      // last-leaf test rather than as a third branch: a lone leaf that is
+      // neither the cover nor the tail cannot be produced, and a branch for it
+      // would be unreachable code with an invented default. Every other book is
+      // untouched — the two tests cannot both hold once there is more than one
+      // page.
+      if (leftIdx === this.pages.length - 1 && !(this.isShowCover && leftIdx === 0)) {
         this.render.setLeftPage(at(this.pages, leftIdx));
         this.render.setRightPage(null);
       } else {
