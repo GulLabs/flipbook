@@ -26,6 +26,19 @@ export interface WidgetEvent<T = unknown> {
 
 type EventCallback<T = unknown> = (e: WidgetEvent<T>) => void;
 
+/**
+ * A `once()` wrapper, tagged with the callback the consumer actually handed us.
+ *
+ * The tag is what lets `off(event, theirCallback)` cancel a `once` listener.
+ * Without it the consumer holds a reference the emitter does not recognise —
+ * they registered `fn` and the map contains an anonymous wrapper — so a
+ * one-shot listener would be impossible to cancel before it fired. Node's
+ * `EventEmitter` solves it the same way (`wrapper.listener`).
+ */
+interface OnceWrapper extends EventCallback {
+  __onceOriginal?: EventCallback;
+}
+
 /** Every event this engine can emit. */
 export type FlipbookEventName = keyof FlipbookEventMap;
 
@@ -82,13 +95,67 @@ export abstract class EventObject {
     callback: EventCallback<FlipbookEventMap[K]>,
   ): this;
   public on(eventName: string, callback: EventCallback): this {
+    this.addListener(eventName, callback);
+    return this;
+  }
+
+  /**
+   * Register a listener that runs at most once, then detaches itself.
+   *
+   * E9. Hand-rolling this needs `off(event, callback)`, which only became
+   * possible with E3 — before that, detaching one listener took every listener
+   * for the event with it, so a one-shot handler could not clean up after
+   * itself without breaking its neighbours. Both `EventEmitter` and
+   * `EventTarget` provide this, so consumers expect it to exist.
+   *
+   * Three properties worth stating, because each is a decision:
+   *
+   * - **Detached BEFORE the callback runs.** If the consumer's handler throws,
+   *   it has still fired and must still be gone; detaching afterwards would
+   *   leave a "once" listener armed for the next emit precisely when their
+   *   code is already misbehaving.
+   * - **`off(event, yourCallback)` cancels it**, using the reference you passed
+   *   to `once` — not the wrapper, which you never see. See {@link OnceWrapper}.
+   * - **Registering during a dispatch does not run in that dispatch.**
+   *   `trigger` snapshots the listener list, so a `once` registered from inside
+   *   a handler for the same event waits for the next emit. That is
+   *   `EventEmitter`'s rule and it is what stops a self-registering handler
+   *   looping forever.
+   */
+  public once<K extends FlipbookEventName>(
+    eventName: K,
+    callback: EventCallback<FlipbookEventMap[K]>,
+  ): this;
+  public once(eventName: string, callback: EventCallback): this {
+    const wrapper: OnceWrapper = (event) => {
+      // BEFORE, deliberately — see the docblock.
+      this.removeListener(eventName, wrapper);
+      callback(event);
+    };
+
+    wrapper.__onceOriginal = callback;
+
+    this.addListener(eventName, wrapper);
+    return this;
+  }
+
+  /**
+   * The untyped internals behind `on` / `off` / `once`.
+   *
+   * They exist because the public `on` and `off` expose ONLY their generic
+   * overload, so `once` — which works with a plain `string` event name and an
+   * anonymous wrapper — could not call them without casting the callback to a
+   * type it is not. Casts there would be load-bearing lies in the one place
+   * that must not have them: `off`'s matching logic decides whether a
+   * consumer's listener is ever detached.
+   */
+  private addListener(eventName: string, callback: EventCallback): void {
     const list = this.events.get(eventName);
     if (!list) {
       this.events.set(eventName, [callback]);
     } else {
       list.push(callback);
     }
-    return this;
   }
 
   /**
@@ -119,19 +186,32 @@ export abstract class EventObject {
       return this;
     }
 
-    const list = this.events.get(event);
-    if (list === undefined) return this;
+    this.removeListener(event, callback);
+    return this;
+  }
 
-    const index = list.indexOf(callback);
-    if (index === -1) return this;
+  /** See {@link EventObject.addListener}. */
+  private removeListener(event: string, callback: EventCallback): void {
+    const list = this.events.get(event);
+    if (list === undefined) return;
+
+    // Identity first, then the `once` tag. A consumer who called
+    // `once(event, fn)` holds `fn`, but the map holds an anonymous wrapper they
+    // have never seen — so a plain `indexOf` would silently fail to detach it
+    // and `off` would look like it worked. Identity is still checked first so
+    // that `off` from inside the wrapper (which passes the wrapper itself)
+    // remains an exact match and cannot collide with a tagged entry.
+    let index = list.indexOf(callback);
+    if (index === -1) {
+      index = list.findIndex((entry) => (entry as OnceWrapper).__onceOriginal === callback);
+    }
+    if (index === -1) return;
 
     list.splice(index, 1);
     // Drop the empty array rather than keep it: `trigger` treats "no entry" and
     // "empty entry" the same, but leaving it makes the map grow without bound
     // for a consumer that binds and unbinds per render.
     if (list.length === 0) this.events.delete(event);
-
-    return this;
   }
 
   /**

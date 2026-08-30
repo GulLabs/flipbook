@@ -115,15 +115,37 @@ export abstract class PageCollection {
         // So the inference is gated on the one thing that makes a hard terminal
         // leaf mean something: the book said it has covers. `showCover: false`
         // is a statement that it does not, and the engine must not invent one.
-        // A `showCover` book is unchanged, INCLUDING the half this does not
-        // fix: whether the back cover lands in a singleton spread is still a
-        // parity accident (6 pages ⇒ page 5 hard, 5 pages ⇒ page 4 soft), so
-        // `showCover` still only guarantees a hard FRONT cover. Making the last
-        // leaf hard whenever `showCover` is set would be the coherent rule and
-        // is a deliberate behaviour change for existing books — an owner call,
-        // not a drive-by.
-        if (this.isShowCover) at(this.pages, i).setDensity(PageDensity.HARD);
+        // A `showCover` book's terminal leaf is hardened below, unconditionally
+        // — see NF3. Nothing to do here.
       }
+    }
+
+    // NF3. The back cover is hard because the book HAS covers, not because of
+    // where the page count happened to land.
+    //
+    // This used to be decided inside the singleton branch above, so it depended
+    // on parity: a 6-page book left page 5 alone in a spread and hardened it, a
+    // 5-page book paired page 4 and left it soft. Same setting, same intent,
+    // opposite result — and an author who added one page silently gained or
+    // lost a hard back cover, with nothing in their code to explain it.
+    //
+    // `showCover: true` says the book has covers, plural. A physical book has
+    // two, so the rule is "first and last", and neither depends on arithmetic
+    // the author cannot see. Deliberate behaviour change for existing books
+    // (owner decision, 2026-08-30), taken before publish because it is free now
+    // and a major version later.
+    //
+    // The `isShowCover` gate is NOT optional, and dropping it is not a
+    // simplification: hardening a terminal leaf on a cover-less book is PC1,
+    // which puts portrait BACK straight back onto upstream's previous-leaf
+    // slide-in — the §4.1 bug this fork exists to kill. A hostile variant that
+    // removed this gate failed the PC1 test with "mover is the PREVIOUS leaf".
+    //
+    // `length > 1` guards the one-page book: page 0 is already the front cover,
+    // and it must not be re-hardened as its own back cover — harmless today,
+    // but it would make the two rules read as though they could disagree.
+    if (this.isShowCover && this.pages.length > 1) {
+      at(this.pages, this.pages.length - 1).setDensity(PageDensity.HARD);
     }
   }
 

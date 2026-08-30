@@ -99,6 +99,28 @@ const isPositive = (value: number): boolean => Number.isFinite(value) && value >
 const isNonNegative = (value: number): boolean => Number.isFinite(value) && value >= 0;
 
 /**
+ * Every boolean setting, listed once so the validator cannot drift from the
+ * type. Adding a boolean to `FlipSetting` without adding it here leaves it
+ * unvalidated — which is exactly how all ten of these went unchecked until S6.
+ *
+ * `satisfies` is doing real work: it makes the list a compile error if a name
+ * here is not a key of `FlipSetting`, while keeping the tuple's literal types
+ * so the loop below indexes precisely.
+ */
+const BOOLEAN_SETTINGS = [
+  'drawShadow',
+  'usePortrait',
+  'autoSize',
+  'showCover',
+  'mobileScrollSupport',
+  'clickEventForward',
+  'useMouseEvents',
+  'showPageCorners',
+  'disableFlipByClick',
+  'respectReducedMotion',
+] as const satisfies readonly (keyof FlipSetting)[];
+
+/**
  * `Partial<FlipSetting>` permits an *explicit* `undefined`, and a spread copies
  * that key over the default instead of falling through to it. Dropping the
  * undefined-valued keys first makes `{ width: undefined }` mean "not supplied".
@@ -211,6 +233,43 @@ export class Settings {
       result.maxShadowOpacity > 1
     ) {
       throw new PageFlipError('Invalid max shadow opacity (0..1)', 'INVALID_SHADOW_OPACITY');
+    }
+
+    // S6. Every boolean setting, validated as a BOOLEAN and nothing else.
+    //
+    // Not validated at all before this, and the failure was silent and
+    // backwards: `drawShadow: 'false'` survived verbatim, and `'false'` is a
+    // truthy string, so shadows stayed ON for someone who had just written
+    // "false". The author gets the opposite of what they asked for and no
+    // signal at all.
+    //
+    // That is not a hypothetical typo. Every ordinary source of configuration
+    // hands over strings — `data-*` attributes, URL query parameters,
+    // `JSON.parse` of a settings file or CMS response — and `data-draw-shadow="false"`
+    // is exactly what a person writes.
+    //
+    // TypeScript does not help here and cannot: `FlipSetting.drawShadow` has
+    // been typed `boolean` the whole time, but types are erased at runtime, so
+    // they protect the developer writing a literal and nobody else. The type
+    // and this check cover two different paths and both are needed.
+    //
+    // THROWING, not coercing or warning, and deliberately unlike the `alt`
+    // decision elsewhere in this engine: there the engine could still proceed
+    // truthfully without the value, so a warning was right. Here it cannot —
+    // `'false'` means the opposite of the intent, and silently doing the
+    // opposite is worse than a loud failure.
+    //
+    // `0` and `1` throw too. They were accepted since 2.x, which makes this a
+    // break, and the owner took it deliberately (2026-08-30): a boolean is a
+    // datatype a schema can validate, and accepting two spellings of it invites
+    // the third and fourth.
+    for (const key of BOOLEAN_SETTINGS) {
+      if (typeof result[key] !== 'boolean') {
+        throw new PageFlipError(
+          `Invalid ${key}: expected true or false, got ${typeof result[key]}`,
+          'INVALID_BOOLEAN',
+        );
+      }
     }
 
     const direction = result.direction as string;

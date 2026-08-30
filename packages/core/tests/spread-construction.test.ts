@@ -131,16 +131,63 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
     }
   });
 
-  test('showCover with an odd count still leaves the back cover soft — recorded, not fixed', () => {
-    // 5 pages + cover ⇒ spreads [0] [1,2] [3,4]: no singleton, so page 4 is
-    // soft. This asymmetry is real and is an OWNER decision (making the last
-    // leaf hard whenever `showCover` is set changes existing books). Pinned so
-    // that closing it is a deliberate act with a failing test to update, not a
-    // silent side effect of widening the inference.
-    const { book: app } = book({ pageCount: 5, showCover: true, flippingTime: 0 });
+  test('NF3 — showCover hardens the back cover regardless of page-count parity', () => {
+    // CLOSED 2026-08-30 (owner decision). This test previously pinned the
+    // OPPOSITE — 5 pages + cover ⇒ spreads [0] [1,2] [3,4], no singleton, so
+    // page 4 stayed soft — and it was written specifically so that closing NF3
+    // would require deliberately updating a failing test rather than happening
+    // as a silent side effect. It did exactly that.
+    //
+    // The old behaviour was indefensible once stated plainly: the same setting
+    // and the same intent produced opposite results depending on arithmetic the
+    // author could not see, so adding one page silently gained or lost a hard
+    // back cover. `showCover: true` says the book has covers, plural; a book
+    // has two.
+    const odd = book({ pageCount: 5, showCover: true, flippingTime: 0 }).book;
 
+    expect(odd.getPage(0).getDensity()).toBe(PageDensity.HARD);
+    expect(odd.getPage(4).getDensity()).toBe(PageDensity.HARD);
+
+    // The parity partner, asserted in the SAME test: the whole defect was that
+    // these two disagreed, so proving them equal is the actual invariant. A
+    // test that only checked the odd case would pass for a fix that hardened
+    // everything.
+    const even = book({ pageCount: 6, showCover: true, flippingTime: 0 }).book;
+
+    expect(even.getPage(0).getDensity()).toBe(PageDensity.HARD);
+    expect(even.getPage(5).getDensity()).toBe(PageDensity.HARD);
+
+    // …and nothing in between hardened. This is the negative control, and it is
+    // what fails for "harden every leaf", which satisfies everything above.
+    for (const i of [1, 2, 3]) {
+      expect(odd.getPage(i).getDensity(), `odd page ${i}`).toBe(PageDensity.SOFT);
+    }
+    for (const i of [1, 2, 3, 4]) {
+      expect(even.getPage(i).getDensity(), `even page ${i}`).toBe(PageDensity.SOFT);
+    }
+  });
+
+  test('NF3 — a book WITHOUT showCover still gets no inferred hard leaf', () => {
+    // The PC1 guarantee, re-asserted next to NF3 because they are one line
+    // apart in `createSpread` and the new rule must not leak past its gate.
+    // PC1 is the §4.1 bug this fork exists to kill: a hard terminal leaf on a
+    // cover-less book puts portrait BACK back on upstream's slide-in path.
+    for (const pageCount of [4, 5]) {
+      const { book: app } = book({ pageCount, showCover: false, flippingTime: 0 });
+      for (let i = 0; i < pageCount; i += 1) {
+        expect(app.getPage(i).getDensity(), `page ${i} of ${pageCount}`).toBe(PageDensity.SOFT);
+      }
+    }
+  });
+
+  test('NF3 — a one-page showCover book has one cover, not a doubled one', () => {
+    // The `length > 1` guard. Page 0 is already the front cover; it must not be
+    // re-hardened as its own back cover. Harmless today, but it would make the
+    // two rules read as though they could disagree about the same leaf.
+    const { book: app } = book({ pageCount: 1, showCover: true, flippingTime: 0 });
+
+    expect(app.getPageCount()).toBe(1);
     expect(app.getPage(0).getDensity()).toBe(PageDensity.HARD);
-    expect(app.getPage(4).getDensity()).toBe(PageDensity.SOFT);
   });
 });
 
