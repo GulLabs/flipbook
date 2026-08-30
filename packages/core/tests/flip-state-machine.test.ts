@@ -295,3 +295,39 @@ describe('I8 — the landscape density override is temporary', () => {
     expect(pages.getPage(2).getDrawingDensity()).toBe(PageDensity.SOFT);
   });
 });
+
+describe('R4 (real path): a turn chained from onFlip survives the old callback', () => {
+  test('flipNext() called from an onFlip listener actually commits', async () => {
+    const { book: flip } = book({ pageCount: 6, flippingTime: 40 });
+
+    // Prime the frame clock: an animation binds its start to the first frame it
+    // is drawn on, but the loop still has to be running.
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+
+    const seen: number[] = [];
+    let chained = false;
+    flip.on('flip', (e) => {
+      seen.push(e.data as number);
+      if (!chained) {
+        chained = true;
+        // `turnToNextPage()` emits this SYNCHRONOUSLY from inside the old
+        // turn's completion callback. Starting a turn here is the exact
+        // re-entrancy that the teardown below used to destroy.
+        flip.flipNext();
+      }
+    });
+
+    flip.flipNext();
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+
+    // Before the fix the second turn's calc, flipping page and state were all
+    // cleared by the FIRST turn's callback, so it animated to nothing and never
+    // committed: the book stopped one page short, with no error anywhere.
+    expect(seen.length).toBeGreaterThanOrEqual(2);
+    expect(flip.getCurrentPageIndex()).toBeGreaterThanOrEqual(2);
+    expect(flip.getState()).toBe(FlippingState.READ);
+  });
+});

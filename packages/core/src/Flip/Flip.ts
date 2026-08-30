@@ -29,6 +29,14 @@ export class Flip {
 
   private calc: FlipCalculation | null = null;
 
+  /**
+   * Bumped every time a turn or fold begins.
+   *
+   * A completion callback captures it and refuses to tear down state that
+   * belongs to a LATER turn — see `animateFlippingTo`.
+   */
+  private turnGeneration = 0;
+
   private state: FlippingState = FlippingState.READ;
 
   /**
@@ -169,6 +177,7 @@ export class Flip {
 
     this.render.setDirection(direction);
     this.calc = new FlipCalculation(direction, flipCorner, rect.pageWidth, rect.height);
+    this.turnGeneration += 1;
 
     return true;
   }
@@ -446,6 +455,8 @@ export class Flip {
 
     const duration = this.getAnimationDuration(points.length);
 
+    const generation = this.turnGeneration;
+
     this.render.startAnimation(frames, duration, () => {
       // callback function
       if (!this.calc) return;
@@ -465,6 +476,18 @@ export class Flip {
         if (this.calc.getDirection() === FlipDirection.BACK) this.app.turnToPrevPage();
         else this.app.turnToNextPage();
       }
+
+      // `turnToNextPage()` above emits `flip` SYNCHRONOUSLY, and a listener is
+      // entitled to start the next turn from it (auto-advance, a controlled
+      // `page` prop, a consumer calling `flipNext()` from `onFlip`). If it did,
+      // `start()` has already installed a new calc, a new flipping page and a
+      // new animation — and tearing down here would strip all of it, leaving a
+      // running animation with no calculation that can never commit.
+      //
+      // `Render.finishAnimation` was fixed to preserve the new ANIMATION; this
+      // is the other half, and without it that fix does nothing on the path
+      // that actually occurs in production.
+      if (this.turnGeneration !== generation) return;
 
       if (needReset) {
         this.render.setBottomPage(null);
