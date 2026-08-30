@@ -66,7 +66,11 @@ describe('A1 — portrait BACK curls the current leaf on canvas', () => {
 
   test('a soft image page yields a real copy, not itself', async () => {
     const book = new PageFlip(host, { width: 100, height: 150, usePortrait: true });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+    ]);
 
     const page = book.getPageCollection().getPage(1);
     expect(page.getDrawingDensity()).toBe(PageDensity.SOFT);
@@ -81,7 +85,10 @@ describe('A1 — portrait BACK curls the current leaf on canvas', () => {
 
   test('the copy is reused, not rebuilt every frame', async () => {
     const book = new PageFlip(host, { width: 100, height: 150, usePortrait: true });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const page = book.getPageCollection().getPage(0);
     expect(page.newTemporaryCopy()).toBe(page.newTemporaryCopy());
@@ -106,7 +113,10 @@ describe('A1 — portrait BACK curls the current leaf on canvas', () => {
     );
 
     const book = new PageFlip(host, { width: 100, height: 150, usePortrait: true });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const before = created.length;
     book.getPageCollection().getPage(0).newTemporaryCopy();
@@ -121,7 +131,11 @@ describe('A1 — portrait BACK curls the current leaf on canvas', () => {
 
   test('a HARD page still returns itself, matching HTMLPage', async () => {
     const book = new PageFlip(host, { width: 100, height: 150, usePortrait: true });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+    ]);
 
     const page = book.getPageCollection().getPage(0);
     page.setDrawingDensity(PageDensity.HARD);
@@ -138,7 +152,12 @@ describe('A1 — portrait BACK curls the current leaf on canvas', () => {
     // FOUR pages, deliberately. `createSpread` hardens the terminal leaf of an
     // odd collection, and a hard page correctly returns itself — so a 3-page
     // fixture tests the hard path while claiming to test the soft one.
-    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
 
     const collection = book.getPageCollection();
     const pages = [0, 1, 2, 3].map((i) => collection.getPage(i));
@@ -156,7 +175,12 @@ describe('A1 — portrait BACK curls the current leaf on canvas', () => {
 
   test('the leaf underneath is drawn, because the mover is no longer it', async () => {
     const book = new PageFlip(host, { width: 100, height: 150, usePortrait: true });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
 
     const collection = book.getPageCollection();
     const current = collection.getPage(2);
@@ -176,7 +200,10 @@ describe('A1 — portrait BACK curls the current leaf on canvas', () => {
 
   test('hiding the copy does not blank the page it was copied from', async () => {
     const book = new PageFlip(host, { width: 100, height: 150, usePortrait: true });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const page = book.getPageCollection().getPage(0);
     const copy = page.newTemporaryCopy() as unknown as { image: HTMLImageElement };

@@ -1,13 +1,20 @@
-import { PageFlip } from '@gullabs/flipbook-core';
+import { PageFlip, type CanvasLeaf, type ImageFit } from '@gullabs/flipbook-core';
 
 /**
  * Public canvas/images showcase (defect F3).
  *
- * Written against ADR 0001 (`docs/adr/0001-image-page-api.md`). Today the engine
- * still accepts `string[]` for `loadFromImages`; descriptors are attempted first
- * and we fall back to bare URLs so the demo runs on both sides of the Phase 2
- * cut. If calling the ADR shape feels awkward once descriptors land, that is a
- * product finding — say so rather than papering over it.
+ * Written against ADR 0001 (`docs/adr/0001-image-page-api.md`). The book below
+ * is arranged so every Phase 2 capability is visible on a spread of its own:
+ *
+ *   spread 1  blank leaf            | title page
+ *   spread 2  fit: 'contain'        | fit: 'cover'      (same 1:2 bitmap)
+ *   spread 3  fit: 'fill'           | inset: 0.04
+ *   spread 4  deliberately-404 src  | back page
+ *
+ * The `imageFit` / `imageInset` selects drive the BOOK-level default through
+ * `updateSettings`, which is the live-settings contract; the four leaves that
+ * carry their own `fit` / `inset` deliberately ignore it, and the status panel
+ * says so. A control whose effect you cannot see is worse than no control.
  */
 
 const root = document.getElementById('book');
@@ -29,28 +36,53 @@ const status = statusEl;
 const fitSelect = fitEl;
 const insetSelect = insetEl;
 
-type ImagePageSource = {
-  src: string;
-  alt: string;
-  fit?: 'contain' | 'cover' | 'fill';
-  inset?: number;
-};
-
 /** Identity fixtures from `scripts/gen-canvas-fixtures.mjs`. */
-const IMAGES: ImagePageSource[] = [
-  { src: '/fixtures/canvas/page-0.png', alt: 'Page 1 — red leaf' },
-  { src: '/fixtures/canvas/page-1.png', alt: 'Page 2 — blue leaf' },
-  { src: '/fixtures/canvas/tall.png', alt: 'Tall quadrants (1:2) — fit demo' },
-  { src: '/fixtures/canvas/wide.png', alt: 'Wide quadrants (3:1) — fit demo' },
-  { src: '/fixtures/canvas/page-2.png', alt: 'Page 5 — green leaf' },
-  { src: '/fixtures/canvas/page-3.png', alt: 'Page 6 — yellow leaf' },
+const LEAVES: readonly CanvasLeaf[] = [
+  // A blank leaf: no bitmap, no alt. `blank: true` IS the decorative assertion.
+  { blank: true },
+  { src: '/fixtures/canvas/page-0.png', alt: 'Title page: a red leaf numbered one' },
+
+  // Same 1:2 bitmap, three fits, so the difference is the only variable.
+  {
+    src: '/fixtures/canvas/tall.png',
+    alt: 'Four coloured quadrants, tall, shown whole with paper bands either side',
+    fit: 'contain',
+  },
+  {
+    src: '/fixtures/canvas/tall.png',
+    alt: 'The same four quadrants, filling the leaf, left and right edges cropped away',
+    fit: 'cover',
+  },
+  {
+    src: '/fixtures/canvas/tall.png',
+    alt: 'The same four quadrants, stretched sideways to the shape of the leaf',
+    fit: 'fill',
+  },
+  {
+    src: '/fixtures/canvas/wide.png',
+    alt: 'Three wide colour bands, held inside a paper frame four per cent of the page width',
+    inset: 0.04,
+  },
+
+  // The URL is wrong on purpose: this is the broken-image glyph, not a spinner.
+  {
+    src: '/fixtures/canvas/no-such-image.png',
+    alt: 'Deliberately missing artwork, to show how a failed image is drawn',
+  },
+  { src: '/fixtures/canvas/page-3.png', alt: 'Back page: a yellow leaf numbered eight' },
 ];
+
+/** Leaves whose own `fit` / `inset` outrank the book-level default. */
+const OVERRIDDEN = LEAVES.reduce<number[]>((acc, leaf, i) => {
+  if (!('blank' in leaf) && (leaf.fit !== undefined || leaf.inset !== undefined)) acc.push(i);
+  return acc;
+}, []);
 
 function setStatus(lines: string[]): void {
   status.textContent = lines.join('\n');
 }
 
-function readFit(): 'contain' | 'cover' | 'fill' {
+function readFit(): ImageFit {
   const v = fitSelect.value;
   return v === 'cover' || v === 'fill' || v === 'contain' ? v : 'contain';
 }
@@ -58,10 +90,6 @@ function readFit(): 'contain' | 'cover' | 'fill' {
 function readInset(): number {
   const n = Number(insetSelect.value);
   return Number.isFinite(n) ? n : 0;
-}
-
-function settingsBag(): Record<string, unknown> {
-  return book.getSettings() as unknown as Record<string, unknown>;
 }
 
 const book = new PageFlip(root, {
@@ -72,29 +100,27 @@ const book = new PageFlip(root, {
   maxWidth: 720,
   minHeight: 180,
   maxHeight: 540,
-  usePortrait: true,
+  usePortrait: false,
   showCover: false,
   pageBackground: '#f4ecd8',
   drawShadow: true,
   flippingTime: 600,
   respectReducedMotion: true,
+  imageFit: 'contain',
+  imageInset: 0,
 });
 
 (window as unknown as { flipbook: PageFlip }).flipbook = book;
 
-let usedDescriptors = false;
-let fitSupported = false;
-
 function refreshStatus(extra?: string): void {
-  const settings = settingsBag();
-  const fitVal = settings['imageFit'];
-  const fitLabel = typeof fitVal === 'string' ? fitVal : '—';
+  const settings = book.getSettings();
   const lines = [
     `page ${String(book.getCurrentPageIndex())} / ${String(book.getPageCount() - 1)}`,
     `state ${book.getState()}`,
     `orientation ${book.getOrientation()}`,
-    `descriptors ${usedDescriptors ? 'yes' : 'no (string[] fallback)'}`,
-    `imageFit setting ${fitSupported ? fitLabel : 'not in engine yet'}`,
+    `imageFit ${settings.imageFit}`,
+    `imageInset ${String(settings.imageInset)}`,
+    `per-leaf overrides on pages ${OVERRIDDEN.map((i) => String(i + 1)).join(', ')}`,
   ];
   if (extra !== undefined && extra !== '') lines.push(extra);
   setStatus(lines);
@@ -107,41 +133,6 @@ book.on('turnRejected', (e) => {
   refreshStatus(`turnRejected: ${JSON.stringify(e.data)}`);
 });
 
-async function loadBook(): Promise<void> {
-  const fit = readFit();
-  const inset = readInset();
-  const settings = settingsBag();
-  // Do not try descriptors and catch: pre-Phase-2 coerces objects to
-  // "[object Object]" and resolves. Gate on settings the ADR adds.
-  fitSupported =
-    Object.prototype.hasOwnProperty.call(settings, 'imageFit') ||
-    Object.prototype.hasOwnProperty.call(settings, 'imageInset') ||
-    Object.prototype.hasOwnProperty.call(settings, 'imageLoadRadius');
-
-  if (fitSupported) {
-    const descriptors = IMAGES.map((img) => ({ ...img, fit, inset }));
-    await book.loadFromImages(descriptors as unknown as string[]);
-    usedDescriptors = true;
-    try {
-      book.updateSettings({
-        imageFit: fit,
-        imageInset: inset,
-      } as Parameters<PageFlip['updateSettings']>[0]);
-    } catch {
-      fitSupported = false;
-    }
-  } else {
-    await book.loadFromImages(IMAGES.map((img) => img.src));
-    usedDescriptors = false;
-  }
-
-  refreshStatus(
-    fitSupported
-      ? undefined
-      : 'Fit/inset controls are wired; engine does not expose imageFit yet (Phase 2).',
-  );
-}
-
 prevBtn.addEventListener('click', () => {
   book.flipPrev();
 });
@@ -149,38 +140,20 @@ nextBtn.addEventListener('click', () => {
   book.flipNext();
 });
 
-fitSelect.addEventListener('change', () => {
-  reloadForFit();
-});
-insetSelect.addEventListener('change', () => {
-  reloadForFit();
-});
-
-function reloadForFit(): void {
-  const fit = readFit();
-  const inset = readInset();
-  const settings = settingsBag();
-
-  if ('imageFit' in settings || 'imageInset' in settings) {
-    try {
-      book.updateSettings({
-        imageFit: fit,
-        imageInset: inset,
-      } as Parameters<PageFlip['updateSettings']>[0]);
-      book.update();
-      fitSupported = true;
-      refreshStatus('fit applied via updateSettings');
-      return;
-    } catch {
-      // fall through
-    }
-  }
-
-  refreshStatus(
-    `fit=${fit} inset=${String(inset)} — engine still stretches (A3). Phase 2 imageFit will honour this.`,
-  );
+function applyBookDefaults(): void {
+  book.updateSettings({ imageFit: readFit(), imageInset: readInset() });
+  book.update();
+  refreshStatus('book default applied live via updateSettings');
 }
 
-void loadBook().catch((err: unknown) => {
-  setStatus([`load failed: ${err instanceof Error ? err.message : String(err)}`]);
-});
+fitSelect.addEventListener('change', applyBookDefaults);
+insetSelect.addEventListener('change', applyBookDefaults);
+
+book
+  .loadFromImages(LEAVES)
+  .then(() => {
+    refreshStatus();
+  })
+  .catch((err: unknown) => {
+    setStatus([`load failed: ${err instanceof Error ? err.message : String(err)}`]);
+  });

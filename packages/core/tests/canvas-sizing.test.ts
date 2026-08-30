@@ -109,7 +109,10 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     stubLayout(6000, 4000);
 
     const book = new PageFlip(host, { width: 400, height: 300 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const { w, h } = backing(host);
 
@@ -128,7 +131,10 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     stubLayout(1e200, 1);
 
     const book = new PageFlip(host, { width: 400, height: 300 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     // Assert the SCALE, not `canvas.width`: jsdom clamps the element's
     // dimensions, so reading them back hides the defect entirely — the first
@@ -153,7 +159,10 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     stubLayout(390, 700);
 
     const book = new PageFlip(host, { width: 400, height: 300 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const { w, h } = backing(host);
 
@@ -171,7 +180,10 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
 
     const ctx = stubCanvas2d();
     const book = new PageFlip(host, { width: 400, height: 300 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     expect(backing(host)).toEqual({ w: 1600, h: 1200 });
 
@@ -195,7 +207,10 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     stubLayout(800.5, 600.25);
 
     const book = new PageFlip(host, { width: 400, height: 300 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     // `parseInt` threw the fraction away, leaving an unpainted sub-pixel strip.
     expect(backing(host)).toEqual({ w: 801, h: 601 });
@@ -208,7 +223,10 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     stubLayout(0, 0);
 
     const book = new PageFlip(host, { width: 400, height: 300 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     expect(backing(host)).toEqual({ w: 0, h: 0 });
 
@@ -227,7 +245,10 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     stubLayout(30000, 30000);
 
     const book = new PageFlip(host, { width: 400, height: 300 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const { w, h } = backing(host);
 
@@ -259,7 +280,10 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
 
     const ctx = stubCanvas2d();
     const book = new PageFlip(host, { width: 400, height: 300 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     // Assert what the RENDERER applies, not what the UI reports — an earlier
     // version of this test read the UI's own method and therefore could not see
@@ -299,7 +323,10 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     } as DOMRect);
 
     const book = new PageFlip(host, { width: 400, height: 300 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     // The visual box says 400x300; the layout box says 800x600. The backing
     // store must follow the LAYOUT box, because that is what `Render` measures.

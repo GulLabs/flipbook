@@ -5,11 +5,19 @@
 import type { CanvasRender } from '../Render/CanvasRender';
 import { Page, PageDensity, PageOrientation } from './Page';
 import type { Render } from '../Render/Render';
+import type { FlipSetting } from '../Settings';
 import type { Point } from '../BasicTypes';
-import { foldFill } from '../Render/pageBackground';
+import { foldFill, isOpaquePageBackground, safePageBackground } from '../Render/pageBackground';
+import { type CanvasLeaf, ImageFit, isBlankLeaf } from '../canvasLeaf';
+import { fitImage, insetRect } from '../Render/imageFit';
 
 /** Radians per second for the loader spinner. */
 const LOADER_SPEED = 4.2;
+
+/** Ink for the loader arc and the broken-image glyph. */
+const GLYPH_INK = 'rgb(160, 160, 160)';
+
+const FITS: readonly unknown[] = [ImageFit.CONTAIN, ImageFit.COVER, ImageFit.FILL];
 
 /**
  * Monotonic-ish clock for the loader spinner.
@@ -25,19 +33,72 @@ function nowMs(): number {
 }
 
 /**
- * Class representing a book page as an image on Canvas
+ * Normalise a per-leaf background, ONCE, at construction.
+ *
+ * The two jobs stay separate, per `CLAUDE.md`: `isOpaquePageBackground` answers
+ * "can the next page be read through this?" and `safePageBackground` answers
+ * "is this safe to hand to CSS?". Collapsing them is how a translucent fold
+ * shipped once already, so neither is reimplemented here — this only sequences
+ * them and decides what a rejection means.
+ *
+ * A rejected override returns `undefined`, i.e. it falls back to the BOOK's
+ * `pageBackground` rather than to `#fff`: "override absent" and "override
+ * rejected" should land in the same place, and that place is the book's own
+ * paper colour (ADR 0001, Decision 4).
+ */
+function resolveLeafBackground(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+
+  if (!isOpaquePageBackground(value)) return undefined;
+
+  const safe = safePageBackground(value);
+
+  return safe === value.trim() ? safe : undefined;
+}
+
+function resolveLeafInset(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  if (!Number.isFinite(value) || value < 0 || value >= 0.5) return undefined;
+  return value;
+}
+
+/**
+ * Class representing one leaf of a canvas book: a bitmap, or a deliberate blank.
+ *
+ * Canvas mode draws images and blank leaves and nothing else — no text, no
+ * HTML. That is an owner decision recorded in `docs/adr/0001-image-page-api.md`
+ * ("Scope resolved"), and it is what makes a blank leaf a first-class variant
+ * rather than "an image that has not loaded".
  */
 export class ImagePage extends Page {
-  private readonly image: HTMLImageElement;
+  /**
+   * The descriptor this leaf was built from. Held so a temporary copy can be
+   * constructed from the same one — a copy that resolved its own fit, inset or
+   * background independently could disagree with the leaf underneath it.
+   */
+  private readonly leaf: CanvasLeaf;
+
+  /**
+   * `null` for a blank leaf, and that is the whole point of the variant.
+   *
+   * A blank leaf owns no bitmap, issues no request, and can never fail. Before
+   * the union it would have had to be modelled as an image that is permanently
+   * still loading, which draws a spinner forever — the BH-1 failure with a
+   * different cause.
+   */
+  private readonly image: HTMLImageElement | null;
+
   private isLoad = false;
 
   /**
    * The request settled and there is no bitmap: a 404, a decode failure, a CORS
-   * refusal. Distinct from `isLoad === false`, which means "not yet".
+   * refusal. Distinct from `isLoad === false`, which means "not yet", and from
+   * a blank leaf, which means "there was never going to be one".
    *
-   * Only the two are distinguishable at all — an `<img>` error event carries no
+   * Only the states are distinguishable — an `<img>` error event carries no
    * diagnostic — so this is deliberately a boolean and not a reason. The typed
-   * `imageError` payload is Phase 2's (see docs/adr/0001-image-page-api.md).
+   * `imageError` payload and `retryImage` / `replaceImage` need the collection
+   * and are not implemented here.
    */
   private failed = false;
 
@@ -51,6 +112,11 @@ export class ImagePage extends Page {
 
   /** The copy this page animates during a portrait turn. */
   private temporaryCopy: ImagePage | null = null;
+
+  /** Per-leaf overrides, normalised once. `undefined` means "inherit the book's". */
+  private readonly leafFit: ImageFit | undefined;
+  private readonly leafInset: number | undefined;
+  private readonly leafBackground: string | undefined;
 
   /**
    * The page this one borrows its bitmap from — `null` for a real page.
@@ -67,8 +133,22 @@ export class ImagePage extends Page {
    */
   private readonly origin: ImagePage | null;
 
-  constructor(render: Render, href: string, density: PageDensity, share?: ImagePage) {
+  constructor(render: Render, leaf: CanvasLeaf, density: PageDensity, share?: ImagePage) {
     super(render, density);
+
+    this.leaf = leaf;
+    this.leafBackground = resolveLeafBackground(leaf.background);
+
+    if (isBlankLeaf(leaf)) {
+      this.leafFit = undefined;
+      this.leafInset = undefined;
+      this.origin = share ?? null;
+      this.image = null;
+      return;
+    }
+
+    this.leafFit = leaf.fit;
+    this.leafInset = resolveLeafInset(leaf.inset);
 
     if (share) {
       // Share the already-decoded bitmap: a temporary copy must not issue a
@@ -79,19 +159,81 @@ export class ImagePage extends Page {
     }
 
     this.origin = null;
-    this.image = new Image();
-    this.image.src = href;
+
+    const image = new Image();
+
+    // BEFORE `src`, which is the only order in which the attribute has any
+    // effect on the fetch. Omitted by default: see `ImagePageSource.crossOrigin`
+    // — defaulting to `'anonymous'` blanks every book on a CDN without CORS
+    // headers, to protect a pixel-readback facility this engine never uses.
+    if (leaf.crossOrigin !== undefined) image.crossOrigin = leaf.crossOrigin;
+
+    image.src = leaf.src;
+    this.image = image;
+  }
+
+  /** The paper colour for THIS leaf: its own override, else the book's. */
+  private paperFill(): string {
+    return foldFill(this.leafBackground ?? this.render.getSettings().pageBackground);
+  }
+
+  /**
+   * Book-level settings, READ AT DRAW TIME and never cached on the page.
+   *
+   * `CLAUDE.md`: a setting must be read where it is used, or `updateSettings`
+   * silently stops working for it — which is exactly how `swipeDistance`
+   * shipped ignoring every runtime update.
+   *
+   * This used to return a structural `BookImageSettings` shim through a double
+   * cast, because `imageFit` / `imageInset` were not on `FlipSetting` yet. They
+   * are now, and are validated at the boundary, so the shim is gone: the real
+   * type is both honest and stricter.
+   */
+  private bookSettings(): FlipSetting {
+    return this.render.getSettings();
+  }
+
+  /** Per-leaf override, else the book's `imageFit`, else `contain`. */
+  private resolveFit(): ImageFit {
+    if (this.leafFit !== undefined) return this.leafFit;
+
+    // `imageFit` is validated by `Settings.getSettings`, so the book value is
+    // already an `ImageFit`. The defensive `FITS.includes` stays anyway: this
+    // reads the LIVE settings object, and `updateSettings` mutates it in place
+    // — so a JS consumer can still assign rubbish to it between frames without
+    // going through the validator.
+    const book = this.bookSettings().imageFit;
+
+    return FITS.includes(book) ? book : ImageFit.CONTAIN;
+  }
+
+  /** Per-leaf override, else the book's `imageInset`, else none. */
+  private resolveInset(): number {
+    if (this.leafInset !== undefined) return this.leafInset;
+
+    const book = this.bookSettings().imageInset;
+
+    if (typeof book !== 'number') return 0;
+
+    return resolveLeafInset(book) ?? 0;
   }
 
   /**
    * What this leaf has to paint this frame.
    *
-   * Three states, one place: gone (paper only), still arriving (loader), and
-   * drawable (bitmap). A temporary copy answers with its origin's state — it is
-   * a second `PageState` over one bitmap, not a second resource.
+   * Four states, one place: nothing to draw (paper), still arriving (loader),
+   * drawable (bitmap), and settled-with-no-bitmap (the broken glyph). A
+   * temporary copy answers with its origin's state — it is a second `PageState`
+   * over one bitmap, not a second resource.
    */
-  private drawState(): 'paper' | 'loader' | 'image' {
+  private drawState(): 'paper' | 'loader' | 'image' | 'broken' {
     if (this.disposed) return 'paper';
+
+    // A blank leaf is a leaf, not a failure and not a pending load. It has no
+    // request to wait for and no bitmap to be broken about, so it is paper —
+    // and paper is its FINAL answer, unlike the `failed` case below.
+    if (this.image === null) return 'paper';
+
     if (this.origin !== null) return this.origin.drawState();
 
     // BH-1. A LEAF THAT WILL NEVER ARRIVE MUST NOT KEEP SPINNING.
@@ -101,13 +243,84 @@ export class ImagePage extends Page {
     // that would never appear, and the book read as "still loading" for the
     // rest of the session.
     //
-    // Paper is the honest interim answer, not the final one: the ADR specifies
-    // a vector broken-image glyph (no text, so core ships no unlocalizable
-    // string) and an `imageError` event, both of which need the Phase 2 error
-    // contract. This stops the lie now without inventing that API early.
-    if (this.failed) return 'paper';
+    // Paper alone was the interim answer. It is not the final one: a blank leaf
+    // is now a real, deliberate thing, so "failed" and "deliberately blank"
+    // would be pixel-identical and neither would be distinguishable from "still
+    // loading, but the spinner just stopped". The glyph is what tells them
+    // apart (ADR 0001, addendum §4).
+    if (this.failed) return 'broken';
 
     return this.isLoad ? 'image' : 'loader';
+  }
+
+  /**
+   * Paint whatever sits on top of the paper, in the leaf's own coordinates
+   * offset by `origin`.
+   *
+   * Shared by `draw` and `simpleDraw` so the two paths cannot drift — they have
+   * drifted before (`simpleDraw` shipped without the opaque background, and
+   * without a `save`/`restore` bracket).
+   */
+  private drawContent(
+    ctx: CanvasRenderingContext2D,
+    at: Point,
+    pageWidth: number,
+    pageHeight: number,
+  ): void {
+    const state = this.drawState();
+
+    if (state === 'loader') {
+      this.drawLoader(ctx, at, pageWidth, pageHeight);
+      return;
+    }
+
+    if (state === 'broken') {
+      this.drawBrokenGlyph(ctx, at, pageWidth, pageHeight);
+      return;
+    }
+
+    if (state !== 'image') return;
+
+    // A copy holds the SAME element as its origin, so there is one place to
+    // read the intrinsic size from. It is read off the element and never off
+    // the descriptor: a caller-declared size can disagree with the decoded
+    // bitmap and nothing could check it (ADR addendum §2).
+    const image = this.image;
+    if (image === null) return;
+
+    const placement = fitImage(
+      this.resolveFit(),
+      this.resolveInset(),
+      pageWidth,
+      pageHeight,
+      image.naturalWidth,
+      image.naturalHeight,
+    );
+    const { dest, source } = placement;
+
+    // A zero-area destination draws nothing, and a zero-area SOURCE is
+    // specified to throw `IndexSizeError`. Both are reachable from a legitimate
+    // book: a leaf mid-resize can measure zero.
+    if (dest.width <= 0 || dest.height <= 0) return;
+
+    if (source === null) {
+      ctx.drawImage(image, at.x + dest.x, at.y + dest.y, dest.width, dest.height);
+      return;
+    }
+
+    if (source.width <= 0 || source.height <= 0) return;
+
+    ctx.drawImage(
+      image,
+      source.x,
+      source.y,
+      source.width,
+      source.height,
+      at.x + dest.x,
+      at.y + dest.y,
+      dest.width,
+      dest.height,
+    );
   }
 
   public draw(_tempDensity?: PageDensity): void {
@@ -144,19 +357,13 @@ export class ImagePage extends Page {
       // The turning leaf is paper before it is art. Without this the bitmap is
       // painted straight onto the already-drawn page beneath, so a transparent
       // PNG reads through the fold — the §4.2 bug `pageBackground` exists to
-      // prevent, which was fixed for HTML and missed here.
-      ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
+      // prevent, which was fixed for HTML and missed here. It is also what
+      // fills the letterbox that `contain` and `inset` create, which is why G2
+      // and A3 are one change.
+      ctx.fillStyle = this.paperFill();
       ctx.fillRect(0, 0, pageWidth, pageHeight);
 
-      // A disposed page is paper and nothing else: the bitmap is gone and no
-      // load is pending, so a loader here would spin forever.
-      const state = this.drawState();
-
-      if (state === 'loader') {
-        this.drawLoader(ctx, { x: 0, y: 0 }, pageWidth, pageHeight);
-      } else if (state === 'image') {
-        ctx.drawImage(this.image, 0, 0, pageWidth, pageHeight);
-      }
+      this.drawContent(ctx, { x: 0, y: 0 }, pageWidth, pageHeight);
     } finally {
       ctx.restore();
     }
@@ -181,17 +388,10 @@ export class ImagePage extends Page {
     ctx.save();
     try {
       // Static leaves are opaque paper too — same reason as `draw()`.
-      ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
+      ctx.fillStyle = this.paperFill();
       ctx.fillRect(x, y, pageWidth, pageHeight);
 
-      // Same reason as `draw()` — see the comment there.
-      const state = this.drawState();
-
-      if (state === 'loader') {
-        this.drawLoader(ctx, { x, y }, pageWidth, pageHeight);
-      } else if (state === 'image') {
-        ctx.drawImage(this.image, x, y, pageWidth, pageHeight);
-      }
+      this.drawContent(ctx, { x, y }, pageWidth, pageHeight);
     } finally {
       ctx.restore();
     }
@@ -207,7 +407,7 @@ export class ImagePage extends Page {
     ctx.strokeStyle = 'rgb(200, 200, 200)';
     // Was hardcoded white, which flashed over a custom `pageBackground` for as
     // long as the image took to arrive.
-    ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
+    ctx.fillStyle = this.paperFill();
     ctx.lineWidth = 1;
     ctx.rect(shiftPos.x + 1, shiftPos.y + 1, pageWidth - 1, pageHeight - 1);
     ctx.stroke();
@@ -234,7 +434,72 @@ export class ImagePage extends Page {
     ctx.closePath();
   }
 
+  /**
+   * The broken-image mark: a picture frame with a torn diagonal through it.
+   *
+   * Three properties are load-bearing rather than decorative:
+   *
+   * - **No text.** Core would otherwise ship an unlocalizable English string,
+   *   and under images-only canvas there is no text-drawing capability for one
+   *   to live in at all (ADR "Scope resolved"). The descriptor's `alt` is what
+   *   carries meaning, through the semantic mirror.
+   * - **No `arc`.** The loader arc is how every canvas test in this repo tells
+   *   "still loading" from anything else. A glyph drawn with arcs would make
+   *   that discriminator ambiguous, and the tests would go quietly blind.
+   * - **Deterministic.** No clock, no randomness: two draws of the same failed
+   *   leaf in one frame must produce identical pixels, the C10 rule.
+   */
+  private drawBrokenGlyph(
+    ctx: CanvasRenderingContext2D,
+    shiftPos: Point,
+    pageWidth: number,
+    pageHeight: number,
+  ): void {
+    // Scaled off the short edge so the mark keeps its proportions on any page,
+    // and inside the same inset the bitmap would have used.
+    const box = insetRect(this.resolveInset(), pageWidth, pageHeight);
+    if (box.width <= 0 || box.height <= 0) return;
+
+    const size = Math.min(box.width, box.height) * 0.28;
+    if (!(size > 0)) return;
+
+    const left = shiftPos.x + box.x + (box.width - size) / 2;
+    const top = shiftPos.y + box.y + (box.height - size) / 2;
+    const right = left + size;
+    const bottom = top + size;
+
+    ctx.strokeStyle = GLYPH_INK;
+    ctx.lineWidth = Math.max(1, size / 24);
+
+    // The frame.
+    ctx.beginPath();
+    ctx.rect(left, top, size, size);
+    ctx.stroke();
+
+    // The "photo" inside it: a two-segment horizon line, the universal picture
+    // mark, drawn as strokes so it needs no fill and no font.
+    ctx.beginPath();
+    ctx.moveTo(left + size * 0.12, bottom - size * 0.22);
+    ctx.lineTo(left + size * 0.38, top + size * 0.45);
+    ctx.lineTo(left + size * 0.58, bottom - size * 0.22);
+    ctx.lineTo(left + size * 0.72, top + size * 0.6);
+    ctx.lineTo(right - size * 0.12, bottom - size * 0.22);
+    ctx.stroke();
+
+    // The tear: corner to corner, which is what makes it read as broken rather
+    // than as a picture.
+    ctx.beginPath();
+    ctx.moveTo(left, top);
+    ctx.lineTo(right, bottom);
+    ctx.stroke();
+  }
+
   public load(): void {
+    // A blank leaf has nothing to fetch, and must never enter the failed state
+    // — it is not "an image that did not load".
+    const image = this.image;
+    if (image === null) return;
+
     // A copy has no request of its own, and the image element it borrows
     // already carries the origin's `onload`. Arming one here would overwrite
     // that handler and leave the ORIGIN permanently in the loader state.
@@ -246,8 +511,8 @@ export class ImagePage extends Page {
     // A cached image can already be complete by the time we get here. It is
     // also `complete` when it FAILED, so `naturalWidth` is what distinguishes
     // "drawable" from "broken" — checking `complete` alone would draw nothing.
-    if (this.image.complete) {
-      this.isLoad = this.image.naturalWidth > 0;
+    if (image.complete) {
+      this.isLoad = image.naturalWidth > 0;
       if (this.isLoad) return;
 
       // BH-1. RETURN, rather than falling through to arm `onload`.
@@ -264,18 +529,18 @@ export class ImagePage extends Page {
     // Both handlers, and `onerror` is the one that was missing entirely: a slow
     // 404 — one that errors AFTER this method runs — had nothing listening, so
     // it spun forever too.
-    this.image.onerror = (): void => {
+    image.onerror = (): void => {
       this.failed = true;
     };
 
-    this.image.onload = (): void => {
+    image.onload = (): void => {
       // BH-2. `naturalWidth`, not the mere fact that `load` fired. The
       // `complete` branch above already documents that `naturalWidth` is the
       // real signal for "drawable"; this branch ignored it and set `isLoad`
       // unconditionally, so a decode that fires `load` with a zero-size bitmap
       // was drawn as a successful page — an empty `drawImage` producing a blank
       // leaf beside siblings that look fine, with nothing reporting it.
-      if (this.image.naturalWidth > 0) {
+      if (image.naturalWidth > 0) {
         this.isLoad = true;
       } else {
         this.failed = true;
@@ -292,13 +557,14 @@ export class ImagePage extends Page {
 
     // A temporary copy BORROWS its bitmap from the page it was made from.
     // Detaching handlers or dropping `src` here would blank the original, so a
-    // copy only marks itself spent.
-    if (this.origin !== null) {
+    // copy only marks itself spent. A blank leaf has nothing to release.
+    if (this.origin !== null || this.image === null) {
       this.disposed = true;
       return;
     }
 
     this.image.onload = null;
+    this.image.onerror = null;
     this.image.removeAttribute('src');
     this.isLoad = false;
     this.disposed = true;
@@ -321,7 +587,11 @@ export class ImagePage extends Page {
     // A canvas page has no DOM node to clone. What it needs is a second
     // `PageState` over the same bitmap, so the mover and the leaf beneath it
     // can hold different positions within one frame.
-    this.temporaryCopy ??= new ImagePage(this.render, '', this.nowDrawingDensity, this);
+    //
+    // Built from the SAME descriptor, so the copy resolves the same fit, inset
+    // and background as the leaf it is standing in for: a fold that letterboxed
+    // differently from the page underneath it would be visible on every turn.
+    this.temporaryCopy ??= new ImagePage(this.render, this.leaf, this.nowDrawingDensity, this);
 
     return this.temporaryCopy;
   }

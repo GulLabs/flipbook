@@ -80,6 +80,43 @@ describe('pointsBetween is bounded for every input', () => {
     expect(pointsBetween({ x: 0, y: 0 }, { x: 0.4, y: 0 })).toHaveLength(2);
     expect(pointsBetween({ x: 5, y: 5 }, { x: 5, y: 5 })).toHaveLength(1);
   });
+
+  test('a huge but perfectly FINITE delta is bounded too', () => {
+    // `Number.isFinite` was never the real limit. `Settings` accepts any
+    // positive finite dimension, so a legal 1e8 x 1e8 book asks for ~1.9e8
+    // points here and ~1.9e8 closures in `animateFlippingTo` — the same
+    // out-of-memory death the non-finite guard was added to prevent, reached
+    // without a single non-finite number.
+    //
+    // Reverted fix: this allocates ~100 million points and the vitest worker
+    // dies with "FATAL ERROR: … JavaScript heap out of memory". As with the
+    // Infinity cases above, there is no test result at all — check the EXIT
+    // CODE, not the summary line.
+    const points = pointsBetween({ x: 0, y: 0 }, { x: 1e8, y: 0 });
+
+    expect(points.length).toBeLessThanOrEqual(4097);
+
+    // Bounded is not enough: the interpolation must still be a real one.
+    // Truncating the loop (rather than re-spacing it) terminates just as well
+    // and leaves the page frozen a hair off its destination forever, because
+    // the LAST frame is the one that sets the committed geometry.
+    expect(points[0]).toEqual({ x: 0, y: 0 });
+    expect(points[points.length - 1]).toEqual({ x: 1e8, y: 0 });
+    for (const p of points) {
+      expect(Number.isFinite(p.x)).toBe(true);
+      expect(Number.isFinite(p.y)).toBe(true);
+    }
+  });
+
+  test('the cap is duration-neutral: it never engages below `getAnimationDuration`s threshold', () => {
+    // The cap is only safe because `Flip.getAnimationDuration` returns the full
+    // flipping time for every count >= 1000, so capping ABOVE 1000 changes no
+    // turn's duration. A cap that crept below that threshold would silently
+    // shorten every large book's animation, which no other test here would
+    // catch — the counts would still be "bounded".
+    expect(pointsBetween({ x: 0, y: 0 }, { x: 999, y: 0 })).toHaveLength(1000);
+    expect(pointsBetween({ x: 0, y: 0 }, { x: 2000, y: 0 }).length).toBeGreaterThanOrEqual(1000);
+  });
 });
 
 /* ------------------------------------------------------- FlipCalculation -- */

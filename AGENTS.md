@@ -34,6 +34,47 @@ does.
   passes. If you can't make the real assertion pass, say so. _What happened:
   golden e2e "tests" wrote screenshots and asserted nothing; a controlled-page
   test was loosened until it passed without the engine turning at all._
+- **Revert-prove every fix. This is a gate, not a habit.** For each fix: write
+  the test, **revert the fix**, **observe the test FAIL**, restore, observe it
+  pass. Then try at least one **hostile variant** — a subtly wrong fix that a
+  careless reader would accept — and confirm the test still fails. Put the
+  observation in the commit message: what you reverted and what the failure
+  actually said.
+
+  A test written after a fix, never run against the broken code, proves only
+  that it agrees with whatever you just wrote. **Fourteen tests in this repo
+  passed against broken code**, and the root cause was identical every time: the
+  fixture took a shortcut that skipped the code path the fix lived on. See §4
+  for the specific traps.
+
+  Three rules that are not negotiable, because each one has already failed here:
+
+  1. **Verify the revert LANDED.** A scripted revert that silently no-ops turns
+     "the test passed with the fix removed" into a false clean bill of health.
+     This happened: an RE-4 revert-prove "passed" because the edit never
+     applied. Assert the anchor count, and grep the file afterwards.
+  2. **A fix to your own fix needs this MORE, not less.** RE-2 and RE-3 skipped
+     it and both were regressions — a fix that "obviously" repairs a known bug
+     is exactly where confidence outruns evidence. There is no such thing as a
+     fix too small to revert-prove.
+  3. **If you cannot make a test discriminate, say so and explain why.** An
+     honestly reported gap is worth more than a green tick; a green tick over a
+     gap is a lie that outlives you. Report it rather than deleting or weakening
+     the assertion.
+
+- **Edit through a tool that fails on an ambiguous anchor.** Use the editor's
+  own string-replace, which errors when the anchor is not unique. Do **not**
+  hand-roll edits with `sed`, or with a `python` `str.replace` that does not
+  assert the match count — that is how three edits in a single day landed in the
+  wrong place, one of them putting an assertion inside an unrelated test block
+  where it referenced a variable that did not exist there.
+
+  A mis-targeted edit is worse than a failed one: it produces _phantom
+  findings_. Downstream review then reasons about code that was never written,
+  and the wasted work compounds silently. If you must script an edit, assert
+  the anchor occurs **exactly once** before replacing, and verify the result
+  afterwards. Never `replace_all` on a source file without reading every site.
+
 - **Do not raise a budget to make a gate green** — but do not delete working
   code to avoid raising one either. Both are the same mistake: treating the
   number as the goal. The size ceiling was ratcheted 35→45→47→48 by agents who

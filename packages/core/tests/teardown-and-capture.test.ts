@@ -177,7 +177,12 @@ describe('X4 destroying from an onFlip handler survives the frame already in fli
     // The canvas chunk is imported before the fake rAF goes in: `attachMode`
     // starts the loop, and the loop has to be the fake one from then on.
     installFakeRaf();
-    await app.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await app.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
 
     const flips: number[] = [];
     app.on('flip', (e) => {

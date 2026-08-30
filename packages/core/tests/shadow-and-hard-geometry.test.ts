@@ -91,7 +91,12 @@ describe('C13 — the spine gradient is a landscape decoration only', () => {
       usePortrait: true,
       drawShadow: true,
     });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
     sizeHost(book.getUI().getDistElement(), hostWidth, 300);
     book.update();
     return book;

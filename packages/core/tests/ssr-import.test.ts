@@ -38,7 +38,7 @@ describe('SSR / Node import of shipped core', () => {
       flippingTime: 0,
     });
     book.destroy();
-    await expect(book.loadFromImages(['x.jpg'])).resolves.toBeUndefined();
+    await expect(book.loadFromImages([{ src: 'x.jpg', alt: 'Page x' }])).resolves.toBeUndefined();
     expect(book.isDestroyed()).toBe(true);
     expect(book.getFlipController()).toBeNull();
   });

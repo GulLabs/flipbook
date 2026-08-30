@@ -78,7 +78,12 @@ describe('C8 — canvas spine shadow honours `drawShadow`', () => {
       usePortrait: false,
       drawShadow,
     });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
     sizeHost(book.getUI().getDistElement(), 500, 300);
     book.update();
     return book;
@@ -149,7 +154,10 @@ describe('C9 — a disposed ImagePage draws paper, never a loader', () => {
       size: 'fixed',
       pageBackground: '#f4ecd8',
     });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
     sizeHost(book.getUI().getDistElement(), 500, 300);
     book.update();
     return book;
@@ -262,7 +270,10 @@ describe('C10 — the loader spinner is a function of time, not of draw count', 
       flippingTime: 0,
       size: 'fixed',
     });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
     sizeHost(book.getUI().getDistElement(), 500, 300);
     book.update();
 

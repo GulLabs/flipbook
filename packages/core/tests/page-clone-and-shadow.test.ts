@@ -305,7 +305,12 @@ describe('C14 — the spine gradient covers the book, not the block origin', () 
       usePortrait: false,
       drawShadow: true,
     });
-    await app.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await app.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
     sizeHost(app.getUI().getDistElement(), hostWidth, hostHeight);
     app.update();
     books.push(app);

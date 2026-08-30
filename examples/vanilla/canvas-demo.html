@@ -13,6 +13,17 @@
         --muted: #8b98a8;
         --accent: #5b9fd4;
         --paper: #f4ecd8;
+        /*
+          Three sizes, and only three: 1.35rem / 1rem / 0.8rem, ratios 1.35 and
+          1.25. There used to be a fourth at 0.75rem, which sat 1.067 from
+          0.8rem — a difference nobody can perceive as deliberate, so it read as
+          inconsistency rather than as a level. The two things that used it
+          (`.panel h2`, `.status`) are already distinguished by case,
+          letter-spacing, weight and font-family; none of them needed size as
+          well. Token, not a literal, so the fourth size cannot creep back one
+          rule at a time.
+        */
+        --text-sm: 0.8rem;
         font-family:
           ui-sans-serif,
           system-ui,
@@ -81,7 +92,7 @@
         gap: 10px;
       }
       .panel h2 {
-        font-size: 0.75rem;
+        font-size: var(--text-sm);
         text-transform: uppercase;
         letter-spacing: 0.06em;
         color: var(--muted);
@@ -118,7 +129,7 @@
         display: flex;
         flex-direction: column;
         gap: 4px;
-        font-size: 0.8rem;
+        font-size: var(--text-sm);
         color: var(--muted);
       }
       select {
@@ -130,7 +141,7 @@
       }
       .status {
         font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        font-size: 0.75rem;
+        font-size: var(--text-sm);
         color: var(--muted);
         line-height: 1.4;
         white-space: pre-wrap;
@@ -140,7 +151,7 @@
         font-weight: 600;
       }
       .note {
-        font-size: 0.8rem;
+        font-size: var(--text-sm);
         color: var(--muted);
         line-height: 1.4;
         margin: 0;
@@ -155,7 +166,10 @@
       <h1>Canvas / images mode</h1>
       <p class="lede">
         Public demo of <code>PageFlip.loadFromImages</code> — the API a picture-book reader actually
-        calls. Pixel-probe harness stays at <a href="./canvas.html"><code>canvas.html</code></a
+        calls. Eight leaf descriptors: a blank leaf, the same 1:2 bitmap under <code>contain</code>,
+        <code>cover</code> and <code>fill</code>, a fractional <code>inset</code>, and one
+        deliberately-missing image so the broken-image glyph is visible. Pixel-probe harness stays
+        at <a href="./canvas.html"><code>canvas.html</code></a
         >; HTML pages at <a href="./index.html"><code>index.html</code></a
         >.
       </p>
@@ -188,8 +202,10 @@
             </select>
           </label>
           <p class="note">
-            Fit/inset apply when the engine exposes <code>imageFit</code> / <code>imageInset</code>.
-            Until then the control logs that the setting was ignored.
+            These set the <em>book-level</em> default and apply live through
+            <code>updateSettings</code>. Pages 3–6 carry their own <code>fit</code> /
+            <code>inset</code> on the leaf descriptor and deliberately ignore it — that is what
+            spreads 2 and 3 are showing.
           </p>
 
           <h2>Status</h2>

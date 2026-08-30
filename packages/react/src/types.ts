@@ -1,8 +1,12 @@
 import type { CSSProperties, ReactNode, Ref } from 'react';
 import type {
+  BlankPageSource,
+  CanvasLeaf,
   FlipCorner,
   FlipSetting,
   FlipbookEventMap,
+  ImageFit,
+  ImagePageSource,
   PageFlip,
   WidgetEvent,
 } from '@gullabs/flipbook-core';
@@ -93,68 +97,34 @@ export type HTMLFlipBookProps = {
 // ---------------------------------------------------------------------------
 // Canvas / images mode — ADR 0001
 //
-// Mirrored here until `@gullabs/flipbook-core` exports the same types. When
-// core lands them, re-export from core and delete the duplicates.
+// The leaf descriptor is core's (`packages/core/src/canvasLeaf.ts`) and is
+// re-exported rather than restated: a second copy of a structural type is a
+// second thing to keep in step, and the two would agree only until one of them
+// changed. There is exactly one `alt` contract and core owns it.
 // ---------------------------------------------------------------------------
 
-/** How a bitmap is fitted into its leaf rect. */
-export type ImageFit = 'contain' | 'cover' | 'fill';
-
-/** Per-page image descriptor. */
-export interface ImagePageSource {
-  readonly src: string;
-  /**
-   * Accessible name. Required. Empty string means decorative (`aria-hidden` in
-   * the semantic mirror). Omitting it is a type error.
-   */
-  readonly alt: string;
-  readonly crossOrigin?: 'anonymous' | 'use-credentials';
-  readonly fit?: ImageFit;
-  /** Fraction of page width on all four edges. Range [0, 0.5). */
-  readonly inset?: number;
-  /** Opaque CSS colour; rejected overrides fall back to the book's paper. */
-  readonly background?: string;
-  readonly density?: 'soft' | 'hard';
-}
+export type { CanvasLeaf, ImagePageSource, BlankPageSource, ImageFit };
 
 /**
- * Blank leaf — no bitmap, painted with the page background.
- * `alt: ''` is the decorative assertion a pad leaf wants.
+ * Props of `ImageFlipBook`.
+ *
+ * The engine settings half is `Partial<Omit<FlipSetting, …>>` and nothing else
+ * — no locally declared canvas settings. A prop that names a setting the engine
+ * does not have is a type that lies: it compiles, it is forwarded, and it is
+ * silently ignored at runtime. When core's `FlipSetting` grows `imageFit`,
+ * `imageInset`, `imageLoadRadius`, `imageKeepRadius`, they appear here and are
+ * forwarded automatically, because `pickSettings` denies React-only keys rather
+ * than allowing an enumerated list of engine keys.
+ *
+ * `onImageError` is deliberately absent for the same reason: `imageError` is a
+ * Phase 3 event and core's `FlipbookEventMap` does not carry it. Adding a prop
+ * later is a widening (ADR 0001); shipping one that never fires is not.
  */
-export interface BlankPageSource {
-  readonly blank: true;
-  readonly alt: string;
-  readonly background?: string;
-  readonly density?: 'soft' | 'hard';
-}
-
-/** One leaf of an images book: a bitmap or a blank pad. */
-export type ImagePageLeaf = ImagePageSource | BlankPageSource;
-
-export type ImageErrorPayload = {
-  page: number;
-  src: string;
-  attempt: number;
-};
-
-/**
- * Canvas-only settings. Typed here so `ImageFlipBook` can accept them before
- * core's `FlipSetting` grows the fields; unknown keys are passed through
- * `updateSettings` and ignored by a pre-Phase-2 engine.
- */
-export type ImageFlipSettings = {
-  imageFit?: ImageFit;
-  imageInset?: number;
-  imageLoadRadius?: number;
-  imageKeepRadius?: number;
-  imageCrossOrigin?: 'anonymous' | 'use-credentials';
-};
-
 export type ImageFlipBookProps = {
   width: number;
   height: number;
   /** Leaves of the book. No `children` — canvas mode has no page DOM. */
-  images: readonly ImagePageLeaf[];
+  images: readonly CanvasLeaf[];
   className?: string;
   style?: CSSProperties;
   /** Controlled page index. */
@@ -165,7 +135,5 @@ export type ImageFlipBookProps = {
   liveRegion?: boolean;
   liveRegionText?: LiveRegionTextFn;
   ref?: Ref<FlipBookHandle | null>;
-  onImageError?: (flipEvent: WidgetEvent<ImageErrorPayload>) => void;
 } & Partial<Omit<FlipSetting, 'width' | 'height'>> &
-  ImageFlipSettings &
   IEventProps;

@@ -42,19 +42,19 @@
     {
       "name": "html-engine (raw, drift alarm)",
       "path": "size-check/html-engine.js",
-      "limit": "58 kB",
+      "limit": "62 kB",
       "gzip": false,
       "brotli": false
     },
     {
       "name": "html-engine (brotli transfer)",
       "path": "size-check/html-engine.js",
-      "limit": "14 kB"
+      "limit": "15.5 kB"
     },
     {
       "name": "html-engine (gzip transfer)",
       "path": "size-check/html-engine.js",
-      "limit": "16 kB",
+      "limit": "17.5 kB",
       "gzip": true,
       "brotli": false
     }
@@ -69,5 +69,14 @@
   "homepage": "https://github.com/gul-labs/flipbook/tree/main/packages/core#readme",
   "publishConfig": {
     "access": "public"
-  }
+  },
+  "keywords": [
+    "flipbook",
+    "page-flip",
+    "page-turn",
+    "canvas",
+    "book",
+    "typescript",
+    "stpageflip"
+  ]
 }

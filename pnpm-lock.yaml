@@ -71,6 +71,9 @@ importers:
       react-dom:
         specifier: ^19.2.8
         version: 19.2.8(react@19.2.8)
+      semver:
+        specifier: ^7.8.5
+        version: 7.8.5
       terser:
         specifier: ^5.51.2
         version: 5.51.2
@@ -86,6 +89,9 @@ importers:
       vitest:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@26.4.0)(@vitest/coverage-v8@4.1.11)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(esbuild@0.27.7)(jiti@2.7.0)(sass@1.103.1)(stylus@0.54.8)(terser@5.51.2)(yaml@2.9.0))
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
 
   examples/nextjs:
     dependencies:

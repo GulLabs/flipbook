@@ -26,7 +26,7 @@
  * workspace store rather than installed, so the gate cannot fail on the network.
  */
 import { execFileSync } from 'node:child_process';
-import { createRequire } from 'node:module';
+import { builtinModules, createRequire } from 'node:module';
 import {
   existsSync,
   mkdirSync,
@@ -60,6 +60,184 @@ const report = (passed, msg) => {
 const run = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 
+// --------------------------------------------------------------------------
+// 0. Manifest installability.
+// --------------------------------------------------------------------------
+/**
+ * The consumer step below unpacks BOTH tarballs by hand and symlinks react /
+ * react-dom from the workspace store. That is deliberate (it keeps the gate
+ * offline) but it means the consumer never performs dependency resolution — so
+ * it cannot notice that the packed manifest is uninstallable. A 2026-08-29
+ * review showed this gate accepting a react manifest with `react-dom` missing
+ * entirely, `react: "0"`, and `@gullabs/flipbook-core: "^999.0.0"`, all three of
+ * which fail at `npm install` time. `react-dom` is not hypothetical: the
+ * binding imports `createPortal` from it (packages/react/src/HTMLFlipBook.tsx).
+ *
+ * So the manifest is checked directly instead: everything the BUILT code
+ * imports must be declared, every declared range must be a real semver range,
+ * and every range must admit the version this workspace actually builds and
+ * tests against.
+ */
+const requireDep = (name) => {
+  try {
+    return require_(name);
+  } catch {
+    /* fall through to the transitive hosts */
+  }
+  for (const host of ['@changesets/cli', 'lint-staged', 'tsup', 'eslint', 'vitest']) {
+    try {
+      return createRequire(require_.resolve(`${host}/package.json`))(name);
+    } catch {
+      /* try the next host */
+    }
+  }
+  console.error(
+    `check-packed-artifacts: cannot resolve "${name}".\n` +
+      `This gate needs real range arithmetic and refuses to approximate it. Run: pnpm add -Dw ${name}`,
+  );
+  process.exit(1);
+};
+const semver = requireDep('semver');
+
+/** Bare package name for an import specifier, or null if it needs no install. */
+export const packageNameOf = (specifier) => {
+  if (typeof specifier !== 'string' || specifier.length === 0) return null;
+  if (specifier.startsWith('.') || specifier.startsWith('/')) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(specifier)) return null; // node:, data:, http:
+  const parts = specifier.split('/');
+  const name = specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+  if (builtinModules.includes(name)) return null;
+  return name;
+};
+
+const SPECIFIER_PATTERNS = [
+  /\bfrom\s*["']([^"']+)["']/g,
+  /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g,
+  /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g,
+  /(?:^|[;\n}])\s*import\s*["']([^"']+)["']/gm,
+];
+
+/** Every bare package a built JS file pulls in at runtime. */
+export const externalsOf = (source) => {
+  const found = new Set();
+  for (const pattern of SPECIFIER_PATTERNS) {
+    for (const match of source.matchAll(pattern)) {
+      const name = packageNameOf(match[1]);
+      if (name !== null) found.add(name);
+    }
+  }
+  return found;
+};
+
+/**
+ * Returns the reasons the packed manifest would not install. Empty array = it
+ * would. `versions` maps a package name to the concrete version this workspace
+ * resolved for it; a declared dependency with no known version fails closed,
+ * because the gate cannot then prove the range resolves to anything.
+ */
+export const checkManifestInstallable = ({ name, manifest, imports, versions }) => {
+  const problems = [];
+  const deps = manifest.dependencies ?? {};
+  const peers = manifest.peerDependencies ?? {};
+  const declared = new Map([...Object.entries(peers), ...Object.entries(deps)]);
+
+  for (const imported of [...new Set(imports)].sort()) {
+    if (!declared.has(imported)) {
+      problems.push(
+        `${name}: the built code imports "${imported}", but the packed manifest declares it in ` +
+          'neither "dependencies" nor "peerDependencies" — installing this package alone ' +
+          'would leave that import unresolvable',
+      );
+    }
+  }
+
+  for (const [dep, range] of declared) {
+    if (typeof range !== 'string' || semver.validRange(range) === null) {
+      problems.push(`${name}: ${dep} range ${JSON.stringify(range)} is not a valid semver range`);
+      continue;
+    }
+    const actual = versions[dep];
+    if (actual === undefined) {
+      problems.push(
+        `${name}: ${dep} is declared as ${JSON.stringify(range)} but this workspace resolves no ` +
+          'version for it, so the gate cannot prove the range installs anything',
+      );
+      continue;
+    }
+    if (!semver.satisfies(actual, range, { includePrerelease: true })) {
+      problems.push(
+        `${name}: ${dep} range ${JSON.stringify(range)} does not admit ${actual}, the version this ` +
+          'workspace builds and tests against — an installer would resolve something untested, ' +
+          'or fail outright',
+      );
+    }
+  }
+  return problems;
+};
+
+/** React-binding specifics: which side of the manifest each package belongs on. */
+export const checkReactDependencyShape = (manifest) => {
+  const problems = [];
+  const deps = manifest.dependencies ?? {};
+  const peers = manifest.peerDependencies ?? {};
+  const core = deps['@gullabs/flipbook-core'];
+  if (typeof core !== 'string' || core.length === 0) {
+    problems.push(
+      '@gullabs/react-flipbook: must declare @gullabs/flipbook-core in "dependencies" — ' +
+        'installing it alone would resolve neither the runtime nor the types',
+    );
+  }
+  for (const peer of ['react', 'react-dom']) {
+    if (typeof peers[peer] !== 'string' || peers[peer].length === 0) {
+      problems.push(
+        `@gullabs/react-flipbook: ${peer} must be declared in "peerDependencies" — the built ` +
+          'code imports it directly (createPortal comes from react-dom)',
+      );
+    }
+    if (deps[peer] !== undefined) {
+      problems.push(
+        `@gullabs/react-flipbook: ${peer} must NOT be a hard dependency — that installs a ` +
+          "second copy alongside the host app's",
+      );
+    }
+  }
+  return problems;
+};
+
+/**
+ * Test seam. `packages/core/tests/release-gates.test.ts` points this at a JSON
+ * file holding `{ name, manifest, imports, versions }` and asserts the exit
+ * code, which is how the checks above are proven to REJECT the manifests the
+ * review found this gate accepting. It runs the same functions the real gate
+ * runs; it does not re-implement them.
+ */
+if (process.env.FLIPBOOK_MANIFEST_SELFTEST !== undefined) {
+  const input = JSON.parse(readFileSync(process.env.FLIPBOOK_MANIFEST_SELFTEST, 'utf8'));
+  const problems = [
+    ...checkManifestInstallable({
+      name: input.name,
+      manifest: input.manifest,
+      imports: input.imports ?? [],
+      versions: input.versions ?? {},
+    }),
+    ...(input.name === '@gullabs/react-flipbook' ? checkReactDependencyShape(input.manifest) : []),
+  ];
+  for (const problem of problems) console.error(`FAIL ${problem}`);
+  process.exit(problems.length > 0 ? 1 : 0);
+}
+
+/** The versions an installer would have to be able to reach. */
+const workspaceVersions = {
+  '@gullabs/flipbook-core': JSON.parse(
+    readFileSync(join(root, 'packages/core/package.json'), 'utf8'),
+  ).version,
+  '@gullabs/react-flipbook': JSON.parse(
+    readFileSync(join(root, 'packages/react/package.json'), 'utf8'),
+  ).version,
+  react: JSON.parse(readFileSync(require_.resolve('react/package.json'), 'utf8')).version,
+  'react-dom': JSON.parse(readFileSync(require_.resolve('react-dom/package.json'), 'utf8')).version,
+};
+
 const work = mkdtempSync(join(tmpdir(), 'flipbook-packed-'));
 process.on('exit', () => rmSync(work, { recursive: true, force: true }));
 
@@ -90,8 +268,12 @@ const packDir = join(work, 'tarballs');
 mkdirSync(packDir, { recursive: true });
 
 for (const pkg of PACKAGES) {
-  // `--ignore-scripts`: prepack rebuilds, and the gate already built. Packing
-  // what is on disk is also the point — it is what `changeset publish` uploads.
+  // This runs each package's `prepack`, i.e. a full rebuild — `pnpm pack` has
+  // no `--ignore-scripts`. That matches what `changeset publish` does, so it is
+  // the honest thing to measure, but note the coupling: anything that fails the
+  // core build (the size ceiling in `pack-html-engine.mjs`, for one) fails this
+  // gate before a single tarball assertion runs, and the error you see will be
+  // the build's, not a packaging defect.
   run('pnpm', ['--filter', pkg.name, 'pack', '--pack-destination', packDir], { cwd: root });
   const tarball = join(
     packDir,
@@ -185,38 +367,39 @@ for (const pkg of PACKAGES) {
   if (/"workspace:/.test(rawManifest)) {
     passed = fail(`${pkg.name}: packed manifest still contains a workspace: protocol range`);
   }
-  // REQUIRED dependencies, not just well-formed ones. This loop validated the
-  // SYNTAX of whatever happened to be declared, so deleting
-  // `@gullabs/flipbook-core` from the react manifest left the gate green — and
-  // the consumer step below could not catch it either, because it unpacks both
-  // tarballs by hand regardless of what react asks for. A consumer running
-  // `npm i @gullabs/react-flipbook` alone would then fail at runtime and in its
-  // declarations, which is precisely the failure this script exists to prevent.
+  // INSTALLABLE, not merely well-formed. The previous version of this block
+  // validated the SYNTAX of whatever happened to be declared with
+  // `/^[\^~]?\d/`, which accepts `^999.0.0` (a version that does not exist) and
+  // `0` (which excludes every React the binding supports), and it only looked
+  // for `react` — so a manifest with no `react-dom` peer passed while the built
+  // code imports `createPortal` from it. The consumer step below cannot catch
+  // any of that either: it unpacks both tarballs by hand and symlinks the peers,
+  // so no resolution ever happens.
+  //
+  // `imports` comes from the packed JS itself, so this tracks what the code
+  // does rather than what someone remembered to write down.
+  const imports = new Set();
+  for (const entry of pkg.entries.filter((p) => /\.(js|cjs|mjs)$/.test(p))) {
+    for (const name of externalsOf(run('tar', ['xzOf', pkg.tarball, `package/${entry}`]))) {
+      imports.add(name);
+    }
+  }
+  for (const problem of checkManifestInstallable({
+    name: pkg.name,
+    manifest,
+    imports: [...imports],
+    versions: workspaceVersions,
+  })) {
+    passed = fail(problem);
+  }
   if (pkg.name === '@gullabs/react-flipbook') {
-    const core = manifest.dependencies?.['@gullabs/flipbook-core'];
-    if (typeof core !== 'string' || core.length === 0) {
-      passed = fail(
-        `${pkg.name}: must declare @gullabs/flipbook-core in "dependencies" — ` +
-          'installing it alone would resolve neither the runtime nor the types',
-      );
-    }
-    const peers = manifest.peerDependencies ?? {};
-    if (typeof peers['react'] !== 'string') {
-      passed = fail(`${pkg.name}: react must stay a peerDependency`);
-    }
-    if (manifest.dependencies?.['react'] !== undefined) {
-      passed = fail(`${pkg.name}: react must NOT be a hard dependency`);
-    }
+    for (const problem of checkReactDependencyShape(manifest)) passed = fail(problem);
   }
-
-  for (const [dep, range] of Object.entries(manifest.dependencies ?? {})) {
-    if (!/^[\^~]?\d/.test(range) && !/^(>=|<|>)/.test(range)) {
-      passed = fail(
-        `${pkg.name}: dependency ${dep} has non-registry range ${JSON.stringify(range)}`,
-      );
-    }
-  }
-  report(passed, `dependencies: ${JSON.stringify(manifest.dependencies ?? {})}`);
+  report(
+    passed,
+    `dependencies install: ${JSON.stringify({ ...manifest.dependencies, ...manifest.peerDependencies })} ` +
+      `covers every external import (${[...imports].sort().join(', ') || 'none'})`,
+  );
 
   // Every path the manifest advertises must be inside the tarball. This is the
   // `files`-vs-`exports` mismatch that only a packed check can see.

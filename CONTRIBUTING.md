@@ -6,7 +6,9 @@ Only [@atifgul99](https://github.com/atifgul99) can push or merge to `main`. Eve
 
 ## Dev setup
 
-**Node `20.19.x`** (see `.nvmrc` and `engines`: `>=20.19.0`). Use `nvm use` / `fnm use` so local Node matches CI. Package manager is **pnpm 9.12.0** (see `packageManager` in the root `package.json`).
+**Node `>=22.18.0`** (`.nvmrc` pins **24**; `engines` in the root `package.json`
+is `>=22.18.0`). Use `nvm use` / `fnm use` so local Node matches CI. Package
+manager is **pnpm 10.34.5** (see `packageManager` in the root `package.json`).
 
 ```bash
 pnpm install
@@ -19,7 +21,7 @@ pnpm test               # Vitest unit (core + react projects)
 pnpm test:coverage      # v8 coverage + global floors (see vitest.config.ts)
 pnpm test:coverage-areas  # per-file floors on Flip/UI/Render/React critical paths
 pnpm quality            # fast local: preflight + typecheck + lint + test
-pnpm quality:ci         # **merge bar**: + format + coverage + areas + build + size + isolated types
+pnpm quality:ci         # **merge bar**: + format + coverage + areas + build + size + isolated types + packed artifacts
 pnpm quality:examples   # demo builds only
 pnpm quality:full       # quality:ci + examples + full audit
 ```
@@ -35,7 +37,7 @@ pnpm quality:full       # quality:ci + examples + full audit
 
 CI runs **`verify`** (`quality:ci` on packages) and a separate **`examples`** job (`quality:examples`). The release gate uses the packages bar only.
 
-The Next.js example can flake on Node versions other than `.nvmrc`; pin Node 20.19 before blaming the library.
+The Next.js example can flake on Node versions other than `.nvmrc`; pin Node 24 before blaming the library.
 
 Demo-only Next lint rules (`@next/eslint-plugin-next`) are intentionally **not** in the monorepo ESLint config — examples share the React/TS bar (LINT-007).
 
@@ -85,7 +87,3 @@ See [`CODEOWNERS`](./CODEOWNERS). Default owner is `@atifgul99`.
 ## Conduct
 
 Participation is governed by [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
-
-## Developer Certificate of Origin
-
-Commits should include a `Signed-off-by: Name <email>` trailer (DCO). No CLA.

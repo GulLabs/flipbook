@@ -2,7 +2,7 @@
   "name": "flipbook",
   "private": true,
   "type": "module",
-  "description": "Realistic page-flip libraries for the web \u2014 vanilla TypeScript core and React wrapper.",
+  "description": "Realistic page-flip libraries for the web — vanilla TypeScript core and React wrapper.",
   "license": "MIT AND MPL-2.0",
   "packageManager": "pnpm@10.34.5",
   "engines": {
@@ -72,11 +72,13 @@
     "prettier": "^3.9.6",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "semver": "^7.8.5",
     "terser": "^5.51.2",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.68.0",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.11",
+    "yaml": "^2.9.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

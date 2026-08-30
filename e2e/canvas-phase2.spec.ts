@@ -388,7 +388,19 @@ test.describe('Phase 2 — image error path', () => {
       return;
     }
 
-    const errors = await page.evaluate(() => window.flipbookImageErrors ?? []);
+    // Read defensively rather than off a harness global. The harness no longer
+    // subscribes to `imageError`: the engine does not emit it (nothing in
+    // `packages/core/src` calls `trigger('imageError', …)`; only a forward-
+    // looking comment at `Page/ImagePage.ts:115` mentions the payload), and a
+    // subscription needed a cast through `book.on` claiming an event name that
+    // is not in `FlipbookEventMap`. The assertion below is left exactly as it
+    // was, so this stays a live claim about the engine rather than a claim
+    // about the harness.
+    const errors = await page.evaluate(
+      () =>
+        (window as unknown as { flipbookImageErrors?: { page: number; attempt: number }[] })
+          .flipbookImageErrors ?? [],
+    );
     if (errors.length === 0) {
       if (phase2) {
         expect(errors.length, 'Phase 2 must emit imageError on 404').toBeGreaterThan(0);

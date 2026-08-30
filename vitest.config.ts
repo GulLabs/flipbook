@@ -33,6 +33,16 @@ export default defineConfig({
         '**/node_modules/**',
         '**/types.ts',
 
+        // STILL NOT SHIPPED. Removed on 2026-08-29 when Phase 2 landed and the
+        // component was exported, then RESTORED the same day: the owner held
+        // `ImageFlipBook` back again, because the Phase 2 owner API-approval
+        // gate in `docs/CANVAS_FIRST_CLASS.md` names it explicitly and was
+        // never opened. An implementation landing does not open a §5 gate.
+        //
+        // So the condition below is unchanged and still the right one — this
+        // exclusion goes when the component is genuinely exported, not when it
+        // merely compiles. Its tests exist and run either way.
+        //
         // NOT SHIPPED IN 3.0.0, so not measured. `ImageFlipBook` is written to
         // the Phase 2 descriptor API that the engine does not implement yet —
         // it flattens every descriptor back to a bare URL and drops blank

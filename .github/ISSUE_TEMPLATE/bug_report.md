@@ -8,7 +8,7 @@ assignees: ''
 
 ## Package affected
 
-<!-- e.g. page-flip (packages/core), react-pageflip (packages/react) -->
+<!-- e.g. @gullabs/flipbook-core, @gullabs/react-flipbook -->
 
 ## Version
 

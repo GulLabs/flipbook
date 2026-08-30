@@ -1,4 +1,4 @@
-import { PageFlip } from '@gullabs/flipbook-core';
+import { PageFlip, type CanvasLeaf, type ImageFit } from '@gullabs/flipbook-core';
 
 /**
  * Canvas-mode e2e harness.
@@ -14,9 +14,14 @@ import { PageFlip } from '@gullabs/flipbook-core';
  * settles when the initial spread has settled (decoded or failed). Tests must
  * still poll pixels; never trust this flag alone.
  *
+ * `data-fit` reports the imageFit actually in force, read back off
+ * `getSettings()` rather than off the query string, so a probe can tell the
+ * difference between "the harness asked for cover" and "the engine is in
+ * cover".
+ *
  * Query knobs (Phase 0 + Phase 2 ADR):
  *   ?pages=N              how many identity pages (default 6)
- *   ?fixture=transparent|tall|wide|square|stripe|broken|corrupt|blank
+ *   ?fixture=transparent|tall|wide|square|stripe|broken|corrupt|blank|mixed
  *   ?fit=contain|cover|fill
  *   ?inset=0.028          fraction of page width (ADR Decision 4)
  *   ?portrait=1
@@ -27,7 +32,7 @@ import { PageFlip } from '@gullabs/flipbook-core';
  *   ?reducedMotion=0|1
  *   ?flippingTime=N
  *   ?pageBackground=#hex
- *   ?imageBackground=#hex  per-page background override when descriptors work
+ *   ?imageBackground=#hex  per-leaf background override
  */
 
 const root = document.getElementById('book');
@@ -43,27 +48,16 @@ if (flag('hidden')) document.body.dataset['hidden'] = '1';
 
 const pageCount = Number(params.get('pages') ?? 6);
 const fixture = params.get('fixture') ?? 'pages';
-const fit = params.get('fit'); // contain | cover | fill
+const fitParam = params.get('fit');
+const fit: ImageFit | undefined =
+  fitParam === 'contain' || fitParam === 'cover' || fitParam === 'fill' ? fitParam : undefined;
 const insetRaw = params.get('inset');
-const inset = insetRaw !== null && insetRaw !== '' ? Number(insetRaw) : undefined;
+const insetParam = insetRaw !== null && insetRaw !== '' ? Number(insetRaw) : undefined;
+const inset = insetParam !== undefined && Number.isFinite(insetParam) ? insetParam : undefined;
 const pageBackground = params.get('pageBackground') ?? '#f4ecd8';
 const imageBackground = params.get('imageBackground') ?? undefined;
 
-type Descriptor = {
-  src?: string;
-  alt: string;
-  fit?: 'contain' | 'cover' | 'fill';
-  inset?: number;
-  background?: string;
-  blank?: true;
-};
-
-/**
- * Build the page list the ADR wants. When the engine still only accepts
- * `string[]`, we fall back to bare URLs so Phase 0 stays green while Phase 2
- * lands — see `toLoadArg`.
- */
-function buildSources(): Descriptor[] {
+function buildLeaves(): CanvasLeaf[] {
   switch (fixture) {
     case 'transparent':
       return [
@@ -104,14 +98,11 @@ function buildSources(): Descriptor[] {
       ];
     case 'blank':
       // ADR scope: blank leaf is a first-class variant (no bitmap).
-      return [
-        { blank: true, alt: '' },
-        { src: '/fixtures/canvas/page-1.png', alt: 'Page 1' },
-      ];
+      return [{ blank: true }, { src: '/fixtures/canvas/page-1.png', alt: 'Page 1' }];
     case 'mixed':
       // Landscape spread: blank pad + image, exercises both leaf kinds.
       return [
-        { blank: true, alt: '' },
+        { blank: true },
         { src: '/fixtures/canvas/page-0.png', alt: 'Page 0' },
         { src: '/fixtures/canvas/tall.png', alt: 'Tall' },
         { src: '/fixtures/canvas/page-1.png', alt: 'Page 1' },
@@ -119,17 +110,29 @@ function buildSources(): Descriptor[] {
     default:
       return Array.from({ length: pageCount }, (_, i) => ({
         src: `/fixtures/canvas/page-${String(i % 6)}.png`,
-        alt: `Page ${i}`,
+        alt: `Page ${String(i)}`,
       }));
   }
 }
 
-const descriptors = buildSources().map((d) => {
-  const out: Descriptor = { ...d };
-  if (fit === 'contain' || fit === 'cover' || fit === 'fill') out.fit = fit;
-  if (inset !== undefined && Number.isFinite(inset)) out.inset = inset;
-  if (imageBackground !== undefined) out.background = imageBackground;
-  return out;
+/**
+ * Per-leaf overrides from the query string.
+ *
+ * `fit` / `inset` also go through `updateSettings` below; applying them at both
+ * levels is deliberate — it means a probe that disagrees pins down which of the
+ * two paths is wrong rather than only telling you one of them is.
+ */
+const leaves: CanvasLeaf[] = buildLeaves().map((leaf) => {
+  const overrides = {
+    ...(imageBackground !== undefined ? { background: imageBackground } : {}),
+  };
+  if ('blank' in leaf) return { ...leaf, ...overrides };
+  return {
+    ...leaf,
+    ...overrides,
+    ...(fit !== undefined ? { fit } : {}),
+    ...(inset !== undefined ? { inset } : {}),
+  };
 });
 
 const settings: ConstructorParameters<typeof PageFlip>[1] = {
@@ -146,12 +149,9 @@ const settings: ConstructorParameters<typeof PageFlip>[1] = {
   // Shadows resample and would poison a flat-colour probe.
   drawShadow: flag('shadow'),
   respectReducedMotion: params.get('reducedMotion') !== '0',
+  ...(fit !== undefined ? { imageFit: fit } : {}),
+  ...(inset !== undefined ? { imageInset: inset } : {}),
 };
-
-// Do NOT inject imageFit/imageInset into constructor options before we know
-// Phase 2 Settings owns them. Stuffing the keys made hasOwnProperty detection
-// lie, loadFromImages received descriptors, and pre-Phase-2 coerced them to
-// "[object Object]" — every leaf paper forever.
 
 const book = new PageFlip(root, settings);
 
@@ -159,17 +159,11 @@ declare global {
   interface Window {
     flipbook: PageFlip;
     flipbookError: string | null;
-    /** True when loadFromImages accepted ImagePageSource descriptors. */
-    flipbookDescriptors: boolean;
-    /** Captured imageError payloads for e2e (ADR Decision 2). */
-    flipbookImageErrors: Array<{ page: number; src: string; attempt: number }>;
   }
 }
 
 window.flipbook = book;
 window.flipbookError = null;
-window.flipbookDescriptors = false;
-window.flipbookImageErrors = [];
 
 for (const name of ['flip', 'changeState', 'changeOrientation'] as const) {
   book.on(name, () => {
@@ -178,89 +172,16 @@ for (const name of ['flip', 'changeState', 'changeOrientation'] as const) {
   });
 }
 
-// ADR Decision 2: imageError is the only signal for a failed leaf.
-// Typed loosely until core exports the payload on FlipbookEventMap.
-try {
-  (
-    book.on as (
-      event: string,
-      cb: (e: { data: { page: number; src: string; attempt: number } }) => void,
-    ) => void
-  )('imageError', (e) => {
-    window.flipbookImageErrors.push(e.data);
-    document.body.dataset['imageError'] = String(window.flipbookImageErrors.length);
+book
+  .loadFromImages(leaves)
+  .then(() => {
+    document.body.dataset['ready'] = '1';
+    document.body.dataset['page'] = String(book.getCurrentPageIndex());
+    document.body.dataset['state'] = book.getState();
+    document.body.dataset['fit'] = book.getSettings().imageFit;
+    document.body.dataset['inset'] = String(book.getSettings().imageInset);
+  })
+  .catch((err: unknown) => {
+    window.flipbookError = err instanceof Error ? err.message : String(err);
+    document.body.dataset['ready'] = 'error';
   });
-} catch {
-  // Older engines reject unknown event names — Phase 0 still runs.
-}
-
-/**
- * Phase 2 detection. Pre-Phase-2 loadFromImages does NOT reject descriptors —
- * it stringifies them to "[object Object]" and "succeeds". Gate on settings.
- */
-function engineAcceptsDescriptors(): boolean {
-  const settings = book.getSettings() as unknown as Record<string, unknown>;
-  return (
-    Object.prototype.hasOwnProperty.call(settings, 'imageFit') ||
-    Object.prototype.hasOwnProperty.call(settings, 'imageLoadRadius') ||
-    Object.prototype.hasOwnProperty.call(settings, 'imageKeepRadius')
-  );
-}
-
-function urlsOnly(): string[] {
-  return descriptors.map((d) => d.src).filter((s): s is string => typeof s === 'string');
-}
-
-const phase2 = engineAcceptsDescriptors();
-const hasBlank = descriptors.some((d) => d.blank === true);
-
-function markReady(usedDescriptors: boolean): void {
-  window.flipbookDescriptors = usedDescriptors;
-  document.body.dataset['ready'] = '1';
-  document.body.dataset['descriptors'] = usedDescriptors ? '1' : '0';
-  document.body.dataset['page'] = String(book.getCurrentPageIndex());
-  document.body.dataset['state'] = book.getState();
-  const fitSetting = (book.getSettings() as unknown as Record<string, unknown>)['imageFit'];
-  document.body.dataset['fit'] = typeof fitSetting === 'string' ? fitSetting : 'legacy-fill';
-  if (!usedDescriptors) document.body.dataset['phase2'] = 'pending';
-}
-
-if (phase2) {
-  // Apply book-level fit/inset only after we know Settings owns the keys.
-  try {
-    const partial: Record<string, unknown> = {};
-    if (fit === 'contain' || fit === 'cover' || fit === 'fill') partial['imageFit'] = fit;
-    if (inset !== undefined && Number.isFinite(inset)) partial['imageInset'] = inset;
-    if (Object.keys(partial).length > 0) {
-      book.updateSettings(partial);
-    }
-  } catch {
-    // ignore
-  }
-  book
-    .loadFromImages(descriptors as unknown as string[])
-    .then(() => markReady(true))
-    .catch((err: unknown) => {
-      window.flipbookError = err instanceof Error ? err.message : String(err);
-      document.body.dataset['ready'] = 'error';
-    });
-} else if (hasBlank && urlsOnly().length === 0) {
-  // Blank-only fixture cannot run without descriptors.
-  document.body.dataset['ready'] = 'unsupported';
-  document.body.dataset['descriptors'] = '0';
-  document.body.dataset['phase2'] = 'pending';
-} else {
-  const urls = urlsOnly();
-  if (urls.length === 0) {
-    document.body.dataset['ready'] = 'unsupported';
-    document.body.dataset['descriptors'] = '0';
-  } else {
-    book
-      .loadFromImages(urls)
-      .then(() => markReady(false))
-      .catch((err: unknown) => {
-        window.flipbookError = err instanceof Error ? err.message : String(err);
-        document.body.dataset['ready'] = 'error';
-      });
-  }
-}

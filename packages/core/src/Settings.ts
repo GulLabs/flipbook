@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { DEFAULT_PAGE_BACKGROUND, safePageBackground } from './Render/pageBackground';
+import { ImageFit } from './canvasLeaf';
 import { PageFlipError } from './errors';
 
 /**
@@ -88,6 +89,35 @@ export interface FlipSetting {
    * Programmatic `flipNext`/`flipPrev` still advance by page index.
    */
   direction: FlipDirectionSetting;
+
+  /**
+   * Canvas mode only. How a bitmap is placed on its leaf, for every leaf that
+   * does not override it with `ImagePageSource.fit`.
+   *
+   * Default `contain`, which is a **behaviour change**: canvas mode used to
+   * draw `drawImage(img, 0, 0, pageWidth, pageHeight)`, an implicit `fill` that
+   * stretched every bitmap to the leaf whatever its aspect ratio. `contain` is
+   * the only fit that cannot destroy information — `cover` crops and `fill`
+   * distorts, both silently — so it is the honest default and the old one is
+   * one word away. Documented in MIGRATION.md.
+   *
+   * Inert in HTML mode.
+   */
+  imageFit: ImageFit;
+
+  /**
+   * Canvas mode only. Uniform margin around the bitmap on all four edges, as a
+   * **fraction of page width** (`0.028` is 2.8%) — the same resolution rule as
+   * CSS percentage padding, which is why one number covers all four edges.
+   *
+   * A fraction and not pixels, deliberately: a book is continuously resized, so
+   * a pixel inset is correct at exactly one book size and the consumer would
+   * have to recompute it on every resize — which is the work this engine exists
+   * to do. Range `[0, 0.5)`; `0.5` would consume the whole leaf.
+   *
+   * Inert in HTML mode.
+   */
+  imageInset: number;
 }
 
 /**
@@ -139,6 +169,8 @@ export class Settings {
     disableFlipByClick: false,
     pageBackground: DEFAULT_PAGE_BACKGROUND,
     respectReducedMotion: true,
+    imageFit: ImageFit.CONTAIN,
+    imageInset: 0,
     direction: 'ltr',
   };
 
@@ -216,6 +248,31 @@ export class Settings {
     const direction = result.direction as string;
     if (direction !== 'ltr' && direction !== 'rtl') {
       throw new PageFlipError('Invalid direction (ltr|rtl)', 'INVALID_DIRECTION');
+    }
+
+    // Rejected at the boundary rather than coerced at draw time, and for the
+    // same reason `direction` is: a typo like `imageFit: 'containn'` that
+    // silently falls back to `contain` looks identical to it working, so the
+    // author never learns the setting did nothing. `ImagePage` still defaults
+    // defensively for an unknown value — that guard is for the frame it is on,
+    // not a licence to accept rubbish here.
+    const imageFit = result.imageFit as string;
+    if (
+      imageFit !== ImageFit.CONTAIN &&
+      imageFit !== ImageFit.COVER &&
+      imageFit !== ImageFit.FILL
+    ) {
+      throw new PageFlipError('Invalid imageFit (contain|cover|fill)', 'INVALID_IMAGE_SOURCE');
+    }
+
+    // Same `[0, 0.5)` range the per-leaf `inset` is held to, and it must be the
+    // same range: a book-level default the per-leaf override could not express
+    // would be a second, quieter contract.
+    if (!Number.isFinite(result.imageInset) || result.imageInset < 0 || result.imageInset >= 0.5) {
+      throw new PageFlipError(
+        'Invalid imageInset: a fraction of page width in [0, 0.5)',
+        'INVALID_IMAGE_SOURCE',
+      );
     }
 
     // `safePageBackground` reads `.trim()` off whatever it is handed, so a

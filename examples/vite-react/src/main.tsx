@@ -1,15 +1,27 @@
 import { StrictMode, useCallback, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
-import { HTMLFlipBook, usePageFlip, type WidgetEvent } from '@gullabs/react-flipbook';
+import {
+  HTMLFlipBook,
+  usePageFlip,
+  type CanvasLeaf,
+  type WidgetEvent,
+} from '@gullabs/react-flipbook';
 
 // `ImageFlipBook` is NOT part of the 3.0.0 public surface — see the comment in
-// `packages/react/src/index.ts`. It is written to the Phase 2 descriptor API
-// that the engine does not implement yet, so it is imported from SOURCE here to
-// keep the demo working without implying a consumer can
-// `import { ImageFlipBook } from '@gullabs/react-flipbook'`. When Phase 2 lands
-// and the export goes public, these two lines become a normal package import.
+// `packages/react/src/index.ts`. The Phase 2 owner API-approval gate that names
+// it has not been opened, so it is imported from SOURCE here to keep the demo
+// working without implying a consumer can
+// `import { ImageFlipBook } from '@gullabs/react-flipbook'`.
+//
+// It briefly WAS a package import earlier on 2026-08-29, when the export landed
+// with Phase 2's implementation; that is exactly the leak this source-relative
+// import exists to make visible. When the gate opens, this becomes one more
+// name in the import above.
+//
+// `CanvasLeaf` above is a different case and stays a package import: the leaf
+// descriptor is core's public API, re-exported by the React package, and is
+// approved surface independently of the component.
 import { ImageFlipBook } from '../../../packages/react/src/ImageFlipBook';
-import type { ImagePageLeaf } from '../../../packages/react/src/types';
 
 /**
  * React binding showcase.
@@ -34,7 +46,7 @@ const leafStyle = (bg: string): CSSProperties => ({
   fontWeight: 600,
 });
 
-const IMAGES: ImagePageLeaf[] = [
+const IMAGES: CanvasLeaf[] = [
   { src: '/fixtures/canvas/page-0.png', alt: 'Red leaf' },
   { src: '/fixtures/canvas/page-1.png', alt: 'Blue leaf' },
   { src: '/fixtures/canvas/page-2.png', alt: 'Green leaf' },
@@ -116,15 +128,15 @@ function HtmlDemo() {
 
 function ImagesDemo() {
   const book = usePageFlip(0);
-  const [errors, setErrors] = useState(0);
 
   return (
     <section>
       <h2 style={{ margin: '0 0 8px' }}>ImageFlipBook — canvas mode</h2>
       <p style={{ margin: '0 0 12px', color: '#555', maxWidth: 520 }}>
-        No children. Leaves are <code>ImagePageSource</code> descriptors (<code>src</code> +
-        required <code>alt</code>). Until core accepts descriptors, the binding falls back to bare
-        URLs.
+        No children. Leaves are <code>CanvasLeaf</code> descriptors — <code>{'{ src, alt }'}</code>{' '}
+        or <code>{"{ blank: true, alt: '' }"}</code> — handed to the engine unchanged. Each
+        leaf&rsquo;s <code>alt</code> is the whole accessible book: the canvas is
+        <code>aria-hidden</code>.
       </p>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
@@ -137,7 +149,7 @@ function ImagesDemo() {
       </div>
 
       <p style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13 }}>
-        page {book.page} / {Math.max(0, book.pageCount - 1)} · imageError count {errors}
+        page {book.page} / {Math.max(0, book.pageCount - 1)}
       </p>
 
       <ImageFlipBook
@@ -150,7 +162,6 @@ function ImagesDemo() {
         images={IMAGES}
         page={book.page}
         {...book.bookProps}
-        onImageError={() => setErrors((n) => n + 1)}
         style={{ maxWidth: 560 }}
         aria-label="Images demo flipbook"
       />

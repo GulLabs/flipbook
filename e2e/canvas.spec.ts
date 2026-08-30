@@ -234,8 +234,8 @@ test.describe('canvas mode renders real pixels', () => {
 
     await page.evaluate(async () => {
       await window.flipbook.updateFromImages([
-        '/fixtures/canvas/page-4.png',
-        '/fixtures/canvas/page-5.png',
+        { src: '/fixtures/canvas/page-4.png', alt: 'Page 4' },
+        { src: '/fixtures/canvas/page-5.png', alt: 'Page 5' },
       ]);
     });
 

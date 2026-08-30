@@ -151,7 +151,20 @@ export function intersectLines(one: Segment, two: Segment): Point | null {
   return null;
 }
 
-/** 1px-step point list from `a` to `b` (inclusive). */
+/**
+ * Upper bound on the points one interpolation may produce.
+ *
+ * Chosen to be duration-neutral, not tuned: `Flip.getAnimationDuration` treats
+ * every count at or above 1000 identically, so any cap ≥ 1000 changes no
+ * animation. 4096 leaves that threshold four times of headroom while bounding
+ * one turn's allocation at a few thousand points.
+ */
+const MAX_INTERPOLATION_STEPS = 4096;
+
+/**
+ * Point list from `a` to `b` (inclusive), 1px-stepped up to
+ * {@link MAX_INTERPOLATION_STEPS} and evenly spaced beyond it.
+ */
 export function pointsBetween(a: Point, b: Point): Point[] {
   const sx = Math.abs(a.x - b.x);
   const sy = Math.abs(a.y - b.y);
@@ -177,9 +190,22 @@ export function pointsBetween(a: Point, b: Point): Point[] {
   // are derived from them — so this is a bound on the loop, not a live fix.
   if (!Number.isFinite(steps)) return out;
 
-  for (let i = 1; i <= steps; i += 1) {
+  // …and a FINITE bound, because `Number.isFinite` was never the real limit.
+  // `Settings` accepts any positive finite dimension, so a legal (if absurd)
+  // 1e8 × 1e8 book asks for ~1.9e8 points and the same 1.9e8 closures in
+  // `animateFlippingTo` — the identical out-of-memory death the guard above was
+  // added to prevent, reached without a single non-finite number.
+  //
+  // The cap costs nothing anywhere. `getAnimationDuration` returns the full
+  // flipping time for any `size >= 1000`, so every cap at or above 1000 leaves
+  // the duration of every turn EXACTLY as it was; and `Render` samples frames
+  // by elapsed time, so points beyond the frames actually drawn were never
+  // rendered in the first place. What is discarded is only ever waste.
+  const steppedTo = Math.min(steps, MAX_INTERPOLATION_STEPS);
+
+  for (let i = 1; i <= steppedTo; i += 1) {
     // Clamped so the last point is exactly `b` rather than a rounding of it.
-    const t = Math.min(i / steps, 1);
+    const t = Math.min(i / steppedTo, 1);
     out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
   }
   return out;

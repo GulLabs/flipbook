@@ -52,8 +52,17 @@ function rethrowAsync(error: unknown): void {
 export abstract class EventObject {
   private events = new Map<string, EventCallback[]>();
 
-  /** See {@link EventObject.deferListenerErrors}. */
-  private deferErrors = false;
+  /**
+   * NESTING DEPTH, not a flag. See {@link EventObject.deferListenerErrors}.
+   *
+   * A boolean was wrong, and wrong in the direction that matters: a teardown
+   * listener is allowed to re-enter `destroy()`, and the inner call's `finally`
+   * then cleared the deferral while the OUTER teardown was still running. The
+   * next listener's exception escaped `destroy()` synchronously — exactly the
+   * failure L8 exists to prevent, reachable by the exact re-entrancy this
+   * engine documents as legal everywhere else.
+   */
+  private deferDepth = 0;
 
   /**
    * E4: the event name is constrained to `FlipbookEventMap`.
@@ -154,7 +163,7 @@ export abstract class EventObject {
    * the only caller is a teardown and there is no "after" for it to restore.
    */
   protected deferListenerErrors(): void {
-    this.deferErrors = true;
+    this.deferDepth += 1;
   }
 
   /**
@@ -166,7 +175,11 @@ export abstract class EventObject {
    * its errors belong on the synchronous path like everyone else's.
    */
   protected resumeListenerErrors(): void {
-    this.deferErrors = false;
+    // Floor at zero. An unpaired `resume` is a defect in this engine, not in the
+    // consumer, and going negative would make the NEXT legitimate deferral
+    // window a no-op — turning an internal bookkeeping slip into an escaped
+    // teardown error somewhere else entirely.
+    if (this.deferDepth > 0) this.deferDepth -= 1;
   }
 
   protected clearListeners(): void {
@@ -257,7 +270,7 @@ export abstract class EventObject {
     // Deferring is not silencing: every one of these still reaches
     // `window.onerror` / `uncaughtException` on the next task. What changes is
     // that a dying engine cannot take the caller's cleanup down with it.
-    if (this.deferErrors) {
+    if (this.deferDepth > 0) {
       for (const error of errors) rethrowAsync(error);
       return;
     }

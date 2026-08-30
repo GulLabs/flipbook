@@ -118,7 +118,25 @@ console.log(`html-engine.js ${files.join('+')} ${bytes} B (${(bytes / 1000).toFi
 // Units matter: `size-limit` reads "45 kB" as 45000, so this uses the same
 // decimal convention. Previously this file used KiB (45056) while size-limit
 // used kB (44000), and the 1056-byte disagreement is what left CI red.
-const RAW_ALARM_BYTES = 58_000;
+// Raised 58_000 → 62_000 on 2026-08-29 for Phase 2, and this comment is the
+// "say what was added" AGENTS.md §2 requires of a ceiling raise. Measured
+// growth: 59_549 B raw / 14.93 kB brotli, against 58_000 / 14 kB.
+//
+// What bought it: canvas leaf descriptors with required `alt`, blank leaves as
+// a first-class variant, fit modes (`contain`/`cover`/`fill`) with fractional
+// insets, per-leaf backgrounds, the broken-image glyph, and the public
+// `getPageAltText` accessors that make canvas accessibility implementable at
+// all. Roughly 460 B of it is `validateCanvasLeaves` being EAGER in the
+// HTML-only graph — forced, because validation must run before the canvas chunk
+// is fetched or an invalid list either builds a canvas or cancels a good load
+// already in flight. The renderer itself stays lazy: `ImagePageCollection`,
+// `ImagePage` and `imageFit` are all absent from this file (verified by grep,
+// not assumed).
+//
+// This is headroom spent on a feature, which is what headroom is for. It is NOT
+// the ratcheting AGENTS.md §2 warns about — that was 35→45→47→48 with no reason
+// attached, to turn a red gate green.
+const RAW_ALARM_BYTES = 62_000;
 
 if (bytes > RAW_ALARM_BYTES) {
   console.error(

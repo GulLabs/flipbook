@@ -3,6 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { PageCollection } from './Collection/PageCollection';
+// `import type`, and that is load-bearing: the class it describes lives in the
+// lazy canvas chunk, so a value import here would drag the canvas renderer into
+// the graph every HTML-only consumer downloads. Erased entirely — zero bytes.
+import type { CanvasAltSource } from './Collection/ImagePageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
 import type { PageRect, Point } from './BasicTypes';
 import { Flip, FlipCorner, FlippingState } from './Flip/Flip';
@@ -17,6 +21,14 @@ import type { FlipSetting } from './Settings';
 import { Settings } from './Settings';
 import type { UI } from './UI/UI';
 import { PageFlipError } from './errors';
+// Value import, deliberately eager. Validation has to run BEFORE the canvas
+// chunk is fetched (an invalid list must not build a canvas), so it cannot live
+// in the chunk. `canvasLeaf.ts` is pure predicate code — no `window`, no
+// `document`, no canvas — and it costs the HTML-only consumer the bytes of the
+// validator. That is headroom spent on a feature, per AGENTS.md §2; the
+// measured delta is reported in the commit message.
+import type { CanvasLeaf } from './canvasLeaf';
+import { validateCanvasLeaves } from './canvasLeaf';
 // Type-only, so the canvas chunk stays out of the HTML bundle: this names the
 // module `loadCanvasModule` resolves at run time, it does not import it.
 import type * as CanvasLoader from './canvas-loader';
@@ -606,16 +618,48 @@ export class PageFlip extends EventObject {
    * The canvas renderer is a separate chunk, so an HTML-only consumer never
    * downloads it. Budgets live in `packages/core/package.json`; the enforced
    * one is brotli, which is what a consumer actually pays for.
+   *
+   * Takes leaf DESCRIPTORS, not URLs (ADR 0001, Decision 1): `alt` is required,
+   * because a canvas book has no DOM per page and the descriptor is therefore
+   * the only accessible name a screen reader can ever be given. `string[]` is
+   * broken deliberately and is not normalised, because normalising it would
+   * mean the engine inventing `alt: ''` — silently declaring every page
+   * decorative — for every consumer who did not notice.
+   *
+   * @param {readonly CanvasLeaf[]} leaves - image and blank leaf descriptors
+   * @throws {PageFlipError} `INVALID_IMAGE_SOURCE` (as a rejection) for a
+   *   malformed list. `CANVAS_LOAD` if the canvas chunk cannot be fetched.
    */
-  public loadFromImages(imagesHref: string[]): Promise<void> {
+  public loadFromImages(leaves: readonly CanvasLeaf[]): Promise<void> {
     // Cheapest form of the same no-op: an engine that is already destroyed
     // does not download the chunk at all. `loadFromHTML` guards here too.
+    //
+    // Ahead of validation on purpose: the destroy contract documented above is
+    // that mutating lifecycle calls are no-ops after `destroy()`, and a no-op
+    // that inspects its argument and can still throw is not one.
     if (this.destroyed) return Promise.resolve();
+
+    // BEFORE `nextGeneration()`, and therefore before the chunk import.
+    //
+    // `nextGeneration()` is not bookkeeping — it INVALIDATES every load still
+    // in flight (L7/G8). Validating after it would mean a typo'd descriptor
+    // list cancelled the good book that was already on screen or on its way,
+    // leaving the consumer with a rejected promise AND no book: the
+    // half-applied load `loadGeneration` exists to prevent, arrived at from the
+    // one direction it did not cover.
+    try {
+      validateCanvasLeaves(leaves);
+    } catch (err: unknown) {
+      // A rejection, not a synchronous throw: the signature promises a
+      // `Promise`, and a method that sometimes throws before returning one
+      // cannot be handled with `.catch` alone.
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
 
     const generation = this.nextGeneration();
 
     return this.loadCanvasModule(generation).then((m) => {
-      m?.loadFromImages(this, imagesHref);
+      m?.loadFromImages(this, leaves);
     });
   }
 
@@ -645,17 +689,28 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Update current pages from images
+   * Update current pages from images.
    *
-   * @param {string[]} imagesHref - List of paths to images
+   * Same descriptor contract, same validation ordering and same reasons as
+   * `loadFromImages` — see there.
+   *
+   * @param {readonly CanvasLeaf[]} leaves - image and blank leaf descriptors
+   * @throws {PageFlipError} `INVALID_IMAGE_SOURCE` (as a rejection) for a
+   *   malformed list, `WRONG_MODE` in HTML mode.
    */
-  public updateFromImages(imagesHref: string[]): Promise<void> {
+  public updateFromImages(leaves: readonly CanvasLeaf[]): Promise<void> {
     if (this.destroyed) return Promise.resolve();
+
+    try {
+      validateCanvasLeaves(leaves);
+    } catch (err: unknown) {
+      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
+    }
 
     const generation = this.nextGeneration();
 
     return this.loadCanvasModule(generation).then((m) => {
-      m?.updateFromImages(this, imagesHref);
+      m?.updateFromImages(this, leaves);
     });
   }
 
@@ -1201,6 +1256,62 @@ export class PageFlip extends EventObject {
    */
   public getPageCollection(): PageCollection {
     return this.pagesOrThrow;
+  }
+
+  /**
+   * The accessible name of one canvas leaf, or `undefined` if nobody gave it one.
+   *
+   * Canvas mode only. This exists because without it the canvas mode ships an
+   * accessibility story no consumer can implement: a canvas book has no DOM per
+   * page, so the descriptors are the ONLY thing a screen reader can be told —
+   * and they were reachable solely by casting `getPageCollection()` to an
+   * unexported class living in the lazy chunk.
+   *
+   * **Three-valued, and the three values are not interchangeable:**
+   *
+   * - a string — use it;
+   * - `''` — the author asserted the leaf is decorative, so announce nothing;
+   * - `undefined` — the author said *nothing at all*. This is "unknown", never
+   *   "decorative". Render a positional fallback ("Page 7") for it.
+   *
+   * Collapsing the last two is the failure the whole descriptor design avoids:
+   * it silently declares every unlabelled page decorative, which is exactly the
+   * outcome requiring `alt` was meant to prevent.
+   *
+   * The engine does not supply the positional fallback itself, because it would
+   * have to ship an unlocalisable English string to do it (ADR 0001).
+   *
+   * @throws {PageFlipError} `WRONG_MODE` in HTML mode — where a page is a real
+   * element the consumer already labelled themselves — and `INVALID_PAGE` for
+   * an index outside the book.
+   */
+  public getPageAltText(index: number): string | undefined {
+    return this.altSourceOrThrow().getAltText(index);
+  }
+
+  /** Every leaf's accessible name, in page order. See {@link PageFlip.getPageAltText}. */
+  public getPageAltTexts(): readonly (string | undefined)[] {
+    return this.altSourceOrThrow().getAltTexts();
+  }
+
+  /**
+   * Duck-typed on purpose — `instanceof ImagePageCollection` would import the
+   * class, and the class lives in the lazily-imported canvas chunk. That import
+   * would pull the whole canvas renderer into the eager graph that every
+   * HTML-only consumer downloads, to answer a question only canvas books ask.
+   */
+  private altSourceOrThrow(): CanvasAltSource {
+    const collection: unknown = this.pagesOrThrow;
+    const candidate = collection as Partial<CanvasAltSource>;
+
+    if (typeof candidate.getAltText !== 'function' || typeof candidate.getAltTexts !== 'function') {
+      throw new PageFlipError(
+        'Page alt text is canvas mode only; in HTML mode the page element carries its own label.',
+        'WRONG_MODE',
+      );
+    }
+
+    return candidate as CanvasAltSource;
   }
 
   /**

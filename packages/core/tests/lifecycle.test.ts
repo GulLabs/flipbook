@@ -1102,10 +1102,18 @@ function imageCollection(book: PageFlip, hrefs: string[]): PageCollection {
   const Ctor = ImagePageCollection as unknown as new (
     app: PageFlip,
     render: Render,
-    hrefs: string[],
+    leaves: readonly { src: string; alt: string }[],
   ) => PageCollection;
 
-  return new Ctor(book, book.getRender(), hrefs);
+  // Phase 2: the collection takes leaf DESCRIPTORS, not URLs. The helper still
+  // takes hrefs because that is all these lifecycle tests care about, but it
+  // must hand the collection what the collection actually reads — passing bare
+  // strings here threw inside `isBlankLeaf`.
+  return new Ctor(
+    book,
+    book.getRender(),
+    hrefs.map((src) => ({ src, alt: `Page ${src}` })),
+  );
 }
 
 describe('L5 — replacePages claims a load generation', () => {
@@ -1131,9 +1139,18 @@ describe('L5 — replacePages claims a load generation', () => {
    */
   test('a loadFromImages still importing cannot destroy the collection installed under it', async () => {
     const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
     // In flight: the chunk import has not resolved, so `attachMode` has not run.
-    const stale = book.loadFromImages(['s1.png', 's2.png', 's3.png', 's4.png', 's5.png']);
+    const stale = book.loadFromImages([
+      { src: 's1.png', alt: 'Page s1' },
+      { src: 's2.png', alt: 'Page s2' },
+      { src: 's3.png', alt: 'Page s3' },
+      { src: 's4.png', alt: 'Page s4' },
+      { src: 's5.png', alt: 'Page s5' },
+    ]);
 
     const installed = imageCollection(book, ['x.png', 'y.png', 'z.png']);
     book.replacePages(installed, 0);
@@ -1154,8 +1171,17 @@ describe('L5 — replacePages claims a load generation', () => {
 
   test('an updateFromImages still importing cannot replace it either', async () => {
     const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
-    await book.loadFromImages(['a.png', 'b.png']);
-    const stale = book.updateFromImages(['s1.png', 's2.png', 's3.png', 's4.png', 's5.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
+    const stale = book.updateFromImages([
+      { src: 's1.png', alt: 'Page s1' },
+      { src: 's2.png', alt: 'Page s2' },
+      { src: 's3.png', alt: 'Page s3' },
+      { src: 's4.png', alt: 'Page s4' },
+      { src: 's5.png', alt: 'Page s5' },
+    ]);
 
     const installed = imageCollection(book, ['x.png', 'y.png', 'z.png']);
     book.replacePages(installed, 0);
@@ -1171,10 +1197,17 @@ describe('L5 — replacePages claims a load generation', () => {
 
   test('control: a load that is NOT superseded still attaches', async () => {
     const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     // Nothing swaps under it, so the generation it captured is still current.
-    await book.loadFromImages(['s1.png', 's2.png', 's3.png']);
+    await book.loadFromImages([
+      { src: 's1.png', alt: 'Page s1' },
+      { src: 's2.png', alt: 'Page s2' },
+      { src: 's3.png', alt: 'Page s3' },
+    ]);
     expect(book.getPageCount()).toBe(3);
 
     book.destroy();
@@ -1294,7 +1327,7 @@ describe('L7 — an abandoned canvas load resolves, a live one still throws', ()
 
     // Not swallowed. A book that never appears with no error to explain it is
     // the failure this guard must not create.
-    await expect(book.loadFromImages(['a.png'])).rejects.toMatchObject({
+    await expect(book.loadFromImages([{ src: 'a.png', alt: 'Page a' }])).rejects.toMatchObject({
       code: 'CANVAS_LOAD',
     });
 
@@ -1304,7 +1337,7 @@ describe('L7 — an abandoned canvas load resolves, a live one still throws', ()
   test('destroying while the chunk is loading resolves rather than rejecting', async () => {
     const book = new PageFlip(hostEl, { width: 100, height: 150 });
 
-    const loading = book.loadFromImages(['a.png']);
+    const loading = book.loadFromImages([{ src: 'a.png', alt: 'Page a' }]);
     book.destroy();
 
     await expect(loading).resolves.toBeUndefined();
@@ -1313,7 +1346,7 @@ describe('L7 — an abandoned canvas load resolves, a live one still throws', ()
   test('the same holds for updateFromImages', async () => {
     const book = new PageFlip(hostEl, { width: 100, height: 150 });
 
-    const updating = book.updateFromImages(['a.png']);
+    const updating = book.updateFromImages([{ src: 'a.png', alt: 'Page a' }]);
     book.destroy();
 
     await expect(updating).resolves.toBeUndefined();
@@ -1322,7 +1355,7 @@ describe('L7 — an abandoned canvas load resolves, a live one still throws', ()
   test('a load superseded by a newer mode is not reported either', async () => {
     const book = new PageFlip(hostEl, { width: 100, height: 150 });
 
-    const stale = book.loadFromImages(['a.png']);
+    const stale = book.loadFromImages([{ src: 'a.png', alt: 'Page a' }]);
 
     // The newer mode claims the generation synchronously, so the canvas chunk
     // is still in flight when its load stops mattering. Nobody is waiting on
@@ -1344,8 +1377,8 @@ describe('L7 — an abandoned canvas load resolves, a live one still throws', ()
 
     // The chunk import would fail here, so a rejection is proof the engine
     // fetched it at all — for a call the destroy contract calls a safe no-op.
-    await expect(book.loadFromImages(['a.png'])).resolves.toBeUndefined();
-    await expect(book.updateFromImages(['a.png'])).resolves.toBeUndefined();
+    await expect(book.loadFromImages([{ src: 'a.png', alt: 'Page a' }])).resolves.toBeUndefined();
+    await expect(book.updateFromImages([{ src: 'a.png', alt: 'Page a' }])).resolves.toBeUndefined();
   });
 });
 
@@ -1385,7 +1418,12 @@ describe('PF2 — a clear() that cannot run must not cancel the load that can', 
 
     // In flight: the dynamic import has not resolved, so `attachMode` has not
     // run and render/ui/pages are all still null.
-    const pending = book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    const pending = book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
 
     // `clear()` cannot do its job on an engine with no book — that has always
     // been a throw, and it stays one. What it must not do is take the load
@@ -1420,7 +1458,12 @@ describe('PF2 — a clear() that cannot run must not cancel the load that can', 
   test('control: the same sequence without the clear() behaves identically', async () => {
     const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
 
-    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
 
     expect(book.getPageCount()).toBe(4);
     expect(hostEl.querySelector('canvas.stf__canvas')).not.toBeNull();
@@ -1430,11 +1473,20 @@ describe('PF2 — a clear() that cannot run must not cancel the load that can', 
 
   test('a clear() on a LOADED book still claims a generation (L5 is not undone)', async () => {
     const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     // A second load is in flight; `clear()` supersedes it, exactly as
     // `replacePages` and `attachMode` do.
-    const stale = book.loadFromImages(['s1.png', 's2.png', 's3.png', 's4.png', 's5.png']);
+    const stale = book.loadFromImages([
+      { src: 's1.png', alt: 'Page s1' },
+      { src: 's2.png', alt: 'Page s2' },
+      { src: 's3.png', alt: 'Page s3' },
+      { src: 's4.png', alt: 'Page s4' },
+      { src: 's5.png', alt: 'Page s5' },
+    ]);
     book.clear();
     await stale;
 
@@ -2190,6 +2242,54 @@ describe('round 9 — lifecycle ownership', () => {
     expect(() => {
       book.flipNext();
     }).toThrow(boom);
+  });
+
+  test('a teardown listener re-entering destroy() does not un-defer the outer teardown', () => {
+    vi.useFakeTimers();
+    try {
+      const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 400 });
+      book.loadFromHTML(makePages(6));
+      book.flipNext(); // a live state, so `abandon()` has a transition to announce
+
+      const seen: string[] = [];
+
+      // Re-entrancy this engine documents as legal: a listener may call back
+      // into the engine, `destroy()` included. It is also not hypothetical —
+      // a React cleanup that destroys on a state change is exactly this shape.
+      book.on('changeState', () => {
+        seen.push('reenter');
+        book.destroy();
+      });
+      book.on('changeState', () => {
+        seen.push('throw');
+        throw new Error('second listener');
+      });
+
+      // Reverted fix: `deferErrors` was a boolean, so the INNER `destroy()`'s
+      // `finally` cleared the deferral while the OUTER teardown was still
+      // running. The second listener's error then took the synchronous path and
+      // escaped `destroy()` — the precise failure L8 exists to prevent, and it
+      // aborted the rest of the outer cleanup on the way out.
+      expect(() => {
+        book.destroy();
+      }).not.toThrow();
+
+      // Both listeners ran: `trigger` snapshots the list, so the inner
+      // `clearListeners()` cannot cancel the rest of the current dispatch.
+      // Without this the assertion above passes for the wrong reason — a
+      // dispatch that never reached the throwing listener also does not throw.
+      expect(seen).toEqual(['reenter', 'throw']);
+
+      // Deferred is not silenced: it must still reach the host's uncaught
+      // handler on the next task.
+      expect(() => {
+        vi.runAllTimers();
+      }).toThrow('second listener');
+
+      expect(book.isDestroyed()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -59,7 +59,11 @@ describe('canvas mode', () => {
   test('loadFromImages resolves and wires the canvas renderer', async () => {
     const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
 
-    await book.loadFromImages(['a.png', 'b.png', 'c.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+    ]);
 
     expect(book.getPageCount()).toBe(3);
     expect(book.getCurrentPageIndex()).toBe(0);
@@ -71,12 +75,20 @@ describe('canvas mode', () => {
 
   test('updateFromImages swaps the collection and reports the rebuild', async () => {
     const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const rebuilt = vi.fn();
     book.on('collectionRebuild', rebuilt);
 
-    await book.updateFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await book.updateFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
 
     expect(book.getPageCount()).toBe(4);
     expect(rebuilt).toHaveBeenCalledTimes(1);
@@ -86,7 +98,11 @@ describe('canvas mode', () => {
 
   test('turning pages advances the current index', async () => {
     const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+    ]);
 
     book.turnToPage(2);
     expect(book.getCurrentPageIndex()).toBe(2);
@@ -98,7 +114,7 @@ describe('canvas mode', () => {
 
   test('a load that lands after destroy attaches nothing', async () => {
     const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
-    const loading = book.loadFromImages(['a.png']);
+    const loading = book.loadFromImages([{ src: 'a.png', alt: 'Page a' }]);
     book.destroy();
 
     await expect(loading).resolves.toBeUndefined();
@@ -120,7 +136,12 @@ describe('canvas mode', () => {
     Object.defineProperty(host, 'offsetWidth', { configurable: true, get: () => 300 });
     Object.defineProperty(host, 'offsetHeight', { configurable: true, get: () => 300 });
 
-    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
     const dist = book.getUI().getDistElement();
     Object.defineProperty(dist, 'offsetWidth', { configurable: true, get: () => 300 });
     Object.defineProperty(dist, 'offsetHeight', { configurable: true, get: () => 300 });
@@ -166,7 +187,12 @@ describe('canvas mode', () => {
     Object.defineProperty(host, 'offsetWidth', { configurable: true, get: () => 500 });
     Object.defineProperty(host, 'offsetHeight', { configurable: true, get: () => 300 });
 
-    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
     const dist = book.getUI().getDistElement();
     Object.defineProperty(dist, 'offsetWidth', { configurable: true, get: () => 500 });
     Object.defineProperty(dist, 'offsetHeight', { configurable: true, get: () => 300 });
@@ -199,7 +225,11 @@ describe('canvas mode', () => {
     Object.defineProperty(host, 'offsetWidth', { configurable: true, get: () => 300 });
     Object.defineProperty(host, 'offsetHeight', { configurable: true, get: () => 300 });
 
-    await book.loadFromImages(['a.png', 'b.png', 'c.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+    ]);
     const dist = book.getUI().getDistElement();
     Object.defineProperty(dist, 'offsetWidth', { configurable: true, get: () => 300 });
     Object.defineProperty(dist, 'offsetHeight', { configurable: true, get: () => 300 });
@@ -248,7 +278,12 @@ describe('canvas mode: the leaf under the fold (StPageFlip #44)', () => {
    */
   test('the same page is not painted twice when it is its own bottom page', async () => {
     const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
 
     const render = book.getRender() as unknown as {
       flippingPage: unknown;
@@ -307,7 +342,10 @@ describe('canvas mode honours pageBackground (StPageFlip #56)', () => {
       flippingTime: 0,
       pageBackground: '#f4ecd8',
     });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const paper = paperColourAtClear(ctx);
     (book.getRender() as unknown as { drawFrame: () => void }).drawFrame();
@@ -319,7 +357,10 @@ describe('canvas mode honours pageBackground (StPageFlip #56)', () => {
 
   test('a settings object mutated behind updateSettings cannot reach fillStyle', async () => {
     const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     // Skips `Settings.getSettings` entirely — the getter hands back the live
     // object. The draw-time guard is what stops it.
@@ -340,7 +381,10 @@ describe('canvas mode honours pageBackground (StPageFlip #56)', () => {
       flippingTime: 0,
       pageBackground: 'url(javascript:alert(1))',
     });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const paper = paperColourAtClear(ctx);
     (book.getRender() as unknown as { drawFrame: () => void }).drawFrame();
@@ -374,7 +418,10 @@ describe('canvas frame state and paper (r4 defect batch)', () => {
     }
 
     const book = new PageFlip(host, { width: 100, height: 150, usePortrait: true });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
     await new Promise((r) => requestAnimationFrame(() => r(null)));
 
     // Balanced: every save is matched. Upstream clipped after painting and
@@ -424,7 +471,10 @@ describe('canvas frame state and paper (r4 defect batch)', () => {
       usePortrait: true,
       pageBackground: '#f5f0e6',
     });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
     await new Promise((r) => requestAnimationFrame(() => r(null)));
 
     // G2: the leaf itself is opaque paper, so a transparent PNG cannot read
@@ -450,7 +500,10 @@ describe('canvas frame state and paper (r4 defect batch)', () => {
   test('G5: clear() works in canvas mode instead of throwing on an HTMLUI cast', async () => {
     stubCanvas2d();
     const book = new PageFlip(host, { width: 100, height: 150 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     expect(() => {
       book.clear();
@@ -463,7 +516,10 @@ describe('canvas frame state and paper (r4 defect batch)', () => {
     stubCanvas2d();
     const book = new PageFlip(host, { width: 100, height: 150 });
 
-    const pending = book.loadFromImages(['a.png', 'b.png']);
+    const pending = book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
     // The newer load wins even though it starts while the import is in flight.
     const nodes = [document.createElement('div'), document.createElement('div')];
     for (const n of nodes) host.appendChild(n);
@@ -494,7 +550,13 @@ describe('collection replacement and teardown (G4, G6, G10)', () => {
 
   test('G6: a shrinking update clamps, and reports where it landed', async () => {
     const book = new PageFlip(host, { width: 100, height: 150, usePortrait: true });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png', 'e.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+      { src: 'e.png', alt: 'Page e' },
+    ]);
     book.turnToPage(4);
     expect(book.getCurrentPageIndex()).toBe(4);
 
@@ -503,7 +565,10 @@ describe('collection replacement and teardown (G4, G6, G10)', () => {
       seen.push((e.data as { page: number }).page);
     });
 
-    await book.updateFromImages(['a.png', 'b.png']);
+    await book.updateFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     // show() silently returns for an out-of-range index, so page 4 used to be
     // kept and reported while the render still held the old collection's pages.
@@ -521,12 +586,20 @@ describe('collection replacement and teardown (G4, G6, G10)', () => {
       usePortrait: true,
       flippingTime: 1000,
     });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+      { src: 'd.png', alt: 'Page d' },
+    ]);
 
     book.flipNext();
     expect(book.getState()).not.toBe('read');
 
-    await book.updateFromImages(['x.png', 'y.png']);
+    await book.updateFromImages([
+      { src: 'x.png', alt: 'Page x' },
+      { src: 'y.png', alt: 'Page y' },
+    ]);
 
     // The old turn's onAnimateEnd would otherwise commit against the new
     // collection — turning a page that belongs to a book that no longer exists.
@@ -538,7 +611,11 @@ describe('collection replacement and teardown (G4, G6, G10)', () => {
 
   test('G4: destroy releases the pages, not just the render loop', async () => {
     const book = new PageFlip(host, { width: 100, height: 150 });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+    ]);
 
     const pages = book.getPageCollection();
     expect(pages.getPageCount()).toBe(3);
@@ -568,7 +645,10 @@ describe('review follow-ups (codex task-mtey3c3u-wlsgsc)', () => {
 
   test('clear() stops the loop drawing the pages it just discarded', async () => {
     const book = new PageFlip(host, { width: 100, height: 150 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     book.clear();
 
@@ -583,7 +663,10 @@ describe('review follow-ups (codex task-mtey3c3u-wlsgsc)', () => {
 
   test('cross-mode updates are refused instead of failing deep in', async () => {
     const book = new PageFlip(host, { width: 100, height: 150 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     // Was an unconditional `as HTMLUI` cast on a CanvasUI.
     expect(() => {
@@ -600,14 +683,19 @@ describe('review follow-ups (codex task-mtey3c3u-wlsgsc)', () => {
     book.loadFromHTML(nodes);
 
     // Produced a book whose pages drew into a 2d context that does not exist.
-    await expect(book.updateFromImages(['a.png'])).rejects.toThrow(PageFlipError);
+    await expect(book.updateFromImages([{ src: 'a.png', alt: 'Page a' }])).rejects.toThrow(
+      PageFlipError,
+    );
 
     book.destroy();
   });
 
   test('G11/G4: disposing a collection detaches image loads and drops sources', async () => {
     const book = new PageFlip(host, { width: 100, height: 150 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const pages = book.getPageCollection();
     const images = Array.from({ length: pages.getPageCount() }, (_, i) => {
@@ -624,7 +712,10 @@ describe('review follow-ups (codex task-mtey3c3u-wlsgsc)', () => {
 
   test('A5: an image page reports no temporary copy', async () => {
     const book = new PageFlip(host, { width: 100, height: 150 });
-    await book.loadFromImages(['a.png', 'b.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+    ]);
 
     const page = book.getPageCollection().getPage(0);
     // Returned `this`, so a null-checking caller got a truthy non-copy.
@@ -656,7 +747,11 @@ describe('G2: the TURNING leaf is opaque, not just the static ones', () => {
       flippingTime: 1000,
       pageBackground: '#f5f0e6',
     });
-    await book.loadFromImages(['a.png', 'b.png', 'c.png']);
+    await book.loadFromImages([
+      { src: 'a.png', alt: 'Page a' },
+      { src: 'b.png', alt: 'Page b' },
+      { src: 'c.png', alt: 'Page c' },
+    ]);
 
     const rect = book.getBoundsRect();
     const pageSized: { x: number; y: number }[] = [];
