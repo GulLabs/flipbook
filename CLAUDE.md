@@ -12,7 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A maintained fork of the abandoned [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) (`page-flip@2.0.7`) and [Nodlik/react-pageflip](https://github.com/Nodlik/react-pageflip) (`2.0.3`), merged into one pnpm monorepo and published by GulLabs as `@gullabs/flipbook-core` + `@gullabs/react-flipbook`, starting at **3.0.0**.
 
-The point of the fork is to fix upstream's long-standing bugs **inside the engine** rather than by monkey-patching private methods from outside (which is what the downstream consumer, the Puddlebend picture-book reader, had been doing and losing). The full mission/spec lives outside this repo at `/Volumes/SSD/code/work/story-book/docs/GULLABS_FLIPBOOK_PROMPT.md` — read §4 (bugs + root causes) and §8 (testing strategy) before touching the flip path.
+The point of the fork is to fix upstream's long-standing bugs **inside the engine** rather than by monkey-patching private methods from outside.
 
 Upstream import points are tagged: `upstream-page-flip-2.0.7`, `upstream-react-pageflip-2.0.3`. Diff against those to see what the fork actually changed.
 

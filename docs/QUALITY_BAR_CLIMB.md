@@ -1,7 +1,7 @@
 # Quality bar climb
 
-Tracked work to raise TypeScript / ESLint strictness to the Veloir / ai-studio /
-any-llm bar. Each phase is one PR-sized unit, green `pnpm quality:ci`, and a
+Tracked work to raise TypeScript / ESLint strictness to the bar used on other
+GulLabs libraries. Each phase is one PR-sized unit, green `pnpm quality:ci`, and a
 **Codex signoff** before the next phase starts.
 
 Agent working rules: [`AGENTS.md`](../AGENTS.md). Architecture: [`CLAUDE.md`](../CLAUDE.md).

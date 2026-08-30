@@ -11,11 +11,11 @@ is not built around a renderer plug-in system.
 
 ## The short version
 
-For the Puddlebend reader specifically, a WebGL renderer is viable and would
-look categorically better than the DOM one. It is deferred because 3.0.0 is not
-released, the downstream migration has not happened, and adding a third
-renderer to an abstraction whose second renderer is vestigial is the wrong
-order of work.
+For a picture-book app that already rasterizes pages to bitmaps, a WebGL
+renderer is viable and would look categorically better than the DOM one. It is
+deferred because 3.0.0 is not released, the downstream migration has not
+happened, and adding a third renderer to an abstraction whose second renderer
+is vestigial is the wrong order of work.
 
 When it is revisited, the important finding is this: **do not implement
 `Render`.** The seam a WebGL renderer needs is the state machine, not the
@@ -30,12 +30,12 @@ The usual objections to a WebGL flipbook did not survive contact with the
 actual downstream app. Recorded with evidence so nobody re-litigates from
 first principles:
 
-| Objection                                    | Why it does not apply                                                                                                                                                                  |
-| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| three.js is ~600 kB against an 11 kB engine  | `apps/web/package.json` already depends on `three@^0.185.1` and `@react-three/fiber@^9.6.1`. It is loaded either way; marginal cost is near zero.                                      |
-| Pages become textures, so you lose live HTML | The pages are **already** rasterized. `reader-leaves.tsx`: _"Composed leaves ARE the HTML templates … rasterized at 1600×2400 with folio + type baked in."_ That cost is already paid. |
-| Text selection and a11y regress              | Already gone for the same reason — the type is pixels. Alt text on the `<img>` is the accessibility story today and would remain so.                                                   |
-| It is a rendering engine to hand-roll        | r3f is already in the stack, so this is components, not an engine.                                                                                                                     |
+| Objection                                    | Why it does not apply                                                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| three.js is ~600 kB against an 11 kB engine  | Only cheap if the consuming app already loads three / r3f. A consumer that does not should not take this renderer.                   |
+| Pages become textures, so you lose live HTML | Some picture-book apps already rasterize composed HTML to page-sized bitmaps before flip. That cost is already paid there.           |
+| Text selection and a11y regress              | Already gone for the same reason — the type is pixels. Alt text on the `<img>` is the accessibility story today and would remain so. |
+| It is a rendering engine to hand-roll        | If r3f is already in the consuming stack, this is components, not an engine.                                                         |
 
 None of this generalises to other consumers of `@gullabs/react-flipbook`. A
 consumer with live HTML pages pays all four costs. If this ever ships as a
@@ -134,9 +134,8 @@ piece of work in this repo. Until then, the DOM renderer is the product.
 None of this starts before:
 
 - 3.0.0 is published, and
-- the downstream migration is done — the `installPortraitBackCurl` monkey-patch
-  layer (`apps/web/lib/reader-flip.ts`, 588 lines as of 2026-08-28) deletes
-  cleanly and the reader still works.
+- the downstream migration is done — consumers that monkey-patched the engine
+  for a portrait back-curl can delete that layer and the book still works.
 
 That migration is the acceptance test for the fixes this fork was built to
 deliver. A second renderer built on unverified fixes inherits every one of

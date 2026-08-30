@@ -232,7 +232,7 @@ if (phase2) {
     if (fit === 'contain' || fit === 'cover' || fit === 'fill') partial['imageFit'] = fit;
     if (inset !== undefined && Number.isFinite(inset)) partial['imageInset'] = inset;
     if (Object.keys(partial).length > 0) {
-      book.updateSettings(partial as Parameters<PageFlip['updateSettings']>[0]);
+      book.updateSettings(partial);
     }
   } catch {
     // ignore

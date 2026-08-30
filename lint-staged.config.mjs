@@ -1,5 +1,5 @@
 /**
- * lint-staged — monorepo-aware (ai-studio pattern).
+ * lint-staged — monorepo-aware.
  * Root eslint.config.mjs uses packages/* globs, so paths can stay repo-relative.
  */
 export default {

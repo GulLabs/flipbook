@@ -7,6 +7,8 @@ coverage/
 .turbo/
 *.tsbuildinfo
 .craftsman/
+.remember/
+.claude/
 .idea/
 .vscode/
 *.swp

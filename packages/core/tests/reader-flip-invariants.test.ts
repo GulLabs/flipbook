@@ -1,6 +1,6 @@
 /**
- * Port of the six Puddlebend reader-flip regression modes onto the shipped
- * engine. These used to live behind `installPortraitBackCurl` monkey-patches.
+ * Portrait / landscape curl invariants that used to be enforced by a
+ * consumer-side monkey-patch of the engine.
  */
 import { describe, expect, test } from 'vitest';
 import {
@@ -35,7 +35,7 @@ function pages(...ids: string[]): Leaf[] {
   });
 }
 
-describe('reader-flip invariants without installPortraitBackCurl', () => {
+describe('reader-flip invariants without consumer monkey-patches', () => {
   test('1. portrait BACK copies the current leaf', () => {
     const list = pages('0', '1', '2');
     expect(getPortraitFlippingPage(list, 2, FlipDirection.BACK).id).toBe('copy-2');

@@ -27,44 +27,40 @@ is used deliberately throughout this document:
 
 Every decision below states its post-publish reversal cost in those terms.
 
-## What the downstream consumer actually does
+## What the original consuming app actually does
 
-Read before arguing with any decision here. Source:
-`/Volumes/SSD/code/work/story-book/apps/web/components/reader/` and
-`apps/web/lib/reader-flip.ts`.
+Read before arguing with any decision here. These are product facts from a
+private picture-book reader this engine was forked to serve. Paths and product
+names stay out of this repository.
 
 1. **Pages are pre-rendered JPEGs**, 1600×2400, composed from HTML templates
-   with the folio and typography already baked in (`reader-leaves.tsx:109-125`).
-   This is the entire reason canvas mode is being made first-class.
+   with the folio and typography already baked in. This is the entire reason
+   canvas mode is being made first-class.
 2. **They are drawn `object-contain`, centred, never `object-cover`** — cropping
    would cut the baked-in folio. Today's canvas renderer stretches to the leaf
    rect (A3), which is `fill`. So the default fit is a real behaviour decision,
    not a formality.
-3. **The inset is a fraction, not pixels.** `LEAF_INSET_FRAC = 0.028`, applied as
-   `padding: 2.8%` (`reader-leaves.tsx:30`). It scales with the book, which is
-   resized continuously (`measureBook`). A `number` of CSS px — which is what
-   `CANVAS_FIRST_CLASS.md` currently proposes — cannot express this consumer's
-   only actual use of an inset.
-4. **`alt` exists, is meaningful, and is per page**: `pageAlt(page, bookTitle)`,
-   `Front cover of ${title}`, `Back cover of ${title}`. So requiring `alt` costs
-   this consumer nothing — they already compute it.
-5. **A failed image already has product behaviour**: `BackCoverLeaf` holds
-   `failed` state, `onError` swaps in a different leaf entirely
-   (`reader-leaves.tsx:175-193`). Any error contract that only _reports_ and
-   offers no way to substitute artwork is below the bar this consumer already
-   meets in HTML mode.
-6. **Images are same-origin today** — served out of the Next.js public root with
-   `?v=` versioning (`lib/media-version.ts`, `lib/media-headers.ts`). R2 is in
-   use for PDFs only. So C7 is not currently biting _this_ consumer; see
-   "Questions only the owner can answer".
-7. **Not every leaf is an image.** The reader renders narration-only text
-   leaves, `BlankLeaf` pads, an `EndPage` fallback and a title-only cover
-   fallback (`renderLeaf`, `reader-leaves.tsx:196-207`). An images-only canvas
-   mode cannot represent any of them. This is the single most important fact in
-   this list and it is a product question, not a technical one — see the last
-   section.
-8. **The book is 32-ish leaves, remounted on layout change** (`key={size.layout}`),
-   with `showCover`, `size: 'fixed'`, `usePortrait={!desk}` and `flippingTime`
+3. **The inset is a fraction, not pixels.** Applied as a few percent of padding
+   so it scales with the book, which is resized continuously. A `number` of CSS
+   px — which is what `CANVAS_FIRST_CLASS.md` currently proposes — cannot
+   express this consumer's only actual use of an inset.
+4. **`alt` exists, is meaningful, and is per page** (front cover of the title,
+   back cover of the title, and so on). Requiring `alt` costs this consumer
+   nothing — they already compute it.
+5. **A failed image already has product behaviour**: `onError` swaps in a
+   different leaf entirely. Any error contract that only _reports_ and offers
+   no way to substitute artwork is below the bar this consumer already meets
+   in HTML mode.
+6. **Images are same-origin today** — served from the app origin with a cache
+   buster. Object storage is used for PDFs only. So C7 is not currently biting
+   _this_ consumer; see "Questions only the owner can answer".
+7. **Not every leaf is an image.** The reader also has narration-only text
+   leaves, blank pads, an end-page fallback and a title-only cover fallback.
+   An images-only canvas mode cannot represent any of them. This is the single
+   most important fact in this list and it is a product question, not a
+   technical one — see the last section.
+8. **The book is a few dozen leaves, remounted on layout change**, with
+   `showCover`, `size: 'fixed'`, portrait on small viewports and `flippingTime`
    driven by reduced motion.
 
 ---
@@ -145,7 +141,7 @@ for every page of the book. So:
   one, not per page, and via the same `console.warn` channel the pack script
   already asserts survives minification (`scripts/pack-html-engine.mjs:82`).
 - `alt: ''` is honoured exactly: the page is `aria-hidden` in the mirror and no
-  warning fires. A blank pad leaf is a real thing (the downstream `BlankLeaf`),
+  warning fires. A blank pad leaf is a real thing in picture-book layouts,
   and it deserves a way to say so.
 
 The engine never _invents_ alt text and never silently drops the question.
@@ -196,8 +192,8 @@ the descriptor path, since the constructor is the only place `src` is set.
   and warnings are filtered, dropped in production builds and ignored. Also
   unreversible in the expensive direction (see the table).
 - **A `title`/`label` field instead of `alt`.** `alt` is the word every web
-  author already knows for this, and the downstream consumer literally names its
-  helper `pageAlt`.
+  author already knows for this, and the original consuming app already
+  computes per-page alt text under that name.
 - **`ImageBitmap` / `Blob` / `HTMLImageElement` union for `src`.** Genuinely
   attractive (a consumer with a `pdfjs` canvas has no URL), but it changes
   ownership: the engine currently owns creation _and_ disposal of the bitmap,
@@ -288,7 +284,7 @@ public replaceImage(page: number, source: ImagePageSource): void;
 Re-arms one leaf with a new descriptor — same `src` with a cache-buster for a
 retry, or different art for a fallback. It increments that leaf's `attempt`,
 resets its failed state, and redraws. Grounded directly in the downstream
-`BackCoverLeaf` behaviour (fact 5 above), which no report-only contract can
+failed-image swap (fact 5 above), which no report-only contract can
 express. Automatic retry with backoff was rejected: for a genuinely missing book
 it multiplies requests, it hides the failure behind a delay, and the right
 backoff is a consumer policy.
@@ -581,9 +577,8 @@ than `NaN` (the `Helper.ts` I16/I18 family of lessons).
 ### Rejected alternatives
 
 - **Book setting only.** Cannot express a full-bleed cover in a `contain` book —
-  the downstream cover is `object-cover` while every interior page is
-  `object-contain` (`reader-leaves.tsx:94` vs `:124`). This is not hypothetical;
-  it is one file.
+  the original consuming app uses `object-cover` on the cover and
+  `object-contain` on every interior page. This is not hypothetical.
 - **Per-page only.** Forces the setting onto all 500 descriptors of a uniform
   book and makes `updateSettings` useless for it.
 - **Keeping `fill` as the default for compatibility.** There is nothing to be
@@ -704,17 +699,17 @@ what is provably identical.
 
 These depend on product facts, not on reading code:
 
-1. **Does canvas mode need to render non-image leaves?** The downstream reader
-   has four kinds that are not images: narration-only text pages, blank pads,
-   the `EndPage` fallback and the title-only cover fallback. An images-only
+1. **Does canvas mode need to render non-image leaves?** The original consuming
+   app has four kinds that are not images: narration-only text pages, blank pads,
+   an end-page fallback and a title-only cover fallback. An images-only
    canvas mode cannot render any of them, which means that consumer stays on
    HTML mode and canvas mode's first real user is somebody else. **This
    reframes who canvas mode is for**, and every decision above is written for
    "pre-rendered page images, one bitmap per leaf". If the answer is "canvas must
    also draw text leaves", this ADR needs revisiting before Phase 2, not after.
-2. **Will book images ever be served cross-origin?** Today they are same-origin
-   (`lib/media-version.ts`); R2 is used for PDFs only. If a CDN move is planned,
-   the `imageCrossOrigin` book-level default becomes worth having on day one; if
+2. **Will book images ever be served cross-origin?** Today they are same-origin;
+   object storage is used for PDFs only. If a CDN move is planned, the
+   `imageCrossOrigin` book-level default becomes worth having on day one; if
    not, per-page `crossOrigin` alone is enough and the book-level setting is
    bytes for nobody.
 3. **Is `replaceImage` in scope for the first canvas release?** It is the only
@@ -816,8 +811,8 @@ This ADR proposed `replaceImage(page, source)`; Codex proposed
 - `retryImage(page)` re-attempts **the same URL**. It is the right response to a
   transient network failure, and it is what a "try again" button does.
 - `replaceImage(page, source)` swaps in a **different** URL. It is the right
-  response to a permanently missing asset, and it is exactly what the downstream
-  consumer already does in `BackCoverLeaf`'s `onError` handler.
+  response to a permanently missing asset, and it is exactly what the original
+  consuming app already does in its failed-image `onError` handler.
 
 Neither expresses the other: retrying a 404 fails again forever, and swapping to
 recover from a dropped connection needs a URL the consumer does not have. Both
@@ -826,14 +821,13 @@ ship, both canvas-only, both throwing `WRONG_MODE` in HTML mode.
 ### Still blocked on the owner
 
 Nothing above unblocks the one question that matters: **canvas mode as specified
-here is images-only, and the downstream consumer's book is not.** Verified in
-its own source rather than assumed — `apps/web/lib/book-leaves.ts` defines five
-leaf kinds and `renderLeaf` in `reader-leaves.tsx` shows that `inside-cover` and
-`pad` draw `<BlankLeaf />`, `front-cover` falls back to a text title when
-`coverImage` is null, and `ReaderPage` renders text whenever `page.imagePath` is
-absent. An images-only canvas mode cannot draw that book, so either canvas mode
-grows non-image leaves (a materially larger Phase 2) or its first real consumer
-is somebody else. Every decision in this ADR assumes one bitmap per leaf.
+here is images-only, and the original consuming app's book is not.** Verified
+in that app rather than assumed — it has blank inside-cover and pad leaves, a
+front cover that falls back to a text title when there is no cover image, and
+text whenever a page has no image. An images-only canvas mode cannot draw that
+book, so either canvas mode grows non-image leaves (a materially larger Phase 2)
+or its first real consumer is somebody else. Every decision in this ADR assumes
+one bitmap per leaf.
 
 ---
 
@@ -877,14 +871,13 @@ accessibility. Canvas exists for what HTML mode does badly: books that are
 overwhelmingly images, where a DOM node per page is the cost. A canvas mode that
 grew text and HTML would be a second, worse HTML renderer.
 
-**And the bridge already exists in practice.** The downstream consumer's text
-pages are not text at run time — its pipeline rasterizes HTML templates to
-1600×2400 images with the type baked in
-(`apps/web/components/reader/reader-leaves.tsx`). Its text branches are
-fallbacks for when rasterization has not run. So "if you need text, give HTML"
-is not a workaround there; it is the existing design, and the rasterizer is the
-bridge. Any other consumer has the same two honest options — use HTML mode, or
-render the page to an image.
+**And the bridge already exists in practice.** The original consuming app's
+text pages are not text at run time — its pipeline rasterizes HTML templates
+to 1600×2400 images with the type baked in. Its text branches are fallbacks
+for when rasterization has not run. So "if you need text, give HTML" is not a
+workaround there; it is the existing design, and the rasterizer is the bridge.
+Any other consumer has the same two honest options — use HTML mode, or render
+the page to an image.
 
 ### Consequences for this ADR
 

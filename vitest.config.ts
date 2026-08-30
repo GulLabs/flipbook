@@ -6,7 +6,6 @@ const reactSrc = path.resolve(import.meta.dirname, 'packages/react/src/index.ts'
 
 /**
  * Vitest workspace projects + v8 coverage.
- * Pattern mirrors ai-studio vitest.config.base + any-llm thresholds style.
  *
  * Global floors are the coarse net; `scripts/check-coverage-areas.mjs` holds the
  * per-file floors that stop the average from hiding an untested renderer.
