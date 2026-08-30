@@ -46,6 +46,24 @@ The `init` event's `page` is now the index the book actually settled on.
 Consumers seeding page state from `init` no longer start desynced. If you relied
 on `init` echoing your `startPage` back, read it from settings instead.
 
+### `clear()` now emits events
+
+`clear()` emits `update` and `collectionRebuild` with `page: 0` and
+`pageCount: 0`. A handler that assumed `collectionRebuild` only ever meant "new
+pages arrived" will now also see it for "the book emptied" — branch on
+`pageCount === 0`. Previously `clear()` was silent and `getCurrentPageIndex()`
+kept returning the pre-clear index; that index is now `0`.
+
+### `updateSettings()` ignores `showCover` and `startPage`
+
+Both are construction-time: `showCover` is baked into the page collection when
+spreads are created, and `startPage` is read once at load. Passing a **changed**
+value now leaves `getSettings()` reporting the value actually in force and logs
+a warning; previously the new value was stored and silently did nothing.
+Passing the current value — which spreading a whole settings object does — is
+unchanged and silent. To change either, construct a new `PageFlip`; the React
+binding already remounts on `showCover` via `remountKeyOf`.
+
 ### Settings are validated for finiteness, not just sign
 
 `getSettings` now throws `PageFlipError` for values it previously accepted:

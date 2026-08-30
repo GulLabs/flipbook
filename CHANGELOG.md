@@ -4,6 +4,29 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Fixed — engine lifecycle
+
+- `clear()` now announces the emptied book. It emits `update` (`page: 0`) and
+  `collectionRebuild` (`page: 0, pageCount: 0`) — the same pair
+  `updateFromHtml` / `replacePages` emit — so a consumer has a signal that the
+  book emptied instead of silently holding a stale page number.
+- `clear()` cancels the `init` still pending from a load. Loading and clearing
+  in the same tick used to emit `init` a millisecond later, announcing a
+  non-zero page for a book with no pages in it.
+- `getCurrentPageIndex()` returns `0` for an empty book instead of the index it
+  held before the collection was emptied.
+- `loadFromHTML()` on a destroyed engine is a no-op. It previously built the
+  whole `.stf__parent` / `.stf__wrapper` / `.stf__block` shell and moved the
+  caller's page elements into it before tearing it back down — and the teardown
+  returns adopted nodes to the engine HOST, not to the parent they came from,
+  so the consumer's DOM was permanently relocated. That is the ownership churn
+  that surfaces as `NotFoundError` under React.
+- `updateSettings()` no longer merges `showCover` or `startPage`. Both are read
+  once while the book is built, so accepting them only made `getSettings()`
+  report a value in force nowhere. A changed value is refused and reported once;
+  passing the current value — as spreading a whole settings object does — stays
+  silent.
+
 ### Fixed — settings validation
 
 - **A non-finite dimension is now an error, not a blank book.** The checks were

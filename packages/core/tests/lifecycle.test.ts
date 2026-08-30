@@ -754,3 +754,209 @@ describe('emptying a book releases the renderer (Codex round 2)', () => {
     host.remove();
   });
 });
+
+/**
+ * L1–L4: the lifecycle holes left after the `destroyed`-guard /
+ * clamp-then-report-resolved work landed on the other paths.
+ */
+describe('PageFlip lifecycle — load, init timer, clear and settings', () => {
+  test('L1: loadFromHTML on a destroyed engine does not touch the caller DOM', () => {
+    const hostEl = host();
+    sizeElement(hostEl, 380, 300);
+
+    // The pages start in a container the CALLER owns. That is the thing the
+    // guard protects: a load on a dead engine built the whole shell, adopted
+    // these nodes into `.stf__block`, and the teardown then handed them back to
+    // the HOST element instead of here — silently relocating consumer DOM.
+    const origin = document.createElement('div');
+    document.body.appendChild(origin);
+    const pages = makePages(4);
+    for (const p of pages) origin.appendChild(p);
+
+    const book = new PageFlip(hostEl, { width: 200, height: 300, size: 'fixed' });
+    book.destroy();
+
+    expect(() => {
+      book.loadFromHTML(pages);
+    }).not.toThrow();
+
+    for (const p of pages) expect(p.parentElement).toBe(origin);
+    expect(origin.children).toHaveLength(4);
+    // No shell was built, so nothing was mounted into (or stamped onto) the host.
+    expect(hostEl.children).toHaveLength(0);
+    expect(hostEl.classList.contains('stf__parent')).toBe(false);
+    expect(hostEl.querySelector('.stf__block')).toBeNull();
+
+    // Still dead, and still refusing to serve state.
+    expect(book.isDestroyed()).toBe(true);
+    expect(() => book.getPageCollection()).toThrow(PageFlipError);
+
+    origin.remove();
+    hostEl.remove();
+  });
+
+  test('L2: clear() cancels the pending init event', async () => {
+    vi.useFakeTimers();
+    try {
+      const hostEl = host();
+      sizeElement(hostEl, 380, 300);
+      const pages = makePages(4);
+      const book = new PageFlip(hostEl, { width: 200, height: 300, size: 'fixed' });
+
+      const inits: unknown[] = [];
+      book.on('init', (e) => inits.push(e.data));
+
+      book.loadFromHTML(pages);
+      book.turnToPage(2);
+      book.clear();
+
+      // The assertion is about the EVENT, not about "nothing threw": the timer
+      // fires ~1 ms later, and `PageCollection.destroy()` leaves
+      // `currentPageIndex` alone, so this used to announce a non-zero page for
+      // a book with no pages in it.
+      await vi.advanceTimersByTimeAsync(50);
+      expect(inits).toHaveLength(0);
+
+      book.destroy();
+      hostEl.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('L2 control: a load that is NOT cleared still emits init', async () => {
+    vi.useFakeTimers();
+    try {
+      const hostEl = host();
+      sizeElement(hostEl, 380, 300);
+      const pages = makePages(4);
+      const book = new PageFlip(hostEl, { width: 200, height: 300, size: 'fixed' });
+
+      const inits: unknown[] = [];
+      book.on('init', (e) => inits.push(e.data));
+
+      book.loadFromHTML(pages);
+      await vi.advanceTimersByTimeAsync(50);
+
+      // Without this, "cancel the timer everywhere" would pass the test above
+      // while deleting the event outright.
+      expect(inits).toHaveLength(1);
+
+      book.destroy();
+      hostEl.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('L2 control: updateFromHtml keeps the pending init, reporting the new book', async () => {
+    vi.useFakeTimers();
+    try {
+      const hostEl = host();
+      sizeElement(hostEl, 380, 300);
+      const book = new PageFlip(hostEl, { width: 200, height: 300, size: 'fixed' });
+
+      const inits: { page: number }[] = [];
+      book.on('init', (e) => inits.push(e.data as { page: number }));
+
+      // This is exactly what the React binding does: build the shell empty,
+      // then fill it in the same tick. Cancelling the timer here would mean a
+      // React consumer never receives `init` at all.
+      book.loadFromHTML([]);
+      book.updateFromHtml(makePages(4));
+
+      await vi.advanceTimersByTimeAsync(50);
+      expect(inits).toHaveLength(1);
+      expect(inits[0]?.page).toBe(0);
+
+      book.destroy();
+      hostEl.remove();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('L3: clear() reports the emptied book and resets the index', () => {
+    const hostEl = host();
+    sizeElement(hostEl, 380, 300);
+    const pages = makePages(4);
+    const book = new PageFlip(hostEl, {
+      width: 200,
+      height: 300,
+      size: 'fixed',
+      usePortrait: false,
+    });
+    book.loadFromHTML(pages);
+    book.turnToPage(2);
+    expect(book.getCurrentPageIndex()).toBe(2);
+
+    const updates: { page: number }[] = [];
+    const rebuilds: { page: number; pageCount: number }[] = [];
+    book.on('update', (e) => updates.push(e.data as { page: number }));
+    book.on('collectionRebuild', (e) =>
+      rebuilds.push(e.data as { page: number; pageCount: number }),
+    );
+
+    book.clear();
+
+    // Same pair, same shape as `updateFromHtml` / `replacePages`, so a listener
+    // needs no special case for "the book emptied".
+    expect(rebuilds).toEqual([{ page: 0, pageCount: 0 }]);
+    expect(updates).toHaveLength(1);
+    expect(updates[0]?.page).toBe(0);
+
+    // And the getter agrees with what was announced. `PageCollection.destroy()`
+    // empties the pages but leaves `currentPageIndex` at 2, so the boundary is
+    // where this has to be resolved.
+    expect(book.getPageCount()).toBe(0);
+    expect(book.getCurrentPageIndex()).toBe(0);
+
+    book.destroy();
+    hostEl.remove();
+  });
+
+  test('L4: updateSettings refuses construction-time settings instead of lying', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const hostEl = host();
+      sizeElement(hostEl, 380, 300);
+      const book = new PageFlip(hostEl, {
+        width: 200,
+        height: 300,
+        size: 'fixed',
+        showCover: false,
+        startPage: 0,
+      });
+      book.loadFromHTML(makePages(4));
+
+      const returned = book.updateSettings({ showCover: true, startPage: 3, flippingTime: 7 });
+
+      // `showCover` is baked into the collection's spreads and `startPage` is
+      // read once in `attachMode`, so accepting them into `this.setting` made
+      // `getSettings()` report a value that is not in force anywhere.
+      expect(returned.showCover).toBe(false);
+      expect(returned.startPage).toBe(0);
+      expect(book.getSettings().showCover).toBe(false);
+      expect(book.getSettings().startPage).toBe(0);
+      // A genuinely live setting in the same call still applies.
+      expect(book.getSettings().flippingTime).toBe(7);
+
+      expect(warn).toHaveBeenCalledTimes(1);
+      const message = String(warn.mock.calls[0]?.[0]);
+      expect(message).toContain('showCover');
+      expect(message).toContain('startPage');
+
+      // Echoing the current values back — what a caller spreading the whole
+      // settings object does — is not a mistake and must stay silent.
+      warn.mockClear();
+      book.updateSettings({ ...book.getSettings(), flippingTime: 9 });
+      expect(warn).not.toHaveBeenCalled();
+      expect(book.getSettings().flippingTime).toBe(9);
+
+      book.destroy();
+      hostEl.remove();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});

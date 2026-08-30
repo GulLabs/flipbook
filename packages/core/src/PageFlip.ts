@@ -18,6 +18,17 @@ import type { UI } from './UI/UI';
 import { PageFlipError } from './errors';
 
 /**
+ * Settings that are consumed once while the book is being built and never read
+ * again, so `updateSettings` cannot make them take effect.
+ *
+ * `showCover` is captured by `PageCollection`'s constructor and decides the
+ * spread layout; `startPage` is read only by `attachMode`. Deliberately NOT
+ * including `size` / `width` / `height`: `updateSettings` restamps those via
+ * `ui.applyHostSize`, so they are live.
+ */
+const CONSTRUCTION_TIME_SETTINGS = ['showCover', 'startPage'] as const;
+
+/**
  * Class representing a main PageFlip object
  *
  * @extends EventObject
@@ -92,10 +103,7 @@ export class PageFlip extends EventObject {
    */
   public destroy(): void {
     this.destroyed = true;
-    if (this.initTimer !== null) {
-      clearTimeout(this.initTimer);
-      this.initTimer = null;
-    }
+    this.cancelPendingInit();
     // May be called before create() finishes wiring render/ui.
     this.render?.stop();
     this.ui?.destroy();
@@ -123,6 +131,40 @@ export class PageFlip extends EventObject {
 
   public isDestroyed(): boolean {
     return this.destroyed;
+  }
+
+  /**
+   * Drop a scheduled `init`.
+   *
+   * `init` is a one-shot "the book is ready" announcement, so this is
+   * deliberately NOT called from `updateFromHtml` / `replacePages`: those keep
+   * the same `ui` and `render` the pending callback closed over, and the
+   * callback reads the resolved index when it fires — so a pending `init`
+   * simply reports the newer collection, correctly. Cancelling it there would
+   * suppress `init` entirely for the React binding, which loads an empty book
+   * (`loadFromHTML([])`) and fills it with `updateFromHtml` in the same tick.
+   *
+   * `clear()` is the opposite case: there is no book left to announce.
+   */
+  private cancelPendingInit(): void {
+    if (this.initTimer !== null) {
+      clearTimeout(this.initTimer);
+      this.initTimer = null;
+    }
+  }
+
+  /**
+   * The page index the book has actually settled on, as a caller can observe it.
+   *
+   * `PageCollection.destroy()` empties the page array but does not reset
+   * `currentPageIndex`, so an emptied collection keeps reporting the index it
+   * held when it was full. Every path that can produce an empty book already
+   * reports `0` for it (`attachMode`, `updateFromHtml`, `replacePages`); this
+   * is that same rule in one place, so the getter and the events cannot drift.
+   */
+  private resolvedPageIndex(pages: PageCollection | null): number {
+    if (pages === null || pages.getPageCount() === 0) return 0;
+    return pages.getCurrentPageIndex();
   }
 
   /**
@@ -215,7 +257,7 @@ export class PageFlip extends EventObject {
       this.pages.show(target);
     }
 
-    const resolved = pageCount === 0 ? 0 : this.pages.getCurrentPageIndex();
+    const resolved = this.resolvedPageIndex(this.pages);
 
     this.trigger('update', this, {
       page: resolved,
@@ -267,7 +309,7 @@ export class PageFlip extends EventObject {
     const pageCount = pages.getPageCount();
     pages.show(pageCount === 0 ? 0 : Math.min(Math.max(this.setting.startPage, 0), pageCount - 1));
 
-    if (this.initTimer !== null) clearTimeout(this.initTimer);
+    this.cancelPendingInit();
     this.initTimer = setTimeout(() => {
       this.initTimer = null;
       if (this.destroyed) return;
@@ -279,7 +321,7 @@ export class PageFlip extends EventObject {
       // load), which re-resolves the spread. Reporting what the book actually
       // shows when the event fires is the only version a consumer can trust.
       this.trigger('init', this, {
-        page: this.pages?.getCurrentPageIndex() ?? 0,
+        page: this.resolvedPageIndex(this.pages),
         mode: render.getOrientation(),
       });
     }, 1);
@@ -320,6 +362,17 @@ export class PageFlip extends EventObject {
    * @param {(NodeListOf<HTMLElement>|HTMLElement[])} items - List of pages as HTML Element
    */
   public loadFromHTML(items: NodeListOf<HTMLElement> | HTMLElement[]): void {
+    // L1: `attachMode` refuses to attach to a destroyed engine, so this used to
+    // "work" — but only after `new HTMLUI(...)` had built the
+    // `.stf__parent`/`.stf__wrapper`/`.stf__block` shell, ADOPTED the caller's
+    // page nodes into the block and called `setHandlers()`. The teardown then
+    // handed those nodes back to the HOST element, not to the parent they came
+    // from, so a load on a dead engine silently relocated consumer-owned DOM.
+    // Under React that reparenting is the `NotFoundError` class of failure.
+    // Guard before anything is constructed, exactly as `updateFromHtml` and
+    // `replacePages` do.
+    if (this.destroyed) return;
+
     this.nextGeneration();
 
     const ui = new HTMLUI(this.block, this, this.setting, items);
@@ -417,7 +470,7 @@ export class PageFlip extends EventObject {
       pages.show(target);
     }
 
-    const resolved = pageCount === 0 ? 0 : pages.getCurrentPageIndex();
+    const resolved = this.resolvedPageIndex(this.pages);
 
     this.trigger('update', this, {
       page: resolved,
@@ -434,7 +487,36 @@ export class PageFlip extends EventObject {
    * layout is recalculated for portrait / size updates.
    */
   public updateSettings(partial: Partial<FlipSetting>): FlipSetting {
-    const next = new Settings().getSettings({ ...this.setting, ...partial });
+    // L4: `showCover` is baked into `PageCollection` when the spreads are
+    // created and `startPage` is read once, in `attachMode` — neither is read
+    // again, so merging a new value changed nothing except what `getSettings()`
+    // reports. That is the `swipeDistance` bug in reverse: there the engine
+    // ignored a live setting, here `getSettings()` lied about a dead one.
+    //
+    // Not a throw: passing a whole settings object back through
+    // `updateSettings` is plausible usage, and turning a silent no-op into an
+    // exception would break those callers for a value they may not even have
+    // meant to change. So the value is refused (kept out of `this.setting`, so
+    // the getter stays honest about what is actually in force) and reported
+    // once, and only when it actually DIFFERS — echoing back the current value
+    // is not a mistake and must stay silent.
+    const refused = CONSTRUCTION_TIME_SETTINGS.filter(
+      (key) =>
+        key in partial &&
+        partial[key] !== undefined &&
+        (partial[key] as unknown) !== (this.setting[key] as unknown),
+    );
+    const effective: Partial<FlipSetting> = { ...partial };
+
+    if (refused.length > 0) {
+      for (const key of refused) delete effective[key];
+      console.warn(
+        `[flipbook] updateSettings ignored construction-time setting(s): ${refused.join(', ')}. ` +
+          'These are read once when the book is built; rebuild the PageFlip instance to change them.',
+      );
+    }
+
+    const next = new Settings().getSettings({ ...this.setting, ...effective });
     const mouseChanged = next.useMouseEvents !== this.setting.useMouseEvents;
     Object.assign(this.setting, next);
 
@@ -462,17 +544,43 @@ export class PageFlip extends EventObject {
   public clear(): void {
     this.nextGeneration();
     const ui = this.uiOrThrow;
+    const render = this.renderOrThrow;
+
+    // L2: a load schedules `init` on a 1 ms timer, and only another
+    // `attachMode` used to invalidate it. `loadFromHTML(pages)` immediately
+    // followed by `clear()` therefore still announced `init` a millisecond
+    // later — and since `PageCollection.destroy()` does not reset
+    // `currentPageIndex`, it announced a NON-ZERO page for a book that no
+    // longer has any pages. There is nothing left to initialise; drop it.
+    this.cancelPendingInit();
 
     this.pagesOrThrow.destroy();
     // Emptying the collection is not enough: the renderer holds its own
     // left/right/flipping/bottom references, so the rAF loop went on painting
     // the pages that had just been discarded.
-    this.renderOrThrow.releasePages();
+    render.releasePages();
     this.flipController?.abandon();
     // Was an unconditional `as HTMLUI` cast. `CanvasUI` has no `clear()`, so
     // this threw a TypeError in canvas mode — a public method that could not be
     // called in one of the two supported modes.
     if (ui instanceof HTMLUI) ui.clear();
+
+    // L3: `clear()` emptied the book and told nobody. `updateFromHtml` and
+    // `replacePages` both end with the clamp-then-report-resolved pair, and
+    // emptying is just the pageCount === 0 case of the same operation — the one
+    // path neither covered. A consumer rendering "page 3 of 12" had no signal
+    // at all that the book was gone. Same two events, same shape, so a listener
+    // needs no special case: `update` because what is rendered changed,
+    // `collectionRebuild` because the collection did. Not `flip` (no turn
+    // happened) and not `init` (the book is not becoming ready).
+    this.trigger('update', this, {
+      page: 0,
+      mode: render.getOrientation(),
+    });
+    this.trigger('collectionRebuild', this, {
+      page: 0,
+      pageCount: 0,
+    });
   }
 
   /**
@@ -652,7 +760,9 @@ export class PageFlip extends EventObject {
    * @returns {number}
    */
   public getCurrentPageIndex(): number {
-    return this.pagesOrThrow.getCurrentPageIndex();
+    // `pagesOrThrow` first: an empty book still reports 0, but a destroyed or
+    // never-loaded one must still throw rather than answer.
+    return this.resolvedPageIndex(this.pagesOrThrow);
   }
 
   /**
