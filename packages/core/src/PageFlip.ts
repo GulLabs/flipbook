@@ -235,6 +235,15 @@ export class PageFlip extends EventObject {
    * If both listeners throw, the first error is the one rethrown — it is the
    * one that actually happened first, and it is what a caller catching today
    * already gets.
+   *
+   * E7, scope narrowed. This used to describe the loss WITHIN one event as well
+   * — two `update` listeners, the first throwing, the second never called. That
+   * half is now `EventObject.trigger`'s job: every listener for an event runs,
+   * and the first error is rethrown afterwards. What is left here is the
+   * CROSS-event guarantee, and it is still load-bearing for exactly the reason
+   * above: `trigger` rethrows synchronously, so without this try/catch an
+   * `update` listener that throws would still take `collectionRebuild` with it.
+   * Do not delete it as redundant.
    */
   private dispatchCollectionChange(page: number, pageCount: number, mode: Orientation): void {
     let failure: { err: unknown } | null = null;
@@ -901,6 +910,12 @@ export class PageFlip extends EventObject {
   /**
    * Call a state change event trigger
    *
+   * @internal Wiring seam for `Flip.setState`. Public only because `Flip` is a
+   * separate class; calling it from outside announces a state the engine is not
+   * in, and `UI.onPointerMove` reads that state to decide whether to
+   * `preventDefault()` — so a spurious READ turns page scrolling back on in the
+   * middle of a turn.
+   *
    * @param {FlippingState} newState - New  state of the object
    */
   public updateState(newState: FlippingState): void {
@@ -910,6 +925,11 @@ export class PageFlip extends EventObject {
   /**
    * Call a page number change event trigger
    *
+   * @internal Wiring seam for `PageCollection`. It only EMITS — it does not
+   * move the book — so calling it from outside fabricates a `flip` event for a
+   * page the reader is not on, which is exactly what a controlled `page` prop
+   * binding acts on. Use `turnToPage` / `flipToPage` to actually navigate.
+   *
    * @param {number} newPage - New page Number
    */
   public updatePageIndex(newPage: number): void {
@@ -918,6 +938,12 @@ export class PageFlip extends EventObject {
 
   /**
    * Call a page orientation change event trigger. Update UI and rendering area
+   *
+   * @internal Wiring seam for `Render.update`, which has already decided the
+   * orientation from the measured box. Calling it from outside rebuilds the
+   * spreads and restyles the UI for an orientation the renderer has not
+   * adopted, leaving `Render`, `UI` and `PageCollection` disagreeing about how
+   * many leaves are on screen.
    *
    * @param {Orientation} newOrientation - New page orientation (portrait, landscape)
    */

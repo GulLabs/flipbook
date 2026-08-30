@@ -1,13 +1,19 @@
 import { describe, expect, test } from 'vitest';
-// Deliberately `../src`, not `@gullabs/flipbook-core`. Vitest aliases the
-// package specifier to `src`, but `tsc` does NOT — it resolves it to whatever
-// `packages/core/dist/index.d.ts` happens to hold, i.e. the last build on this
-// machine. A type assertion written against the package specifier therefore
-// checks stale build output and can pass or fail depending on when someone
-// last ran `pnpm build`; measured while writing this file. The `cause`
-// assertion below is a type-level gate, so it has to reach the real
-// declaration.
+// `../src` alongside the package specifier, and both on purpose.
+//
+// This comment used to say the package specifier could not be trusted for a
+// type-level assertion, because `tsc` resolved it to whatever
+// `packages/core/dist/index.d.ts` last held while vitest aliased it to `src` —
+// so the same assertion passed or failed depending on when someone last ran
+// `pnpm build`. That was true and is what led to finding it. It is fixed (S4):
+// the three test-including tsconfigs now carry a matching `paths` mapping, so
+// both specifiers reach `src` under tsc and under vitest alike.
+//
+// The direct `../src` import stays as the belt-and-braces half — it cannot be
+// re-broken by a tsconfig edit — while the package-specifier import below is
+// what proves the PUBLIC surface actually re-exports these.
 import { PageFlipError } from '../src/errors';
+import type { FlipbookEventName } from '@gullabs/flipbook-core';
 import { PageFlipError as ExportedPageFlipError } from '@gullabs/flipbook-core';
 
 describe('PageFlipError shape', () => {
@@ -70,5 +76,26 @@ describe('PageFlipError shape', () => {
     }
 
     expect.assertions(3);
+  });
+});
+
+/**
+ * E10 — `FlipbookEventName` reaches the published surface.
+ *
+ * The union existed in the module and was never re-exported, so a consumer
+ * writing a helper that takes "an event name" had no type to use. This is a
+ * type-only assertion, which is why it is here and not a runtime expectation:
+ * it fails at `pnpm typecheck`, and since the tsconfig `paths` fix that grades
+ * SOURCE rather than the last build, that failure is real.
+ */
+describe('E10 — the event-name union is part of the public surface', () => {
+  test('a consumer can type a parameter as an event name', () => {
+    const names: FlipbookEventName[] = ['flip', 'changeState', 'turnRejected'];
+
+    // @ts-expect-error — a name the engine does not emit is not assignable.
+    const bad: FlipbookEventName[] = ['flpi'];
+
+    expect(names).toHaveLength(3);
+    expect(bad).toHaveLength(1);
   });
 });

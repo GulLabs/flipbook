@@ -18,6 +18,23 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Added — public type surface
+
+- **`FlipbookEventName` is exported.** The union of event names existed in the
+  module and never reached the published `.d.ts`, so a consumer writing a helper
+  that takes "an event name" had no type to give the parameter.
+
+### Changed — internal wiring seams are marked as such
+
+- **`updateState`, `updatePageIndex` and `updateOrientation` are `@internal`.**
+  All three are public only because their callers (`Flip`, `PageCollection`,
+  `Render`) are separate classes, and each is harmful from outside: they
+  announce state the engine is not in, fabricate a `flip` event for a page the
+  reader is not on, or restyle the UI for an orientation the renderer has not
+  adopted. No runtime change — the surrounding methods (`attachMode`,
+  `replacePages`, `getBlock`, `applyHostSize`) already carried the marker and
+  these three had been missed.
+
 ### Fixed — settings and error surface
 
 - **A non-string `pageBackground` threw a bare `TypeError` instead of a
