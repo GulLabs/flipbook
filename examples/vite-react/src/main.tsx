@@ -1,12 +1,15 @@
 import { StrictMode, useCallback, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
-import {
-  HTMLFlipBook,
-  ImageFlipBook,
-  usePageFlip,
-  type ImagePageLeaf,
-  type WidgetEvent,
-} from '@gullabs/react-flipbook';
+import { HTMLFlipBook, usePageFlip, type WidgetEvent } from '@gullabs/react-flipbook';
+
+// `ImageFlipBook` is NOT part of the 3.0.0 public surface — see the comment in
+// `packages/react/src/index.ts`. It is written to the Phase 2 descriptor API
+// that the engine does not implement yet, so it is imported from SOURCE here to
+// keep the demo working without implying a consumer can
+// `import { ImageFlipBook } from '@gullabs/react-flipbook'`. When Phase 2 lands
+// and the export goes public, these two lines become a normal package import.
+import { ImageFlipBook } from '../../../packages/react/src/ImageFlipBook';
+import type { ImagePageLeaf } from '../../../packages/react/src/types';
 
 /**
  * React binding showcase.

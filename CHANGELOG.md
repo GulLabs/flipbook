@@ -40,6 +40,16 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Changed — `ImageFlipBook` is not part of 3.0.0
+
+- **The React canvas binding is deliberately not exported.** It is written to
+  the Phase 2 descriptor API — blank leaves, per-leaf `alt`, `crossOrigin`,
+  `density`, fit modes — and the engine implements none of it yet: every
+  descriptor is flattened back to a bare URL, so `alt`, `crossOrigin` and
+  `density` are silently discarded, and blank leaves are dropped with a console
+  warning. Publishing a surface that does not do what its own types say would
+  freeze it on the first release. It ships with the engine support, in 3.1.
+
 ### Fixed — `pointsBetween` could loop without bound
 
 - **A non-finite endpoint froze the tab.** The loop count is derived from caller
