@@ -19,7 +19,7 @@ On a phone, a back swipe must curl the **current** leaf away and show the previo
 
 Fixed in the HTML engine. Covered by tests that fail if the fix is reverted.
 
-Canvas / images mode was **removed** in 3.0.0 ([ADR 0002](./docs/adr/0002-remove-canvas-mode.md)). Put pictures in HTML pages with `<img>`.
+Canvas / images mode was **removed** in 3.0.0 ([ADR 0002](./docs/adr/0002-remove-canvas-mode.md)): `loadFromImages`, `ImageFlipBook`, and related APIs are gone (compile-time break — see [MIGRATION.md](./MIGRATION.md)).
 
 ---
 
@@ -140,11 +140,11 @@ export function Book() {
 
 ### Examples
 
-| Example            | Path                   | What it shows                                       |
-| ------------------ | ---------------------- | --------------------------------------------------- |
-| Vanilla HTML       | `examples/vanilla/`    | HTML pages, golden / gesture e2e host               |
-| Vite + React       | `examples/vite-react/` | Controlled `page`, `usePageFlip`, RTL, HTML+`<img>` |
-| Next.js App Router | `examples/nextjs/`     | SSR placeholder → hydrate, controlled turns         |
+| Example            | Path                   | What it shows                         |
+| ------------------ | ---------------------- | ------------------------------------- |
+| Vanilla HTML       | `examples/vanilla/`    | HTML pages, golden / gesture e2e host |
+| Vite + React       | `examples/vite-react/` | `usePageFlip`, RTL, HTML+`<img>`      |
+| Next.js App Router | `examples/nextjs/`     | SSR placeholder → hydrate             |
 
 ---
 

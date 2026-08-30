@@ -25,7 +25,6 @@ export type PageFlipErrorCode =
   | 'PAGE_NOT_IN_SPREAD'
   | 'INVALID_INDEX'
   | 'WRONG_MODE'
-  | 'CANVAS_REMOVED'
   // lifecycle — the call was fine, the engine was not in a state to serve it
   | 'DESTROYED'
   | 'NOT_LOADED'
@@ -55,7 +54,6 @@ const KIND: Record<PageFlipErrorCode, PageFlipErrorKind> = {
   PAGE_NOT_IN_SPREAD: 'usage',
   INVALID_INDEX: 'usage',
   WRONG_MODE: 'usage',
-  CANVAS_REMOVED: 'usage',
 
   DESTROYED: 'lifecycle',
   NOT_LOADED: 'lifecycle',

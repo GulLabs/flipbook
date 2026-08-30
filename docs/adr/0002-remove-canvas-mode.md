@@ -16,8 +16,11 @@ removed), [`../WEBGL_RENDERER.md`](../WEBGL_RENDERER.md).
 2. **The renderer abstractions STAY.** `Render`, `UI`, `PageCollection` and
    `Page` remain abstract with a single HTML implementation each. A future
    renderer is explicitly contemplated.
-3. **`loadFromImages` / `updateFromImages` remain as stubs that throw** a
-   `PageFlipError` naming the removal and pointing at HTML mode.
+3. **`loadFromImages` / `updateFromImages` are deleted.** No runtime stubs and
+   no `'CANVAS_REMOVED'` code. A method that only throws still appears on the
+   published `.d.ts` and defers failure to production; deletion makes the break
+   a **compile-time** error for typed consumers. (An earlier draft of this ADR
+   kept throwing stubs; that approach is rejected.)
 
 ## Why
 

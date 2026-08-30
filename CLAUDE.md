@@ -67,7 +67,7 @@ Two packages, one direction of dependency: `react` → `core` (`workspace:*`). C
 
 ### Core engine (`packages/core/src`)
 
-`PageFlip` is the façade and the event emitter (extends `EventObject`). It owns four collaborators created in `loadFromHTML` (canvas mode was removed — ADR 0002; `loadFromImages` is a `CANVAS_REMOVED` stub):
+`PageFlip` is the façade and the event emitter (extends `EventObject`). It owns four collaborators created in `loadFromHTML` (canvas mode was removed — ADR 0002; there is no `loadFromImages`):
 
 - **`UI`** (`HTMLUI`; abstract `UI` stays for a future renderer) — all DOM contact. One Pointer Events path (no separate mouse/touch), `ResizeObserver` + `visualViewport`. It builds `.stf__parent > .stf__wrapper > .stf__block` and **moves the caller's page elements into `.stf__block`**. Styles are injected at runtime by `ensureFlipbookStyles()` (`styles.ts`) and also shipped as `@gullabs/flipbook-core/style.css`.
 - **`Render`** (`HTMLRender`; abstract `Render` stays) — the rAF loop, layout rect, orientation detection, shadows, z-order, and the local↔global coordinate conversion.

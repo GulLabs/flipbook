@@ -2,63 +2,25 @@
 
 Drop-in `HTMLFlipBook` keeps **required `width` and `height`**. Other settings stay optional.
 
-## 3.0.0 — canvas mode removed (ADR 0002)
+## 3.0.0 — breaking: canvas / images mode removed (ADR 0002)
 
-Canvas / images mode is **gone**. There is no `ImageFlipBook`, no
-`loadFromImages` implementation, and no `imageFit` / `imageInset` settings.
+**Breaking change.** The second renderer is deleted. There is no runtime stub
+and no `'CANVAS_REMOVED'` error code — callers that still name the old API fail
+at **compile time** (TypeScript) or as a missing property at link time.
 
-`PageFlip.loadFromImages` / `updateFromImages` remain only as stubs that reject
-with `PageFlipError` code **`CANVAS_REMOVED`** (after `destroy()` they are still
-safe no-ops). Use HTML pages with `<img>` elements:
+| Removed                                                                                | Notes             |
+| -------------------------------------------------------------------------------------- | ----------------- |
+| `PageFlip.loadFromImages`                                                              | Method deleted    |
+| `PageFlip.updateFromImages`                                                            | Method deleted    |
+| `ImageFlipBook` (`@gullabs/react-flipbook`)                                            | Component deleted |
+| Settings `imageFit`, `imageInset`                                                      | Deleted           |
+| `getPageAltText` / `getPageAltTexts`                                                   | Deleted           |
+| Error codes `CANVAS_REMOVED`, `INVALID_IMAGE_SOURCE`, `CANVAS_LOAD`                    | Deleted           |
+| Canvas implementation (`CanvasRender`, `CanvasUI`, `ImagePage*`, loader, e2e/fixtures) | Deleted           |
 
-### Vanilla
-
-```ts
-import { PageFlip } from '@gullabs/flipbook-core';
-
-const root = document.getElementById('book')!;
-const book = new PageFlip(root, { width: 400, height: 300 });
-
-const pages = ['/p1.jpg', '/p2.jpg', '/p3.jpg'].map((src, i) => {
-  const el = document.createElement('div');
-  const img = document.createElement('img');
-  img.src = src;
-  img.alt = `Page ${i + 1}`;
-  img.style.width = '100%';
-  img.style.height = '100%';
-  img.style.objectFit = 'contain';
-  el.appendChild(img);
-  return el;
-});
-
-book.loadFromHTML(pages);
-```
-
-### React
-
-```tsx
-import HTMLFlipBook from '@gullabs/react-flipbook';
-
-<HTMLFlipBook width={400} height={300}>
-  <div>
-    <img
-      src="/p1.jpg"
-      alt="Cover of My Book"
-      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-    />
-  </div>
-  <div>
-    <img
-      src="/p2.jpg"
-      alt="Page 2"
-      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-    />
-  </div>
-</HTMLFlipBook>;
-```
-
-`object-fit: contain|cover|fill` replaces the removed canvas `imageFit` setting.
-`alt` on the `<img>` replaces canvas leaf descriptors and `getPageAltText`.
+The engine is HTML-only: `loadFromHTML` / `updateFromHtml` and React
+`HTMLFlipBook`. Renderer abstractions (`Render`, `UI`, `PageCollection`, `Page`)
+remain for a future non-canvas renderer.
 
 ## 3.0.0 — engine lifecycle and settings validation
 
@@ -83,8 +45,7 @@ mode, so it can only be replaced — reporting `NOT_LOADED` would invite a retry
 that cannot work.
 
 Cleanup-shaped calls stay safe, because tearing down twice is normal: `destroy`,
-`update`, `updateSettings`, `replacePages`, `updateFromHtml` and
-`updateFromImages` are no-ops after destroy. `getSettings`, `getState` (`READ`),
+`update`, `updateSettings`, `replacePages`, `updateFromHtml` are no-ops after destroy. `getSettings`, `getState` (`READ`),
 `getFlipController` (`null`), `getBlock` and `isDestroyed` remain safe.
 
 **If you inspect an engine after tearing it down** — a late effect, an async
@@ -445,7 +406,7 @@ import HTMLFlipBook from '@gullabs/react-flipbook';
 | `respectReducedMotion`                        | Defaults to `true`. Turns become instant under `prefers-reduced-motion`. Set `false` to keep animating.                                                                                                                                                                                                                                                                                                                                                 |
 | `pageBackground`                              | New, default `#fff`. Set to your paper color so the fold is opaque.                                                                                                                                                                                                                                                                                                                                                                                     |
 | `direction: 'rtl'`                            | New. Click, corner fold, drag and swipe invert _turn direction_. Pointer x is not mirrored (fold follows the finger). Programmatic `flipNext`/`flipPrev` follow page index. Curl geometry stays LTR.                                                                                                                                                                                                                                                    |
-| `loadFromImages` / `updateFromImages`         | **Removed.** Stubs reject with `PageFlipError` code `'CANVAS_REMOVED'`. After `destroy()` they are still no-ops. Use `loadFromHTML` with `<img>` elements — see the section at the top of this file.                                                                                                                                                                                                                                                    |
+| `loadFromImages` / `updateFromImages`         | **Deleted** (compile-time break). No stubs, no `'CANVAS_REMOVED'`. See **canvas / images mode removed** above.                                                                                                                                                                                                                                                                                                                                          |
 | Engine getters before load                    | `getRender()`, `getUI()`, `getPageCollection()`, `getPageCount()`, `getCurrentPageIndex()`, `getOrientation()`, `getBoundsRect()`, `getPage()`, `turnToPage()` and `clear()` throw `PageFlipError` with code `NOT_LOADED` if called before `loadFromHTML`. They previously dereferenced `undefined` and failed deeper in with no useful message. `getSettings()`, `getState()`, `update()`, `updateSettings()` and `destroy()` remain safe before load. |
 | `turnToPage` / `flipToPage` (`PageFlip.flip`) | Throw `PageFlipError` on setup failure instead of silently advancing one page.                                                                                                                                                                                                                                                                                                                                                                          |
 | React types                                   | `react` is a **peer** (`>=18`). Isolated pnpm `node_modules` type-checks props.                                                                                                                                                                                                                                                                                                                                                                         |
@@ -470,7 +431,7 @@ import HTMLFlipBook from '@gullabs/react-flipbook';
 
 ## Lifecycle of `PageCollection`
 
-`updateFromHtml` **replaces** the collection instance. Any state you stamped on the old collection is gone. Listen for `collectionRebuild` (or React `onUpdate`, which now actually fires) and re-apply. `updateFromImages` is a removed stub (`CANVAS_REMOVED`).
+`updateFromHtml` **replaces** the collection instance. Any state you stamped on the old collection is gone. Listen for `pagesChanged` (or React `onPagesChanged`) and re-apply.
 
 ## Portrait back-curl
 

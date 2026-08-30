@@ -196,7 +196,7 @@ export class PageFlip extends EventObject {
    *   `turnRejected`, which is the only event a dead engine still emits.
    * - Mutating lifecycle calls are safe no-ops: `destroy` itself (a consumer's
    *   cleanup legitimately runs twice), `update`, `updateSettings`,
-   *   `replacePages`, `updateFromHtml`, `updateFromImages`.
+   *   `replacePages`, `updateFromHtml`.
    * - Always safe: `getSettings`, `getState` (`READ`), `getFlipController`
    *   (`null`), `getBlock`, `isDestroyed`.
    *
@@ -210,7 +210,7 @@ export class PageFlip extends EventObject {
    * last page — and it used to be the one path where `'DESTROYED'` was not
    * safe. The render loop's turn completion runs `onAnimateEnd` (which is what
    * emits `flip`) and then drew ONE more frame; that trailing frame read engine
-   * state back out — `getPageCollection()` in HTML mode, `getUI()` in canvas —
+   * state back out — `getPageCollection()` / `getUI()` —
    * so nulling both threw a `PageFlipError` out of the consumer's rAF callback
    * for doing exactly what the docs told them to.
    *
@@ -648,36 +648,6 @@ export class PageFlip extends EventObject {
   private nextGeneration(): number {
     this.loadGeneration += 1;
     return this.loadGeneration;
-  }
-
-  /**
-   * Canvas mode was removed in 3.0.0 (ADR 0002).
-   *
-   * Always rejects with `CANVAS_REMOVED` unless the engine is already
-   * destroyed, in which case it is a safe no-op like other mutating lifecycle
-   * calls. Use `loadFromHTML` with `<img>` elements instead — see MIGRATION.md.
-   */
-  public loadFromImages(_leaves?: unknown): Promise<void> {
-    if (this.destroyed) return Promise.resolve();
-    return Promise.reject(
-      new PageFlipError(
-        'Canvas mode was removed in 3.0.0. Use loadFromHTML with <img> elements instead. See MIGRATION.md.',
-        'CANVAS_REMOVED',
-      ),
-    );
-  }
-
-  /**
-   * Canvas mode was removed in 3.0.0 (ADR 0002). See {@link PageFlip.loadFromImages}.
-   */
-  public updateFromImages(_leaves?: unknown): Promise<void> {
-    if (this.destroyed) return Promise.resolve();
-    return Promise.reject(
-      new PageFlipError(
-        'Canvas mode was removed in 3.0.0. Use loadFromHTML with <img> elements instead. See MIGRATION.md.',
-        'CANVAS_REMOVED',
-      ),
-    );
   }
 
   /**

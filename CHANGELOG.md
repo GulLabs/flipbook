@@ -43,9 +43,9 @@ for a future renderer.
   `canvasLeaf`, `imageFit`, `canvas-loader`, `ImageFlipBook`, canvas unit/e2e
   suites, fixtures, and vanilla canvas demos.
 - **Settings:** `imageFit` / `imageInset` removed.
-- **API:** `loadFromImages` / `updateFromImages` remain as stubs that reject with
-  new code `CANVAS_REMOVED` (destroy still no-ops). Point at `loadFromHTML` with
-  `<img>` elements — see MIGRATION.md.
+- **API:** `loadFromImages` / `updateFromImages` **deleted** (no stubs, no
+  `'CANVAS_REMOVED'` code). TypeScript fails on the call — see MIGRATION.md
+  breaking table.
 - **Removed:** `getPageAltText` / `getPageAltTexts`, `INVALID_IMAGE_SOURCE`,
   `CANVAS_LOAD`, and dead exports `portraitBackCurl` / `portraitForwardCurl`.
 - **Size:** HTML engine re-measured after removal — **56_015 B raw / 13.73 kB

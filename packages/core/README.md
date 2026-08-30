@@ -9,7 +9,7 @@ import { PageFlip } from '@gullabs/flipbook-core';
 
 const pageFlip = new PageFlip(root, { width: 400, height: 300 });
 pageFlip.loadFromHTML(pages);
-// loadFromImages was removed — use <img> elements inside HTML pages (ADR 0002).
+// HTML only — loadFromImages / canvas mode were deleted in 3.0.0 (ADR 0002).
 ```
 
 License: **MPL-2.0** — file-level copyleft, with no license requirement on the
@@ -38,31 +38,30 @@ Copyright (c) 2026 Gul Labs, with upstream Nodlik MIT notices in
 
 Public and engine-boundary failures throw `PageFlipError` with a stable `code`:
 
-| Code                     | When                                                                   |
-| ------------------------ | ---------------------------------------------------------------------- |
-| `PAGE_FLIP`              | Generic / unspecified                                                  |
-| `NOT_LOADED`             | API used before load finished wiring                                   |
-| `INVALID_PAGE`           | Page index out of range                                                |
-| `PAGE_NOT_IN_SPREAD`     | Page exists but is in no spread                                        |
-| `INVALID_SPREAD`         | Spread index invalid during a turn                                     |
-| `DESTROYED`              | Called on an engine that has been destroyed                            |
-| `INVALID_SWIPE_DISTANCE` | Non-finite or negative `swipeDistance`                                 |
-| `INVALID_Z_INDEX`        | `startZIndex` not an integer                                           |
-| `INVALID_SHADOW_OPACITY` | Outside `[0, 1]`, or non-finite                                        |
-| `INVALID_BOOLEAN`        | A boolean setting was not a real boolean (`'false'`, `0`, `1`, …)      |
-| `DETACHED_PAGE`          | A page element left the document mid-turn                              |
-| `WRONG_MODE`             | `updateFromHtml` against a non-HTML UI (future renderer guard)         |
-| `CANVAS_REMOVED`         | `loadFromImages` / `updateFromImages` — canvas mode removed (ADR 0002) |
-| `INVALID_SIZE`           | `size` is not `'fixed'` or `'stretch'`                                 |
-| `INVALID_DIMENSIONS`     | `width` / `height` non-finite or `<= 0`                                |
-| `INVALID_BOUNDS`         | min/max width or height non-finite or negative                         |
-| `INVALID_FLIPPING_TIME`  | Negative or non-finite `flippingTime`                                  |
-| `INVALID_DIRECTION`      | `direction` not `ltr`/`rtl`                                            |
-| `INVALID_INDEX`          | Internal array access out of range                                     |
-| `FLIP_SETUP`             | Could not prepare flipping/bottom pages for a turn                     |
-| `RENDER_SETUP`           | Shadow/DOM render setup failed                                         |
-| `NO_ANIMATION_FRAME`     | Animation frame list was empty                                         |
-| `COLLINEAR_SEGMENTS`     | Geometry: segments are collinear                                       |
-| `DEGENERATE_SEGMENT`     | Geometry: a segment has zero length                                    |
+| Code                     | When                                                              |
+| ------------------------ | ----------------------------------------------------------------- |
+| `PAGE_FLIP`              | Generic / unspecified                                             |
+| `NOT_LOADED`             | API used before load finished wiring                              |
+| `INVALID_PAGE`           | Page index out of range                                           |
+| `PAGE_NOT_IN_SPREAD`     | Page exists but is in no spread                                   |
+| `INVALID_SPREAD`         | Spread index invalid during a turn                                |
+| `DESTROYED`              | Called on an engine that has been destroyed                       |
+| `INVALID_SWIPE_DISTANCE` | Non-finite or negative `swipeDistance`                            |
+| `INVALID_Z_INDEX`        | `startZIndex` not an integer                                      |
+| `INVALID_SHADOW_OPACITY` | Outside `[0, 1]`, or non-finite                                   |
+| `INVALID_BOOLEAN`        | A boolean setting was not a real boolean (`'false'`, `0`, `1`, …) |
+| `DETACHED_PAGE`          | A page element left the document mid-turn                         |
+| `WRONG_MODE`             | `updateFromHtml` against a non-HTML UI (future renderer guard)    |
+| `INVALID_SETTING`        | A setting failed validation (`err.setting` names which)           |
+| `INVALID_DIMENSIONS`     | `width` / `height` non-finite or `<= 0`                           |
+| `INVALID_BOUNDS`         | min/max width or height non-finite or negative                    |
+| `INVALID_FLIPPING_TIME`  | Negative or non-finite `flippingTime`                             |
+| `INVALID_DIRECTION`      | `direction` not `ltr`/`rtl`                                       |
+| `INVALID_INDEX`          | Internal array access out of range                                |
+| `FLIP_SETUP`             | Could not prepare flipping/bottom pages for a turn                |
+| `RENDER_SETUP`           | Shadow/DOM render setup failed                                    |
+| `NO_ANIMATION_FRAME`     | Animation frame list was empty                                    |
+| `COLLINEAR_SEGMENTS`     | Geometry: segments are collinear                                  |
+| `DEGENERATE_SEGMENT`     | Geometry: a segment has zero length                               |
 
 `PageFlip.flipNext` / `flipPrev` return `boolean` (`false` = did not start) and emit `turnRejected` when refused.
