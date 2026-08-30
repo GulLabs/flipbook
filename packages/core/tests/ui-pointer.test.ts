@@ -4,7 +4,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { FlippingState, PageFlip } from '@gullabs/flipbook-core';
-import { installPointerCaptureShims, makeHtmlBook } from './html-book-fixture';
+import { installPointerCaptureShims, makeHtmlBook, sizeElement } from './html-book-fixture';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -292,5 +292,75 @@ describe('UI pointer paths', () => {
       }),
     );
     expect(app.getCurrentPageIndex()).toBe(0);
+  });
+});
+
+/**
+ * W1 — the host's `max-width` bounds the WIDEST SPREAD, not one page.
+ *
+ * `applyHostSize` stamps `min-width: minWidth * k` (k = 1 when `usePortrait`
+ * allows a single-leaf layout, 2 otherwise) and `max-width: maxWidth * 2`. The
+ * `2` looks like an oversight next to `k` and is not: `k` answers "how narrow
+ * may this book legally be", and `usePortrait` genuinely lowers that floor to
+ * one page — while the CEILING is two pages whatever `usePortrait` says,
+ * because a `usePortrait` book is portrait only while it is NARROW
+ * (`Render.computeBounds`: `blockWidth < minWidth * 2`) and becomes landscape
+ * as soon as it is not.
+ *
+ * Applying `k` to the ceiling therefore does not tighten the bound, it removes
+ * landscape: the host can no longer reach the width at which the book would
+ * flip to two pages, so a `usePortrait` + `autoSize` + `stretch` book is
+ * pinned to one leaf on a 4K display. These tests fail against that change.
+ */
+describe('W1 — host max-width is the two-page bound', () => {
+  const stretch = {
+    pageCount: 4,
+    size: 'stretch' as const,
+    autoSize: true,
+    usePortrait: true,
+    width: 300,
+    height: 400,
+    minWidth: 400,
+    maxWidth: 600,
+    minHeight: 200,
+    maxHeight: 900,
+    flippingTime: 0,
+  };
+
+  test('the host may grow to two maximum-width pages', () => {
+    const { book: app, host } = book({ ...stretch, hostWidth: 500, hostHeight: 400 });
+    const setting = app.getSettings();
+
+    // FIXTURE CHECK: `usePortrait` is on, so `minWidth` took k = 1. If it had
+    // not, the asymmetry this test is about would not exist to assert.
+    expect(host.style.minWidth).toBe(`${String(setting.minWidth)}px`);
+
+    expect(host.style.maxWidth).toBe(`${String(setting.maxWidth * 2)}px`);
+  });
+
+  test('the ceiling clears the landscape threshold — or the book can never be landscape', () => {
+    // `Render.computeBounds` goes portrait below `minWidth * 2`. A ceiling
+    // under that threshold makes the portrait test unconditionally true.
+    const { book: app, host } = book({ ...stretch, hostWidth: 500, hostHeight: 400 });
+    const setting = app.getSettings();
+
+    // maxWidth (600) is BELOW minWidth * 2 (800) on purpose: this is the
+    // configuration where `maxWidth * k` and `maxWidth * 2` disagree about
+    // whether landscape exists at all.
+    expect(setting.maxWidth).toBeLessThan(setting.minWidth * 2);
+    expect(parseFloat(host.style.maxWidth)).toBeGreaterThanOrEqual(setting.minWidth * 2);
+  });
+
+  test('at that ceiling the book really is two full-width pages', () => {
+    // The bound is tight, not slack: at exactly `maxWidth * 2` the spread fills
+    // the host and each page is at its own maximum.
+    const { book: app } = book({ ...stretch, hostWidth: 1200, hostHeight: 900 });
+    const dist = app.getUI().getDistElement();
+    sizeElement(dist, 1200, 900);
+    app.update();
+
+    expect(app.getOrientation()).toBe('landscape');
+    expect(app.getBoundsRect().pageWidth).toBe(600);
+    expect(app.getBoundsRect().width).toBe(1200);
   });
 });

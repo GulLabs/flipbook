@@ -60,6 +60,28 @@ orientation, shadow gradients, hard-page z-order — wanted that already. If you
 were reading it to learn which way a turn was heading, read the `flip` event or
 compare page indices instead.
 
+### The render loop is scheduled on demand, not continuously
+
+An idle HTML book no longer calls `requestAnimationFrame`. The engine wakes
+itself for everything that changes what is drawn — turns, drags, hovers,
+resizes, orientation changes, collection swaps and `update()` — so no consumer
+change is needed for supported usage.
+
+Two things to know if you reach past the public API:
+
+- **If you mutate a page's DOM directly and expect the engine to repaint it,**
+  call `book.update()`. In practice nothing changes: the HTML renderer only
+  writes position, clip and z-index, so your own content updates paint
+  themselves.
+- **If you subclass the exported `Render` class,** it now has protected members
+  `requestFrame()`, `needsContinuousFrames()` and private scheduler state
+  (`running`, `dirty`, `framePending`, `frameLoop`). A subclass that already
+  declares a member of one of those names will fail to compile. Override
+  `needsContinuousFrames()` to return `true` if your renderer paints something
+  that changes without the engine being told (an animated background, a
+  spinner); otherwise call `requestFrame()` when you change state the base
+  class does not own.
+
 ### `PageFlipError.code` is a union, and three codes changed
 
 `code` was `string`; it is now the exported `PageFlipErrorCode` union. If you

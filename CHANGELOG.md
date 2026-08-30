@@ -18,6 +18,30 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — the render loop no longer runs forever on an untouched book
+
+- **`drawFrame()` ran on every animation frame for the life of the page**,
+  whether or not anything had changed, in HTML mode as much as canvas. Measured
+  in Chromium on the vanilla example: **73 rAF callbacks per second on an idle
+  book, now 0**. It is a permanent battery and CPU cost on every page that
+  embeds a book, paid by readers who are not touching it.
+
+  The loop now parks when there is nothing to draw and is woken by every input
+  that can change what is on screen: a turn, a drag, a corner hover, a
+  `ResizeObserver` / `visualViewport` / window resize, an orientation change,
+  `update()`, `updateSettings()`, `replacePages` / `updateFromHtml` / `clear`,
+  and an instant turn under `flippingTime: 0` or `prefers-reduced-motion`. A
+  turn still gets every one of its frames, and the park decision is taken only
+  after a frame has been drawn, so the pose a turn lands on is always painted.
+
+  **Canvas mode keeps its continuous loop for now.** A canvas book paints a
+  loader spinner from the wall clock for any page whose bitmap has not decoded,
+  and the decode completes on an `img.onload` that changes no renderer state —
+  there is nothing to wake a parked loop with, so parking would freeze the
+  spinner and never paint the image. `Render.needsContinuousFrames()` is the
+  seam where the canvas renderer will opt in once it can answer "is any page I
+  am drawing still loading".
+
 ### Changed — `PageFlipError.code` is a union, and two overloaded codes are split
 
 - **`code` was typed `string`**, so a consumer could not narrow on it — the one

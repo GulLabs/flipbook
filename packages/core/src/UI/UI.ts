@@ -130,6 +130,21 @@ export abstract class UI {
 
     if (setting.autoSize) {
       host.style.width = '100%';
+      // `* 2`, NOT `* k`, and the asymmetry with `minWidth` above is the point.
+      //
+      // `k` answers "how narrow may this book legally be", and `usePortrait`
+      // genuinely lowers that floor to a single leaf. The CEILING is two leaves
+      // whatever `usePortrait` says, because portrait is not a mode a book is
+      // put into — it is what `Render.computeBounds` decides while the block is
+      // NARROW (`blockWidth < minWidth * 2`). A `usePortrait` book on a wide
+      // screen is landscape, and landscape wants `2 * maxWidth`.
+      //
+      // Applying `k` here does not tighten the bound, it deletes landscape: the
+      // host can no longer reach the width at which the book would flip to two
+      // pages. With `minWidth: 400, maxWidth: 600` the ceiling becomes 600px
+      // against a 800px threshold, so the book is pinned to one leaf on a 4K
+      // display — measured, and pinned by the W1 tests in
+      // `packages/core/tests/ui-pointer.test.ts`.
       host.style.maxWidth = `${setting.maxWidth * 2}px`;
     } else if (this.autoSizeOwnsHost) {
       // Only on the transition out of autoSize: hand back what it took over.

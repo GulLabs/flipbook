@@ -192,6 +192,14 @@ export abstract class Render {
   private frameLoop: ((timer: number) => void) | null = null;
 
   /**
+   * A frame has been requested and its callback has not run yet.
+   *
+   * The pending-ness of a frame, kept separately from {@link rafId} — see
+   * {@link scheduleFrame} for why the id cannot answer that question.
+   */
+  private framePending = false;
+
+  /**
    * Bumped by every `start()` and `stop()`. A scheduled `loop` callback only
    * runs if its captured generation is still current, so a frame queued by a
    * loop that has since been stopped (or superseded by a restart) is dropped.
@@ -363,6 +371,13 @@ export abstract class Render {
 
     const loop = (timer: number): void => {
       if (generation !== this.loopGeneration) return;
+
+      // Cleared INSIDE the generation guard: a callback left over from a
+      // superseded loop must not report the CURRENT loop's pending frame as
+      // consumed, or the next `requestFrame()` would schedule a second live
+      // loop alongside it.
+      this.framePending = false;
+
       this.render(timer, generation);
 
       // Re-check AFTER the frame. `onAnimateEnd` fires a `flip` event
@@ -371,10 +386,134 @@ export abstract class Render {
       // generation. Re-arming regardless scheduled one more frame and kept this
       // closure (and the engine it captures) alive until it fired.
       if (generation !== this.loopGeneration) return;
-      this.rafId = requestAnimationFrame(loop);
+
+      // R8: the park decision is taken AFTER `render()`, and that ordering is
+      // the whole safety argument. `render()` runs the animation's frame action
+      // and then `drawFrame()`, so the frame that ends a turn has already
+      // painted that turn's final geometry by the time we get here. Deciding
+      // before the draw — "no animation left, so stop" — is the one-frame-early
+      // bug: the leaf commits a turn whose last pose was never painted.
+      if (this.isIdle()) {
+        this.park();
+        return;
+      }
+
+      this.scheduleFrame();
     };
 
+    this.running = true;
+    this.dirty = true;
+    this.frameLoop = loop;
+
+    this.scheduleFrame();
+  }
+
+  /**
+   * Arm one animation frame, unless one is already armed or the loop is
+   * stopped.
+   *
+   * R8: "is a frame already armed?" is {@link framePending}, NOT `rafId !== 0`.
+   * Under a SYNCHRONOUS `requestAnimationFrame` — a polyfill, a test double,
+   * `jest`'s timer shim — the callback runs before `requestAnimationFrame`
+   * returns, so the assignment of its id lands *after* the frame it identifies
+   * has already finished and parked. `rafId` is then a non-zero id for a frame
+   * that will never fire, and a loop keyed on it would refuse to schedule
+   * anything ever again: the book stops drawing and never restarts, which is a
+   * far worse defect than the idling this whole change removes. The flag is set
+   * BEFORE the call and cleared by the callback, so the ordering cannot lie.
+   */
+  private scheduleFrame(): void {
+    const loop = this.frameLoop;
+
+    if (this.framePending || !this.running || loop === null) return;
+
+    this.framePending = true;
     this.rafId = requestAnimationFrame(loop);
+  }
+
+  /**
+   * Is there nothing left to draw?
+   *
+   * Three ways to answer "no", and all three are load-bearing:
+   *
+   *  - **an animation is in flight** — every frame moves the leaf;
+   *  - **{@link dirty}** — some renderer state changed since the last frame.
+   *    Every mutator here routes through {@link requestFrame}, so this covers a
+   *    turn, a drag, a corner hover, a resize, an orientation change, a
+   *    collection swap and `update()` without any of them knowing about the
+   *    scheduler;
+   *  - **{@link needsContinuousFrames}** — the renderer paints something that
+   *    moves on its own clock, with no state change to observe.
+   */
+  private isIdle(): boolean {
+    return this.animation === null && !this.dirty && !this.needsContinuousFrames();
+  }
+
+  /**
+   * Does this renderer paint something that changes without anyone telling it?
+   *
+   * Exactly one thing does today: the canvas loader spinner. `ImagePage` draws
+   * it for every page whose bitmap has not decoded yet, at an angle derived
+   * from the wall clock, and the decode completes on an `img.onload` that
+   * touches no renderer state at all — so there is neither a per-frame state
+   * change to mark the scene dirty nor an event to wake a parked loop with. A
+   * canvas book that parked would freeze its spinner and then never paint the
+   * image that arrived.
+   *
+   * So canvas mode does not park, and the test is the dist element being a
+   * canvas: `CanvasUI` sets `distElement` to the canvas it created, `HTMLUI`
+   * sets it to a `div`. Deliberately NOT `instanceof CanvasUI` — importing
+   * `CanvasUI` here would drag the lazily-loaded canvas chunk into the HTML
+   * bundle, which is the one thing `loadCanvasModule` exists to prevent.
+   *
+   * This is the conservative answer, not the precise one: the precise predicate
+   * is "any page currently drawn is still loading", which only `CanvasRender`
+   * can ask. It is `protected` so that override can be added without touching
+   * this file. Until it is, an idle canvas book keeps the loop it has always
+   * had, and an idle HTML book — every React consumer, every default
+   * `loadFromHTML` — stops burning a frame budget it has nothing to spend on.
+   */
+  protected needsContinuousFrames(): boolean {
+    if (typeof HTMLCanvasElement === 'undefined') return false;
+
+    return this.app.getUI().getDistElement() instanceof HTMLCanvasElement;
+  }
+
+  /**
+   * Suspend the loop with nothing to draw. NOT `stop()`: the loop is still
+   * *running* in the sense that matters — {@link requestFrame} may resume it —
+   * and the generation deliberately does not move, so the closure `start()`
+   * built stays valid and is reused on the next wake.
+   */
+  private park(): void {
+    this.rafId = 0;
+
+    // R5: the frame clock belongs to a RUN of frames, not to the object. A
+    // parked loop may sit for minutes; an animation installed in that window
+    // must not be stamped with the timestamp of the last frame before the park,
+    // or it arrives already expired and plays only its final frame. `null`
+    // sends it down the lazy-binding path, which stamps it on the frame it is
+    // first drawn on — the same contract `stop()` relies on.
+    this.timer = null;
+  }
+
+  /**
+   * Ask for one more frame, resuming the loop if it has parked.
+   *
+   * Called by every mutator on this class, so a caller changing renderer state
+   * never has to know the loop can park. Cheap and idempotent: with a frame
+   * already pending it only sets a flag.
+   *
+   * `protected`, not public: adding to the published surface is a product
+   * decision, and nothing outside the renderer needs it — every engine-side
+   * mutation already goes through a method here, and a consumer that wants a
+   * repaint has `PageFlip.update()`. A subclass (canvas, on image decode) is
+   * the one caller that could plausibly need it, and it has it.
+   */
+  protected requestFrame(): void {
+    this.dirty = true;
+
+    this.scheduleFrame();
   }
 
   /** Cancel the render loop. Safe to call more than once. */
@@ -383,6 +522,14 @@ export abstract class Render {
       cancelAnimationFrame(this.rafId);
     }
     this.rafId = 0;
+
+    // R8: a stopped loop must stay stopped. `requestFrame` resumes a PARKED
+    // loop, and the only thing separating the two states is this flag — and
+    // dropping the closure, so nothing can be scheduled against a torn-down
+    // engine even if a late mutator asks.
+    this.running = false;
+    this.frameLoop = null;
+    this.framePending = false;
 
     // Invalidate any frame already queued: `cancelAnimationFrame` may be
     // missing (R3) and, more importantly, a callback can already be in flight.
@@ -406,6 +553,15 @@ export abstract class Render {
     duration: number,
     onAnimateEnd: AnimationSuccessAction,
   ): void {
+    // R8: a turn is the loudest possible "wake up". Redundant TODAY — the
+    // `finishAnimation()` below wakes the loop on every path through this
+    // method, including the early returns — and kept anyway, stated as
+    // redundant rather than dressed up as load-bearing: the alternative is that
+    // "starting an animation schedules frames" holds only because of the order
+    // of two unrelated lines, and the failure if that order ever changes is a
+    // turn that animates nothing.
+    this.requestFrame();
+
     // U5: claim this call's slot BEFORE the commit below can re-enter us. If
     // `finishAnimation()`'s callback starts another animation, that nested call
     // bumps the counter and everything below this line belongs to a superseded
@@ -449,6 +605,14 @@ export abstract class Render {
    * End the current animation process and call the callback
    */
   public finishAnimation(): void {
+    // R8: a forced commit runs a frame action and `onAnimateEnd` outside the
+    // loop, so whatever they change needs painting. Asked for unconditionally
+    // rather than only when there was an animation: `Flip` calls this from
+    // pointer handling, where the state around it has just moved anyway, and
+    // one redundant frame on a no-op is cheaper than reasoning about which
+    // callers can skip it.
+    this.requestFrame();
+
     // R4: detach BEFORE running the callback, exactly as the render loop's
     // overshoot branch does. `onAnimateEnd` is what turns the page, and a
     // consumer that chains a turn from it (`onFlip` → `flipNext()`,
@@ -489,6 +653,16 @@ export abstract class Render {
    * Recalculate the size of the displayed area, and update the page orientation
    */
   public update(): void {
+    // R8, and this is the wake-up path with the most entrances: the
+    // `ResizeObserver` and `visualViewport` handlers in `UI`, an orientation
+    // change (`PageFlip.updateOrientation` → `UI.setOrientationStyle`),
+    // `PageFlip.update()`, `updateSettings`, and `CanvasUI.update` after it has
+    // resized — and therefore CLEARED — the backing store. Asked for before the
+    // unobserved early return, because a book that has just been un-hidden
+    // reaches that return on the pass that measured zero and the real box
+    // arrives on the next one.
+    this.requestFrame();
+
     const { rect, orientation, observed } = this.computeBounds();
 
     // C5: a container with no box is not an observation of a portrait book —
@@ -625,6 +799,11 @@ export abstract class Render {
 
     const maxShadowOpacity = 100 * this.getSettings().maxShadowOpacity;
 
+    // R8: a drag and a corner hover reach the renderer through here and the
+    // four page setters below, once per pointer move. That is what wakes a
+    // parked loop for a gesture.
+    this.requestFrame();
+
     this.shadow = {
       pos,
       angle,
@@ -639,6 +818,8 @@ export abstract class Render {
    * Clear shadow
    */
   public clearShadow(): void {
+    this.requestFrame();
+
     this.shadow = null;
   }
 
@@ -664,6 +845,11 @@ export abstract class Render {
   }
 
   public cancelAnimation(): void {
+    // R8: abandoning a turn drops the fold, so the spread underneath has to be
+    // repainted without it — `UI.cancelGesture` and `PageFlip.replacePages`
+    // both rely on that repaint happening.
+    this.requestFrame();
+
     // U5, the same slot: abandoning a turn from inside an `onAnimateEnd` —
     // `replacePages` / `destroy` called from an `onFlip` handler — must not
     // leave the outer `startAnimation` free to install an animation over pages
@@ -777,6 +963,8 @@ export abstract class Render {
    * @param direction
    */
   public setPageRect(pageRect: RectPoints): void {
+    this.requestFrame();
+
     this.pageRect = pageRect;
   }
 
@@ -800,6 +988,8 @@ export abstract class Render {
    * @param direction - where the book is heading in page order
    */
   public setDirection(direction: FlipDirection): void {
+    this.requestFrame();
+
     this.direction = foldSide(direction, this.getSettings().direction === 'rtl');
   }
 
@@ -809,6 +999,12 @@ export abstract class Render {
    * @param page
    */
   public setRightPage(page: Page | null): void {
+    // R8: `PageCollection.showSpread` always sets both static leaves, so this
+    // and `setLeftPage` are the wake-up for every collection change there is —
+    // a committed turn, `replacePages`, `updateFromHtml`, `clear`, the initial
+    // `show()`, and `UI.cancelGesture`'s repaint.
+    this.requestFrame();
+
     if (page !== null) page.setOrientation(PageOrientation.RIGHT);
 
     this.rightPage = page;
@@ -819,6 +1015,8 @@ export abstract class Render {
    * @param page
    */
   public setLeftPage(page: Page | null): void {
+    this.requestFrame();
+
     if (page !== null) page.setOrientation(PageOrientation.LEFT);
 
     this.leftPage = page;
@@ -829,6 +1027,8 @@ export abstract class Render {
    * @param page
    */
   public setBottomPage(page: Page | null): void {
+    this.requestFrame();
+
     if (page !== null)
       page.setOrientation(
         this.direction === FlipDirection.BACK ? PageOrientation.LEFT : PageOrientation.RIGHT,
@@ -843,6 +1043,8 @@ export abstract class Render {
    * @param page
    */
   public setFlippingPage(page: Page | null): void {
+    this.requestFrame();
+
     if (page !== null)
       page.setOrientation(
         this.direction === FlipDirection.FORWARD && this.orientation !== Orientation.PORTRAIT

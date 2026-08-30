@@ -24,6 +24,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { PageFlipError } from '../src/errors';
+import { FlipDirection } from '../src/Flip/Flip';
 import { Render, Orientation } from '../src/Render/Render';
 import type { PageFlip } from '../src/PageFlip';
 import { Settings, SizeType, type FlipSetting } from '../src/Settings';
@@ -42,12 +43,23 @@ class TestRender extends Render {
   public reload(): void {
     /* nothing to reload in the harness */
   }
+
+  /** Test seam for the protected scheduler hook — see R8. */
+  public wake(): void {
+    this.requestFrame();
+  }
 }
 
 type Harness = {
   render: TestRender;
   /** Run one animation frame at the given timestamp. */
   tick: (timer: number) => void;
+  /**
+   * Is a frame scheduled? R8: the loop parks when there is nothing to draw, so
+   * this is the difference between "the book is at rest" and "the book has
+   * stopped drawing and cannot restart".
+   */
+  pending: () => boolean;
   /** The measured box the render reads through `getDistElement()`. */
   box: { offsetWidth: number; offsetHeight: number };
   updateOrientation: ReturnType<typeof vi.fn>;
@@ -78,7 +90,7 @@ function makeHarness(
     frame(timer);
   };
 
-  return { render, tick, box, updateOrientation };
+  return { render, tick, box, updateOrientation, pending: () => pendingFrame !== null };
 }
 
 beforeEach(() => {
@@ -149,7 +161,12 @@ describe('C4 — the final animation frame is never dropped', () => {
 
     tick(0);
     tick(900);
+    // R8: the loop parks once the turn is over, so "keeps running" now has to
+    // be asked for. Each `requestFrame()` buys exactly one more frame — and the
+    // point of the test is that none of them re-commits the finished turn.
+    render.wake();
     tick(1000);
+    render.wake();
     tick(1100);
 
     expect(trace.filter((entry) => entry === 'end')).toHaveLength(1);
@@ -318,6 +335,10 @@ describe('C11 — geometry is always answerable', () => {
     render.start();
     expect(() => {
       tick(0);
+      // R8: an unmeasured book has nothing to redraw, so the loop parks after
+      // the first frame. Asking for the second one is what keeps this a test
+      // about `getRect()` not throwing rather than about the scheduler.
+      render.wake();
       tick(16);
     }).not.toThrow();
 
@@ -435,16 +456,22 @@ describe('R2 — a chained animation starts on the current frame clock', () => {
     });
 
     render.start();
-    tick(1000); // no animation yet; establishes a nonzero frame clock
     render.startAnimation(framesA, 500, () => trace.push('A:end'));
 
+    tick(1000); // A binds here (R5) and plays frame 0
     tick(1100); // A frame 1 — which supersedes A with B
     tick(1200); // B is 100 ms old
 
     // `startAnimation` finishes A first (R1: frame 4 had not been played), then
     // stamps B. Reverted fix: B is stamped 1000, not 1100, so at 1200 it is two
     // frames in and the trace ends 'B:2'.
-    expect(trace).toEqual(['A:1', 'A:4', 'A:end', 'B:1']);
+    //
+    // R8: A is started before the first tick rather than after a warm-up tick.
+    // A warm-up tick no longer leaves a live frame clock behind — with nothing
+    // to draw the loop parks and `park()` clears the clock — so the animation
+    // that used to be *stamped* would now bind lazily, and the test would be
+    // measuring the binding rather than the stamping it is named for.
+    expect(trace).toEqual(['A:0', 'A:1', 'A:4', 'A:end', 'B:1']);
   });
 
   test('the instant path is unaffected by the frame clock', () => {
@@ -551,26 +578,27 @@ describe('R4 — a turn chained from onAnimateEnd survives', () => {
     const trace: string[] = [];
 
     render.start();
-    tick(1000); // establish a frame clock so B is stamped, not lazily bound
     render.startAnimation(tagged(trace, 'A'), 500, () => {
       trace.push('A:end');
       render.startAnimation(tagged(trace, 'B'), 500, () => trace.push('B:end'));
     });
 
-    tick(1100); // A frame 1
+    tick(1100); // A binds here and plays frame 0
     render.finishAnimation(); // forced commit: A:4, A:end, and B is chained
 
     // Reverted fix: the trailing `this.animation = null` runs AFTER
     // `onAnimateEnd`, so B is thrown away the instant it is created. The trace
     // ends at 'A:end' and no further tick ever plays a B frame — the book is
     // frozen mid-turn with no animation and no pending commit.
-    expect(trace).toEqual(['A:1', 'A:4', 'A:end']);
+    expect(trace).toEqual(['A:0', 'A:4', 'A:end']);
 
-    // B was stamped from the frame clock of tick(1100) — the R2 rule — so at
-    // 1200 it is one frame in.
+    // B was stamped from the frame clock of tick(1100) — the R2 rule, and the
+    // clock is live because A was still animating — so at 1200 it is one frame
+    // in. (The warm-up tick this test used to open with is gone: R8 parks an
+    // idle loop, so it no longer establishes anything.)
     tick(1200);
     tick(1300);
-    expect(trace).toEqual(['A:1', 'A:4', 'A:end', 'B:1', 'B:2']);
+    expect(trace).toEqual(['A:0', 'A:4', 'A:end', 'B:1', 'B:2']);
 
     // …and B still commits under its own steam.
     tick(1700);
@@ -587,7 +615,6 @@ describe('R4 — a turn chained from onAnimateEnd survives', () => {
     const trace: string[] = [];
 
     render.start();
-    tick(1000);
     render.startAnimation(tagged(trace, 'A'), 500, () => {
       trace.push('A:end');
       render.startAnimation(tagged(trace, 'B'), 500, () => trace.push('B:end'));
@@ -595,11 +622,13 @@ describe('R4 — a turn chained from onAnimateEnd survives', () => {
 
     tick(1100);
     render.finishAnimation();
-    for (const t of [1200, 1300, 1400, 1500, 1600, 1700]) tick(t);
+    // 1600 is B's commit; there is no 1700 tick because the loop parks on the
+    // frame that commits (R8) and a parked loop schedules nothing.
+    for (const t of [1200, 1300, 1400, 1500, 1600]) tick(t);
 
     expect(trace.filter((entry) => entry === 'A:end')).toHaveLength(1);
     expect(trace.filter((entry) => entry === 'B:end')).toHaveLength(1);
-    expect(trace).toEqual(['A:1', 'A:4', 'A:end', 'B:1', 'B:2', 'B:3', 'B:4', 'B:end']);
+    expect(trace).toEqual(['A:0', 'A:4', 'A:end', 'B:1', 'B:2', 'B:3', 'B:4', 'B:end']);
   });
 
   test('an instant turn chained from an instant turn also survives', () => {
@@ -612,7 +641,6 @@ describe('R4 — a turn chained from onAnimateEnd survives', () => {
     const trace: string[] = [];
 
     render.start();
-    tick(1000);
 
     // The instant turn commits synchronously and chains an ANIMATED turn.
     render.startAnimation(tagged(trace, 'A'), 0, () => {
@@ -623,9 +651,11 @@ describe('R4 — a turn chained from onAnimateEnd survives', () => {
     expect(trace).toEqual(['A:4', 'A:end']);
 
     // Reverted fix (either site): B was discarded, these ticks draw nothing.
+    // (B binds on the first frame it is drawn on — R5 — because the loop had
+    // not ticked yet; under R8 that is also what a parked loop gives it.)
     tick(1100);
     tick(1200);
-    expect(trace).toEqual(['A:4', 'A:end', 'B:1', 'B:2']);
+    expect(trace).toEqual(['A:4', 'A:end', 'B:0', 'B:1']);
   });
 
   test('finishAnimation still commits exactly once with nothing chained', () => {
@@ -635,14 +665,13 @@ describe('R4 — a turn chained from onAnimateEnd survives', () => {
     const trace: string[] = [];
 
     render.start();
-    tick(0);
     render.startAnimation(fiveFrames(trace), 500, () => trace.push('end'));
 
     tick(100);
     render.finishAnimation();
     render.finishAnimation();
 
-    expect(trace).toEqual(['frame:1', 'frame:4', 'end']);
+    expect(trace).toEqual(['frame:0', 'frame:4', 'end']);
   });
 });
 
@@ -682,7 +711,8 @@ describe('R5 — an animation never inherits a stale frame clock', () => {
 
     render.start();
     tick(1000);
-    tick(1016);
+    // No second tick: with nothing to draw the loop parks after the first one
+    // (R8), which is precisely the "parked scheduler" this test anticipated.
     render.stop();
 
     // …the tab is backgrounded for a minute, then a turn resumes the loop.
@@ -703,13 +733,17 @@ describe('R5 — an animation never inherits a stale frame clock', () => {
     const { render, tick } = makeHarness();
     const trace: string[] = [];
 
+    // R8: the animation is installed BEFORE the first tick, so tick(5000) is
+    // the frame it binds on — after which it is an animation "stamped by a
+    // running loop", which is what this test is about. (Starting it after a
+    // warm-up tick would no longer produce one: an idle loop parks and clears
+    // the clock, so it would bind lazily instead.)
     render.start();
-    tick(5000);
     render.startAnimation(fiveFrames(trace), 500, () => trace.push('end'));
 
-    for (const t of [5100, 5200, 5300, 5400, 5500]) tick(t);
+    for (const t of [5000, 5100, 5200, 5300, 5400, 5500]) tick(t);
 
-    expect(trace).toEqual(['frame:1', 'frame:2', 'frame:3', 'frame:4', 'end']);
+    expect(trace).toEqual(['frame:0', 'frame:1', 'frame:2', 'frame:3', 'frame:4', 'end']);
   });
 
   test('lazy binding does not defeat the C4 overshoot commit', () => {
@@ -927,6 +961,13 @@ describe('R7 — the loop closure has no temporal dead zone', () => {
       render.start();
     }).not.toThrow();
 
+    // One frame per request now (R8): `start()` draws one and parks, and each
+    // `requestFrame()` recurses straight back into the loop through the
+    // synchronous rAF — which is the shape that used to hit the TDZ.
+    expect(render.frameDraws).toBe(1);
+
+    render.wake();
+    render.wake();
     expect(render.frameDraws).toBe(3);
   });
 
@@ -987,9 +1028,14 @@ describe('R7 — the loop closure has no temporal dead zone', () => {
   test('the ordinary asynchronous loop is unchanged', () => {
     const { render, tick } = makeHarness({}, { offsetWidth: 400, offsetHeight: 300 });
 
+    // R8: "unchanged" is now per requested frame — the generation guard must
+    // not eat a frame that WAS asked for. Each `requestFrame()` re-arms the
+    // parked loop exactly once, and every tick draws.
     render.start();
     tick(16);
+    render.wake();
     tick(32);
+    render.wake();
     tick(48);
 
     expect(render.frameDraws).toBe(3);
@@ -1011,27 +1057,26 @@ describe('U5 — startAnimation must not orphan a turn chained from its own comm
     const trace: string[] = [];
 
     render.start();
-    tick(1000);
     render.startAnimation(tagged(trace, 'A'), 500, () => {
       trace.push('A:end');
       render.startAnimation(tagged(trace, 'B'), 500, () => trace.push('B:end'));
     });
 
-    tick(1100); // A frame 1
+    tick(1100); // A binds here and plays frame 0
 
     // The racing gesture. Reverted fix: `this.animation = {...}` at the bottom
     // of `startAnimation` replaces B with C, and B's `onAnimateEnd` — the
     // callback that COMMITS the chained page turn — never runs.
     render.startAnimation(tagged(trace, 'C'), 500, () => trace.push('C:end'));
 
-    expect(trace).toEqual(['A:1', 'A:4', 'A:end']);
+    expect(trace).toEqual(['A:0', 'A:4', 'A:end']);
 
     tick(1200);
     tick(1300);
 
     // B is the animation on the object, playing from the frame clock it was
     // stamped on (R2), and C never ran at all.
-    expect(trace).toEqual(['A:1', 'A:4', 'A:end', 'B:1', 'B:2']);
+    expect(trace).toEqual(['A:0', 'A:4', 'A:end', 'B:1', 'B:2']);
 
     tick(1700);
     expect(trace).toContain('B:end');
@@ -1050,7 +1095,6 @@ describe('U5 — startAnimation must not orphan a turn chained from its own comm
     const trace: string[] = [];
 
     render.start();
-    tick(1000);
     render.startAnimation(tagged(trace, 'A'), 500, () => {
       trace.push('A:end');
       render.startAnimation(tagged(trace, 'B'), 0, () => trace.push('B:end'));
@@ -1059,14 +1103,18 @@ describe('U5 — startAnimation must not orphan a turn chained from its own comm
     tick(1100);
     render.startAnimation(tagged(trace, 'C'), 500, () => trace.push('C:end'));
 
-    expect(trace).toEqual(['A:1', 'A:4', 'A:end', 'B:4', 'B:end']);
+    expect(trace).toEqual(['A:0', 'A:4', 'A:end', 'B:4', 'B:end']);
 
+    // Forced frames (R8 parks the loop once the instant turn has committed) —
+    // and they must draw nothing, which is the assertion below.
     tick(1200);
+    render.wake();
     tick(1300);
+    render.wake();
     tick(1700);
 
     // Nothing further ran: no C frames, and above all no second commit.
-    expect(trace).toEqual(['A:1', 'A:4', 'A:end', 'B:4', 'B:end']);
+    expect(trace).toEqual(['A:0', 'A:4', 'A:end', 'B:4', 'B:end']);
   });
 
   test('a turn abandoned from the commit is not resurrected by the outer request', () => {
@@ -1078,7 +1126,6 @@ describe('U5 — startAnimation must not orphan a turn chained from its own comm
     const trace: string[] = [];
 
     render.start();
-    tick(1000);
     render.startAnimation(tagged(trace, 'A'), 500, () => {
       trace.push('A:end');
       render.cancelAnimation();
@@ -1088,9 +1135,10 @@ describe('U5 — startAnimation must not orphan a turn chained from its own comm
     render.startAnimation(tagged(trace, 'C'), 500, () => trace.push('C:end'));
 
     tick(1200);
+    render.wake();
     tick(1300);
 
-    expect(trace).toEqual(['A:1', 'A:4', 'A:end']);
+    expect(trace).toEqual(['A:0', 'A:4', 'A:end']);
   });
 
   test('the ordinary path still replaces a running animation', () => {
@@ -1101,14 +1149,13 @@ describe('U5 — startAnimation must not orphan a turn chained from its own comm
     const trace: string[] = [];
 
     render.start();
-    tick(1000);
     render.startAnimation(tagged(trace, 'A'), 500, () => trace.push('A:end'));
 
     tick(1100);
     render.startAnimation(tagged(trace, 'B'), 500, () => trace.push('B:end'));
 
     // A was committed by B's opening `finishAnimation()`…
-    expect(trace).toEqual(['A:1', 'A:4', 'A:end']);
+    expect(trace).toEqual(['A:0', 'A:4', 'A:end']);
 
     // …and B is the animation now running.
     tick(1200);
@@ -1116,4 +1163,183 @@ describe('U5 — startAnimation must not orphan a turn chained from its own comm
     expect(trace).toContain('B:1');
     expect(trace).toContain('B:end');
   });
+});
+
+/* ------------------------------------------------------------------------- *
+ * R8 — the loop parks when there is nothing to draw.
+ *
+ * C1: `loop` re-armed unconditionally, so `drawFrame()` ran ~60 times a second
+ * for the life of the page on a book nobody had touched — in HTML mode as much
+ * as canvas. The rule here is deliberately asymmetric: parking is an
+ * optimisation and waking is a correctness requirement, so every mutator wakes
+ * the loop even where it might not have needed to, and the park decision is
+ * taken only after a frame has been drawn.
+ * ------------------------------------------------------------------------- */
+
+describe('R8 — an idle loop parks', () => {
+  test('an untouched book draws one frame and then asks for nothing', () => {
+    const { render, tick, pending } = makeHarness({}, { offsetWidth: 400, offsetHeight: 300 });
+
+    render.start();
+    tick(0);
+
+    // Reverted fix: `pending()` is true forever and `drawFrame` runs on every
+    // rAF of the page's life.
+    expect(render.frameDraws).toBe(1);
+    expect(pending()).toBe(false);
+  });
+
+  test('requestFrame wakes it for exactly one frame', () => {
+    const { render, tick, pending } = makeHarness({}, { offsetWidth: 400, offsetHeight: 300 });
+
+    render.start();
+    tick(0);
+    expect(pending()).toBe(false);
+
+    render.wake();
+    expect(pending()).toBe(true);
+    tick(16);
+
+    expect(render.frameDraws).toBe(2);
+    expect(pending()).toBe(false);
+  });
+
+  test('an animation keeps it awake for every one of its frames', () => {
+    // The park must never cut a turn short: five frames plus the commit frame.
+    const { render, tick, pending } = makeHarness({}, { offsetWidth: 400, offsetHeight: 300 });
+    const trace: string[] = [];
+
+    render.start();
+    render.startAnimation(fiveFrames(trace), 500, () => trace.push('end'));
+
+    for (const t of [0, 100, 200, 300, 400, 500]) {
+      expect(pending()).toBe(true);
+      tick(t);
+    }
+
+    expect(trace).toEqual(['frame:0', 'frame:1', 'frame:2', 'frame:3', 'frame:4', 'end']);
+    expect(render.frameDraws).toBe(6);
+    expect(pending()).toBe(false);
+  });
+
+  test('a turn started after a long park is not stamped with the parked clock', () => {
+    // The subtly wrong variant: parking without clearing the frame clock. It
+    // is R5 again, and parking makes it the COMMON case rather than a one-frame
+    // window — a book sits idle for a minute, the reader turns a page, and the
+    // stale stamp makes the very first resumed frame overshoot the whole list,
+    // so the turn plays instantly with no animation at all.
+    const { render, tick } = makeHarness({}, { offsetWidth: 400, offsetHeight: 300 });
+    const trace: string[] = [];
+
+    render.start();
+    tick(1000); // draws, then parks
+
+    render.startAnimation(fiveFrames(trace), 500, () => trace.push('end'));
+    tick(61_000); // a minute later
+
+    // Reverted (`park()` without `this.timer = null`): ['frame:4', 'end'].
+    expect(trace).toEqual(['frame:0']);
+  });
+
+  test('a stopped loop is not resurrected by a late frame request', () => {
+    // `destroy()` calls `stop()`. A consumer holding the render — a pending
+    // effect, an async callback — must not be able to restart a torn-down
+    // engine, which is what separates a park from a stop.
+    const { render, tick, pending } = makeHarness({}, { offsetWidth: 400, offsetHeight: 300 });
+
+    render.start();
+    tick(0);
+    render.stop();
+
+    render.wake();
+
+    expect(pending()).toBe(false);
+    expect(render.frameDraws).toBe(1);
+  });
+
+  test('a parked loop resumes under a SYNCHRONOUS requestAnimationFrame', () => {
+    // R7's environment, and the trap this design walked into once: with a
+    // synchronous rAF the callback runs — and parks — before
+    // `requestAnimationFrame` returns, so the id it returns is assigned to
+    // `rafId` AFTER the park. A scheduler that asked `rafId !== 0` would then
+    // believe a frame was pending forever and never draw again. That is a book
+    // that stops and never restarts: strictly worse than the defect R8 fixes.
+    const { render } = makeHarness({}, { offsetWidth: 400, offsetHeight: 300 });
+
+    let calls = 0;
+    globalThis.requestAnimationFrame = ((cb: (timer: number) => void): number => {
+      calls += 1;
+      const id = calls;
+      cb(id * 16);
+      return id;
+    }) as typeof globalThis.requestAnimationFrame;
+
+    render.start();
+    expect(render.frameDraws).toBe(1);
+
+    render.wake();
+    render.wake();
+
+    expect(render.frameDraws).toBe(3);
+  });
+});
+
+describe('R8 — every renderer mutator wakes the loop', () => {
+  /**
+   * One case per way renderer state can change, because "the loop parks" is
+   * only safe if this list is exhaustive. Each entry is what some caller does:
+   * `Flip.do` (page rect, shadow, mover), `Flip.start` (direction),
+   * `PageCollection.showSpread` (static leaves), `PageFlip.update` /
+   * `UI.onResize` (update), `Flip.animateFlippingTo` (startAnimation),
+   * `PageFlip.replacePages` (cancelAnimation), `UI.unfoldHoverCorner`
+   * (finishAnimation), `PageFlip.destroy` / `clear` (releasePages).
+   *
+   * These assert the PROPERTY ("this input wakes a parked loop"), not a
+   * particular line: some are provided twice over — `startAnimation` opens with
+   * `finishAnimation()`, and `releasePages` delegates to `cancelAnimation` — so
+   * removing one `requestFrame()` call may leave its own case green while
+   * another entry catches it. The list is exhaustive by construction instead:
+   * one entry per public mutator on `Render`.
+   */
+  const mutators: Array<[string, (render: Render) => void]> = [
+    ['update', (r) => r.update()],
+    ['setLeftPage', (r) => r.setLeftPage(null)],
+    ['setRightPage', (r) => r.setRightPage(null)],
+    ['setBottomPage', (r) => r.setBottomPage(null)],
+    ['setFlippingPage', (r) => r.setFlippingPage(null)],
+    [
+      'setPageRect',
+      (r) =>
+        r.setPageRect({
+          topLeft: { x: 0, y: 0 },
+          topRight: { x: 1, y: 0 },
+          bottomLeft: { x: 0, y: 1 },
+          bottomRight: { x: 1, y: 1 },
+        }),
+    ],
+    ['setShadowData', (r) => r.setShadowData({ x: 1, y: 1 }, 0.5, 50, FlipDirection.FORWARD)],
+    ['clearShadow', (r) => r.clearShadow()],
+    ['setDirection', (r) => r.setDirection(FlipDirection.BACK)],
+    ['cancelAnimation', (r) => r.cancelAnimation()],
+    ['finishAnimation', (r) => r.finishAnimation()],
+    ['releasePages', (r) => r.releasePages()],
+    ['startAnimation', (r) => r.startAnimation([() => undefined], 100, () => undefined)],
+  ];
+
+  for (const [name, mutate] of mutators) {
+    test(`${name} re-arms a parked loop`, () => {
+      const { render, tick, pending } = makeHarness({}, { offsetWidth: 400, offsetHeight: 300 });
+
+      render.start();
+      tick(0);
+
+      // FIXTURE CHECK: asserting that a frame was scheduled is worthless if one
+      // was scheduled already.
+      expect(pending()).toBe(false);
+
+      mutate(render);
+
+      expect(pending()).toBe(true);
+    });
+  }
 });
