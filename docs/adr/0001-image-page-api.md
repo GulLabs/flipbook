@@ -834,3 +834,74 @@ leaf kinds and `renderLeaf` in `reader-leaves.tsx` shows that `inside-cover` and
 absent. An images-only canvas mode cannot draw that book, so either canvas mode
 grows non-image leaves (a materially larger Phase 2) or its first real consumer
 is somebody else. Every decision in this ADR assumes one bitmap per leaf.
+
+---
+
+## Scope resolved — canvas draws images and blank leaves, and nothing else
+
+**Owner decision, 2026-08-29.** The open question above — whether canvas mode
+needs non-image leaves, since the downstream book has four kinds that are not
+images — is answered: **images and blank leaves only. No text leaves, no HTML
+leaves.**
+
+### Why this is right, and why the alternatives lose
+
+**HTML leaves were measured, not assumed.** `foreignObject` → `drawImage` was
+probed in both engines this repo ships against:
+
+|                                                    | Chromium    | WebKit |
+| -------------------------------------------------- | ----------- | ------ |
+| Renders                                            | yes         | yes    |
+| Taints the canvas                                  | no          | no     |
+| Cost per leaf (serialize → encode → decode → draw) | ~0.1 ms p90 | ~0 ms  |
+| **The page's stylesheet applies**                  | **no**      | **no** |
+| **An `<img>` inside the HTML loads**               | **no**      | **no** |
+
+So it works and it is cheap — the common claim that it is broken in WebKit is
+wrong. It loses on the bottom two rows. A consumer writes HTML, and it silently
+loses their stylesheet and every image inside it: a lookalike that accepts
+`<div class="x">` and ignores `x`. That is the same shape of failure as the
+portrait back-curl bug this fork exists to remove — it renders, just wrong, and
+nothing tells you.
+
+**Text leaves lose on a different axis.** A canvas text API is a text layout
+engine: line breaking, font metrics, alignment, vertical centring, overflow,
+bidi, shaping. `ctx.fillText` draws one run at one point and provides none of
+it. In a package with zero runtime dependencies and a byte budget, it would be a
+permanently worse version of what `HTMLRender` already does natively — and text
+is exactly where canvas has no advantage to trade for the cost.
+
+**The decisive point is that HTML mode is already first-class.** It renders
+text, HTML, images and blank leaves, with real CSS, real fonts, real
+accessibility. Canvas exists for what HTML mode does badly: books that are
+overwhelmingly images, where a DOM node per page is the cost. A canvas mode that
+grew text and HTML would be a second, worse HTML renderer.
+
+**And the bridge already exists in practice.** The downstream consumer's text
+pages are not text at run time — its pipeline rasterizes HTML templates to
+1600×2400 images with the type baked in
+(`apps/web/components/reader/reader-leaves.tsx`). Its text branches are
+fallbacks for when rasterization has not run. So "if you need text, give HTML"
+is not a workaround there; it is the existing design, and the rasterizer is the
+bridge. Any other consumer has the same two honest options — use HTML mode, or
+render the page to an image.
+
+### Consequences for this ADR
+
+- **Smaller, not larger.** A blank leaf is a leaf with no bitmap painted with
+  the page background, which the renderer already does while an image decodes.
+  The leaf model becomes a two-variant union rather than the four-kind rewrite
+  that text and HTML would have forced.
+- **Modelled as a discriminated union**, not a nullable `src`. `alt` on a blank
+  leaf should be `''` — a genuine decorative assertion — and a nullable `src`
+  would push a null check into every draw path.
+- **The no-text error fallback is now structural, not stylistic.** Codex's
+  vector broken-image glyph was chosen so core ships no unlocalizable English
+  string. Under images-only there is no text-drawing capability for a string to
+  live in at all, which retires the question.
+- **A per-leaf `draw(ctx, rect)` escape hatch is DEFERRED, not rejected.** Ten
+  lines, and it would let a consumer draw anything without this engine owning a
+  text layout engine. It is not shipped because nobody has asked for it, it
+  hands consumers a way to stall the render loop, and speculative public API is
+  what AGENTS.md §5 exists to prevent. Recorded here as the known escape hatch,
+  to be added when someone hits the wall.
