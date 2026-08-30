@@ -11,6 +11,66 @@ import { foldFill } from '../Render/pageBackground';
 import { PageFlipError } from '../errors';
 
 /**
+ * Every CSS property the engine writes on a leaf. NF4.
+ *
+ * The draw paths used to assign `style.cssText` wholesale, which REPLACES the
+ * element's entire inline style. Adopted leaves get a snapshot restored when
+ * they are released, so a vanilla consumer never noticed — but React-portalled
+ * leaves are never adopted, so a consumer's `style={{ borderRadius: 8 }}` on a
+ * page element was destroyed on the first frame and every frame after, with
+ * nothing to restore it and no way to work around it short of `!important`.
+ *
+ * Listing the engine's own properties is what makes a surgical write possible:
+ * anything NOT on this list belongs to the consumer and is left alone. It must
+ * stay in sync with the draw paths below — a property written but not listed
+ * would never be cleared when a later frame stops writing it, and would stick.
+ */
+const ENGINE_STYLE_PROPS = [
+  'position',
+  'display',
+  'z-index',
+  'left',
+  'top',
+  'width',
+  'height',
+  'background-color',
+  'pointer-events',
+  'transform',
+  'transform-origin',
+  'clip-path',
+  '-webkit-clip-path',
+  'backface-visibility',
+  '-webkit-backface-visibility',
+] as const;
+
+/**
+ * Apply the engine's declarations without disturbing the consumer's.
+ *
+ * Parses rather than taking an object because the draw paths compose their
+ * declarations as strings and several are conditional; converting all three to
+ * property maps would be a much larger change to the hot path for the same
+ * result. The parse is ~15 declarations on at most four leaves per frame.
+ */
+function applyEngineStyle(element: HTMLElement, css: string): void {
+  const next = new Map<string, string>();
+
+  for (const declaration of css.split(';')) {
+    const colon = declaration.indexOf(':');
+    if (colon <= 0) continue;
+
+    const property = declaration.slice(0, colon).trim();
+    if (property !== '') next.set(property, declaration.slice(colon + 1).trim());
+  }
+
+  // Clear only what the engine itself may have written on an earlier frame.
+  for (const property of ENGINE_STYLE_PROPS) {
+    if (!next.has(property)) element.style.removeProperty(property);
+  }
+
+  for (const [property, value] of next) element.style.setProperty(property, value);
+}
+
+/**
  * Every class this renderer puts on a consumer's leaf element.
  *
  * Kept here, next to the code that adds them (`constructor`, `simpleDraw`,
@@ -39,8 +99,8 @@ export class HTMLPage extends Page {
   /**
    * True only for the throwaway leaf built by `newTemporaryCopy()`.
    *
-   * `draw()` rewrites `style.cssText` wholesale, so anything the clone needs in
-   * its inline style has to be re-emitted on every frame rather than set once
+   * `draw()` re-emits the engine's declarations every frame, so anything the
+   * clone needs in its inline style has to be re-emitted too rather than set once
    * at clone time. Private, and set by `newTemporaryCopy` on the *other*
    * instance — legal because TypeScript's `private` is per-class, not
    * per-instance.
@@ -228,9 +288,11 @@ export class HTMLPage extends Page {
         ? `transform-origin:${rect.pageWidth}px 0;transform:translate3d(${spine - rect.pageWidth}px,${top}px,0) rotateY(${angle}deg);`
         : `transform-origin:0 0;transform:translate3d(${spine}px,${top}px,0) rotateY(${angle}deg);`;
 
-    this.element.style.cssText =
+    applyEngineStyle(
+      this.element,
       `${commonStyle}backface-visibility:hidden;-webkit-backface-visibility:hidden;` +
-      `clip-path:none;-webkit-clip-path:none;${transform}`;
+        `clip-path:none;-webkit-clip-path:none;${transform}`,
+    );
   }
 
   private drawSoft(position: Point, commonStyle = ''): void {
@@ -281,7 +343,10 @@ export class HTMLPage extends Page {
         ? `transform:translate(${position.x}px,${position.y}px);`
         : `transform:translate3d(${position.x}px,${position.y}px,0) rotate(${this.state.angle}rad);`;
 
-    this.element.style.cssText = `${commonStyle}transform-origin:0 0;clip-path:${polygon};-webkit-clip-path:${polygon};${transform}`;
+    applyEngineStyle(
+      this.element,
+      `${commonStyle}transform-origin:0 0;clip-path:${polygon};-webkit-clip-path:${polygon};${transform}`,
+    );
   }
 
   public simpleDraw(orient: PageOrientation): void {
@@ -294,10 +359,12 @@ export class HTMLPage extends Page {
     this.element.classList.add('--simple');
     // Static pages are opaque too: a transparent leaf lets the page under
     // the fold read through at the start / end of a turn.
-    this.element.style.cssText =
+    applyEngineStyle(
+      this.element,
       `position:absolute;display:block;height:${pageHeight}px;left:${x}px;top:${y}px;` +
-      `width:${pageWidth}px;background-color:${foldFill(this.render.getSettings().pageBackground)};` +
-      `z-index:${this.render.getSettings().startZIndex + 1};`;
+        `width:${pageWidth}px;background-color:${foldFill(this.render.getSettings().pageBackground)};` +
+        `z-index:${this.render.getSettings().startZIndex + 1};`,
+    );
   }
 
   public getElement(): HTMLElement {
