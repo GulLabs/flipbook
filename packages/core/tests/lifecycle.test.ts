@@ -2107,3 +2107,116 @@ describe('L8 — destroy() completes even when a listener throws', () => {
     book.destroy();
   });
 });
+
+/**
+ * Codex round 9 — four ownership failures across the lifecycle methods.
+ * All four were reproduced against the built engine before being fixed.
+ */
+describe('round 9 — lifecycle ownership', () => {
+  test('attachMode abandons the outgoing turn, target and all', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(8));
+
+    let swapped = false;
+    book.on('changeState', (e) => {
+      if ((e.data as string) !== 'flipping' || swapped) return;
+      swapped = true;
+      book.loadFromHTML(makePages(4));
+    });
+
+    book.flip(5);
+
+    // Reverted fix: the old turn resumed after the swap and applied its
+    // destination through `getPageCollection()` — the NEW collection. Measured
+    // on the built engine: the first page read "new0" while
+    // `getCurrentPageIndex()` and `getCurrentSpreadIndex()` both said 5. A
+    // destination computed for a book that no longer exists, applied to one
+    // that does. `replacePages`, `updateFromHtml` and `clear` all abandon;
+    // `attachMode` relied on `cancelGesture()`, which only fires for a POINTER,
+    // and a programmatic turn has none.
+    const index = book.getCurrentPageIndex();
+    expect(index).toBeLessThan(book.getPageCount());
+    expect(book.getPageCollection().getSpreadIndexByPage(index)).toBe(
+      book.getPageCollection().getCurrentSpreadIndex(),
+    );
+
+    book.destroy();
+  });
+
+  test('clear() finishes its destructive work even if a listener throws', () => {
+    const hostEl = host();
+    const book = new PageFlip(hostEl, { width: 200, height: 300, flippingTime: 400 });
+    const pages = makePages(6);
+    book.loadFromHTML(pages);
+
+    book.flipNext(); // a live state, so `abandon()` has a transition to announce
+    book.on('changeState', () => {
+      throw new Error('read listener');
+    });
+
+    // Outside `destroy()` the error is still synchronous — that is the L8
+    // contract and it is deliberate. What must not happen is the throw landing
+    // MID-teardown.
+    expect(() => {
+      book.clear();
+    }).toThrow('read listener');
+
+    // Reverted fix: `abandon()` sat before `HTMLUI.clear()`, so the throw
+    // aborted with six leaves still parented to `.stf__block` and none handed
+    // back — a half-cleared book that every listener still believes is whole.
+    const block = book.getUI().getDistElement();
+    expect(block.querySelectorAll('.stf__item').length).toBe(0);
+    expect(book.getPageCount()).toBe(0);
+
+    book.destroy();
+  });
+
+  test('a listener registered AFTER destroy still gets synchronous errors', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(4));
+    book.destroy();
+
+    const boom = new Error('post-destroy listener');
+    book.on('turnRejected', () => {
+      throw boom;
+    });
+
+    // MIGRATION.md documents that `on()` after `destroy()` registers and that
+    // such a listener receives the `turnRejected` a dead engine emits. That
+    // dispatch is not teardown, so its errors belong on the synchronous path.
+    // Reverted fix: `deferListenerErrors()` was one-way, so this error was
+    // deferred and `flipNext()` returned quietly — contradicting a guarantee
+    // documented two lines away.
+    expect(() => {
+      book.flipNext();
+    }).toThrow(boom);
+  });
+});
+
+describe('round 9 — two engines on one host', () => {
+  test('destroying the first does not strip the class from the second', () => {
+    const shared = host();
+
+    const a = new PageFlip(shared, { width: 200, height: 300 });
+    a.loadFromHTML(makePages(4));
+    const b = new PageFlip(shared, { width: 200, height: 300 });
+    b.loadFromHTML(makePages(4));
+
+    expect(shared.classList.contains('stf__parent')).toBe(true);
+
+    a.destroy();
+
+    // Reverted fix: the first engine recorded `hostHadParentClass = false` and
+    // the second recorded `true`, so destroying the FIRST removed the class
+    // from a host the second is still rendering into — the book lost its
+    // positioning context while live. This is the multi-mount case the fix's
+    // own comment named as its motivation.
+    expect(shared.classList.contains('stf__parent')).toBe(true);
+    expect(b.getPageCount()).toBe(4);
+
+    b.destroy();
+
+    // …and the last one out still cleans up.
+    expect(shared.classList.contains('stf__parent')).toBe(false);
+  });
+});

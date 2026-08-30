@@ -174,39 +174,50 @@ export class PageFlip extends EventObject {
     // that used to come straight back out of `destroy()`, taking the rest of
     // the cleanup with it. See `EventObject.trigger`.
     this.deferListenerErrors();
-    this.cancelPendingInit();
-    // May be called before create() finishes wiring render/ui.
-    this.render?.stop();
-    this.ui?.destroy();
-    // Stopping the loop does not release anything. The collection holds every
-    // page — for canvas, every decoded image — and the renderer holds its own
-    // left/right/flipping/bottom references, so both have to be cleared or a
-    // retained destroyed engine retains the whole book.
-    this.render?.releasePages();
-    this.pages?.destroy();
-    this.flipController?.abandon();
+    try {
+      this.cancelPendingInit();
+      // May be called before create() finishes wiring render/ui.
+      this.render?.stop();
+      this.ui?.destroy();
+      // Stopping the loop does not release anything. The collection holds every
+      // page — for canvas, every decoded image — and the renderer holds its own
+      // left/right/flipping/bottom references, so both have to be cleared or a
+      // retained destroyed engine retains the whole book.
+      this.render?.releasePages();
+      this.pages?.destroy();
+      this.flipController?.abandon();
 
-    // P3: dropping the references is the *contract*, not just hygiene. Left
-    // non-null, every accessor kept working against a dead engine —
-    // `getPageCollection()` handed back a disposed collection and `flipNext()`
-    // still reached the flip controller against a stopped render, so a
-    // post-destroy call looked like it had succeeded. Nulling them routes
-    // every guarded accessor through `requireLoaded`, which reports
-    // `'DESTROYED'`. It also releases the engine's own retention of the book.
-    this.pages = null;
-    this.render = null;
-    this.ui = null;
-    this.flipController = null;
-    // The host owns `block` (React/SSR). Do not remove it from the DOM.
+      // P3: dropping the references is the *contract*, not just hygiene. Left
+      // non-null, every accessor kept working against a dead engine —
+      // `getPageCollection()` handed back a disposed collection and `flipNext()`
+      // still reached the flip controller against a stopped render, so a
+      // post-destroy call looked like it had succeeded. Nulling them routes
+      // every guarded accessor through `requireLoaded`, which reports
+      // `'DESTROYED'`. It also releases the engine's own retention of the book.
+      this.pages = null;
+      this.render = null;
+      this.ui = null;
+      this.flipController = null;
+      // The host owns `block` (React/SSR). Do not remove it from the DOM.
 
-    // Y2, and the same reasoning as the four nulls above: a listener is a
-    // closure, and under React it captures component state, refs and DOM. The
-    // engine kept the whole map alive, so a consumer holding a destroyed engine
-    // held every one of those closures too — the one retention the teardown
-    // missed. LAST, so anything the teardown itself emits (`ui.destroy()`
-    // abandons an in-flight gesture, which reports `changeState`) still reaches
-    // the handlers that were registered for it.
-    this.clearListeners();
+      // Y2, and the same reasoning as the four nulls above: a listener is a
+      // closure, and under React it captures component state, refs and DOM. The
+      // engine kept the whole map alive, so a consumer holding a destroyed engine
+      // held every one of those closures too — the one retention the teardown
+      // missed. LAST, so anything the teardown itself emits (`ui.destroy()`
+      // abandons an in-flight gesture, which reports `changeState`) still reaches
+      // the handlers that were registered for it.
+      this.clearListeners();
+    } finally {
+      // SCOPED, not permanent. `deferListenerErrors()` used to be one-way, and
+      // that contradicted a documented guarantee two lines of MIGRATION.md
+      // away: `on()` after `destroy()` still registers, and such a listener
+      // still receives the `turnRejected` a dead engine emits. Its errors are
+      // outside teardown and must stay synchronous like every other listener's.
+      // `finally`, so an unrelated throw cannot strand a destroyed engine in
+      // deferring mode for the rest of its life.
+      this.resumeListenerErrors();
+    }
   }
 
   public isDestroyed(): boolean {
@@ -451,6 +462,24 @@ export class PageFlip extends EventObject {
     // fields without any UI knowing, nor for the first `attachMode` of all,
     // where there is no previous UI to cancel anything.
     this.resetUserGesture();
+
+    // …and the same argument, one level up: the outgoing TURN goes with the
+    // outgoing collection, unconditionally.
+    //
+    // Y1 above drops the gesture. This drops the turn, and it is the same hole
+    // one field over: `replacePages`, `updateFromHtml` and `clear` all abandon,
+    // while this path leaned on `ui.destroy()` → `cancelGesture()`, which only
+    // fires while a POINTER is down. A programmatic turn has none — so an
+    // instant turn whose `changeState('flipping')` listener calls
+    // `loadFromHTML()` resumed after the swap and applied its old
+    // `pendingTarget` through `getPageCollection()`, which by then is the NEW
+    // collection.
+    //
+    // Measured: `flip(5)` with `flippingTime: 0` and a listener swapping in a
+    // four-page book threw `Invalid spread index 4 (have 4)` straight out of
+    // the animation callback — a destination computed for a book that no longer
+    // exists, applied to one that does.
+    this.flipController?.abandon();
 
     this.ui = ui;
     this.render = render;
@@ -775,17 +804,33 @@ export class PageFlip extends EventObject {
     // longer has any pages. There is nothing left to initialise; drop it.
     this.cancelPendingInit();
 
+    // EVERY DESTRUCTIVE STEP FIRST, THEN THE ANNOUNCEMENTS.
+    //
+    // `abandon()` announces READ, and outside `destroy()` a listener error is
+    // still thrown synchronously — deliberately, so `try { … } catch` around a
+    // public method keeps working. It used to sit in the MIDDLE of this
+    // sequence, so a throwing `changeState('read')` listener aborted `clear()`
+    // before `HTMLUI.clear()` ran and before either collection event was
+    // emitted. Measured against the built engine: `pageCount: 0` reported, six
+    // leaves still parented to `.stf__block`, none handed back to the host, and
+    // no `update` or `collectionRebuild` — a half-cleared book that every
+    // listener still believes is whole.
+    //
+    // L8's rule is "cleanup must complete". `destroy()` gets there by deferring
+    // errors; here ordering achieves it without touching the synchronous
+    // contract, which is the better trade for a method the engine survives.
     pages.destroy();
     // Emptying the collection is not enough: the renderer holds its own
     // left/right/flipping/bottom references, so the rAF loop went on painting
     // the pages that had just been discarded.
     render.releasePages();
-    this.flipController?.abandon();
     this.resetUserGesture();
     // Was an unconditional `as HTMLUI` cast. `CanvasUI` has no `clear()`, so
     // this threw a TypeError in canvas mode — a public method that could not be
     // called in one of the two supported modes.
     if (ui instanceof HTMLUI) ui.clear();
+
+    this.flipController?.abandon();
 
     // L3: `clear()` emptied the book and told nobody. `updateFromHtml` and
     // `replacePages` both end with the clamp-then-report-resolved pair, and

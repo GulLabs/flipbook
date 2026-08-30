@@ -20,6 +20,16 @@ type SwipeData = {
  * UI Class, represents work with DOM.
  * One pointer-event path (mouse, touch, pen) plus ResizeObserver / visualViewport.
  */
+/**
+ * How many live engines are mounted on each host element.
+ *
+ * `stf__parent` is shared state on a node the CONSUMER owns, so removing it is
+ * only safe once the last engine using that host has gone. Module-level and
+ * `WeakMap`-keyed: no `window`/`document` at module scope (SSR), and a detached
+ * host cannot leak. See the constructor.
+ */
+const hostEngineCount = new WeakMap<HTMLElement, number>();
+
 export abstract class UI {
   protected readonly parentElement: HTMLElement;
 
@@ -69,7 +79,12 @@ export abstract class UI {
     this.update();
   };
 
-  /** Did the caller's host already carry `stf__parent` before we touched it? */
+  /**
+   * Did the caller's host already carry `stf__parent` before we touched it?
+   *
+   * Only meaningful for the FIRST engine on a given host — see
+   * {@link hostEngineCount}.
+   */
   private hostHadParentClass = false;
 
   protected constructor(inBlock: HTMLElement, app: PageFlip, setting: FlipSetting) {
@@ -87,13 +102,30 @@ export abstract class UI {
       display: inBlock.style.display,
     };
 
+    // REFERENCE COUNTED, because a boolean per instance answers the wrong
+    // question. The first engine on a host records `false` and the second
+    // records `true` — so destroying the FIRST removed the class from a host
+    // the second is still rendering into, and the book lost its positioning
+    // context while live. That is the exact multi-mount case the comment below
+    // named as the motivation, which the boolean did not survive.
+    //
+    // A module-level `WeakMap` rather than a counter attribute on the element:
+    // the count is the engine's bookkeeping, not something a consumer should
+    // find in their DOM, and a `WeakMap` keyed on the host cannot leak a
+    // detached node.
+    const engines = hostEngineCount.get(inBlock) ?? 0;
+    hostEngineCount.set(inBlock, engines + 1);
+
     // Record whether the caller already had it, for the same reason the styles
     // above are recorded: `destroy()` promises to hand the host back UNCHANGED,
     // and it used to remove this class unconditionally. A consumer who styles
     // their own container with `stf__parent` — or who mounts two books through
     // one wrapper — had a class they own stripped by a teardown that was only
     // supposed to undo its own work.
-    this.hostHadParentClass = inBlock.classList.contains('stf__parent');
+    //
+    // Only the first arrival can observe the pre-existing state; every later
+    // one sees the class the earlier engine added.
+    this.hostHadParentClass = engines === 0 && inBlock.classList.contains('stf__parent');
     inBlock.classList.add('stf__parent');
     inBlock.insertAdjacentHTML('afterbegin', '<div class="stf__wrapper"></div>');
 
@@ -237,7 +269,14 @@ export abstract class UI {
     this.wrapper.remove();
 
     // Hand the host element back the way we found it.
-    if (!this.hostHadParentClass) this.parentElement.classList.remove('stf__parent');
+    const remaining = (hostEngineCount.get(this.parentElement) ?? 1) - 1;
+    if (remaining > 0) {
+      hostEngineCount.set(this.parentElement, remaining);
+    } else {
+      hostEngineCount.delete(this.parentElement);
+      // Last one out. Only now is it safe to ask whether the class was ours.
+      if (!this.hostHadParentClass) this.parentElement.classList.remove('stf__parent');
+    }
     this.parentElement.style.minWidth = this.hostStyles.minWidth;
     this.parentElement.style.minHeight = this.hostStyles.minHeight;
     this.parentElement.style.width = this.hostStyles.width;

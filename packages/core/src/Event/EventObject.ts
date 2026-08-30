@@ -157,6 +157,18 @@ export abstract class EventObject {
     this.deferErrors = true;
   }
 
+  /**
+   * End the deferral window opened by {@link EventObject.deferListenerErrors}.
+   *
+   * The window must be a window and not a one-way switch: `on()` after
+   * `destroy()` is documented to register, and such a listener still receives
+   * the `turnRejected` a dead engine emits. That dispatch is not teardown, so
+   * its errors belong on the synchronous path like everyone else's.
+   */
+  protected resumeListenerErrors(): void {
+    this.deferErrors = false;
+  }
+
   protected clearListeners(): void {
     this.events.clear();
   }

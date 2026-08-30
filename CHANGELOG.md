@@ -18,6 +18,30 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — four ownership failures across the lifecycle methods
+
+- **`attachMode` did not abandon the outgoing turn**, so a turn's destination
+  could be applied to a collection loaded after it. `replacePages`,
+  `updateFromHtml` and `clear` all abandon; this path leaned on the UI cancelling
+  the gesture, which only happens while a pointer is down — and a programmatic
+  turn has none. Measured: `flip(5)` with `flippingTime: 0` and a
+  `changeState` listener that swaps in a four-page book threw
+  `Invalid spread index 4 (have 4)` out of the animation callback.
+- **`clear()` could be aborted half-way by a throwing listener.** It announced
+  `read` before releasing the DOM, so a throwing `changeState` handler left the
+  book reporting `pageCount: 0` with every leaf still parented to the engine's
+  block and neither collection event emitted. All destructive work now happens
+  before any announcement; the error stays synchronous.
+- **`destroy()`'s error deferral was permanent rather than scoped**, which
+  contradicted the documented guarantee that `on()` after `destroy()` still
+  registers and receives `turnRejected` — errors from such a listener are
+  outside teardown and must stay synchronous.
+- **Two engines mounted on one host fought over `stf__parent`.** The first
+  recorded that the class was absent and the second that it was present, so
+  destroying the first stripped it from a host the second was still rendering
+  into. Ownership is reference-counted now, and only the last engine out removes
+  it.
+
 ### Fixed — `updateFromHtml` left engine classes on the consumer's element
 
 - **A page added after the initial load kept `stf__item` and `--soft` / `--hard`
