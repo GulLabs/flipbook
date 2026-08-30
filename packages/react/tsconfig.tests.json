@@ -15,8 +15,11 @@
     //
     // The published `.d.ts` is still the contract and is still guarded, by
     // `fixtures/isolated-consumer` + `scripts/check-isolated-types.mjs`, which
-    // is the right place for it: that fixture installs the packed tarballs the
-    // way a consumer does. This mapping is deliberately NOT added to
+    // is the right place for it: it resolves the built
+    // `dist/index.d.ts` with `skipLibCheck: false`, which is the check that
+    // matters. Note it links the workspace rather than installing a packed
+    // tarball, so it does NOT prove the `files` list or `exports` map are
+    // right — `pnpm pack` is what would. This mapping is deliberately NOT added to
     // `packages/react/tsconfig.json`, which tsup reads for the dts build.
     "paths": {
       "@gullabs/flipbook-core": ["../core/src/index.ts"],

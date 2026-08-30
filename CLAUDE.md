@@ -43,8 +43,11 @@ test suite against whatever `pnpm build` last emitted. The three
 test-including tsconfigs now carry a matching `paths` mapping. Do not add one
 to `packages/react/tsconfig.json`: tsup reads it for the dts build. The
 published `.d.ts` is still the contract and is still guarded, by
-`fixtures/isolated-consumer`, which installs the packed tarballs the way a
-consumer does.
+`fixtures/isolated-consumer`, which resolves the built `dist/index.d.ts` with
+`skipLibCheck: false`. Note it LINKS the workspace (`workspace:*`) rather than
+installing a packed tarball, so it proves the emitted types resolve and
+typecheck — not that the `files` list or the `exports` map are correct. Only
+`pnpm pack` proves those.
 
 Playwright (`e2e/`) runs in CI on Chromium and WebKit. Its `webServer` builds
 the packages and the vanilla example itself, so a bare run works:

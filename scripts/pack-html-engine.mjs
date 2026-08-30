@@ -79,13 +79,21 @@ if (body.includes('getContext')) {
 // config LOOKED correct while being wrong: `drop_console: { exclude: ['warn'] }`
 // is esbuild's option shape, and terser coerces the object to truthy and drops
 // everything. Nothing failed; the warning simply was not there.
-if (!body.includes('console.warn')) {
+// Matched on the DIAGNOSTIC TEXT, not on `console.warn`. Any future eager
+// `console.warn` anywhere in the engine would satisfy a bare method check while
+// this exact warning had silently disappeared — the assertion would then be
+// guarding the presence of console calls in general, which is not the property
+// anyone cares about.
+const REFUSAL_WARNING = 'updateSettings ignored construction-time setting';
+
+if (!body.includes(REFUSAL_WARNING)) {
   console.error(
     'The updateSettings refusal warning did not survive minification.\n' +
       "Terser's `drop_console` takes a LIST of console methods to REMOVE;\n" +
       "`true`, or esbuild's `{ exclude: [...] }` object, strips every one of\n" +
       'them — including the only diagnostic a consumer gets for a setting the\n' +
-      'engine refused. See packages/core/tsup.config.ts.',
+      `engine refused. Looked for: ${JSON.stringify(REFUSAL_WARNING)}.\n` +
+      'See packages/core/tsup.config.ts.',
   );
   process.exit(1);
 }
