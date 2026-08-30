@@ -735,3 +735,102 @@ loading — and it is the one decision in this ADR that reverses _silently_, wit
 no type change to warn anyone. The hung-request hazard is real and only
 mitigated, not removed. If any single item here gets a second opinion, make it
 this one.
+
+---
+
+## Addendum — reconciliation with the independent Codex design
+
+Two designs were produced independently against the same brief: this ADR, and a
+Codex design round (`gpt-5.6-sol`, high effort). They agree on every load-bearing
+decision — descriptors required, `alt` mandatory, bare strings broken now rather
+than normalised, a separate image-resource radius, and `ImageFlipBook` as its
+own component — which is worth stating, because that agreement is what makes the
+rest of this addendum a set of small calls rather than a coin flip.
+
+They disagree on five points. Each is resolved below with the reason, so that a
+future reader can see that the alternative was considered by a second designer
+and not merely overlooked.
+
+### 1. `crossOrigin` default — RESOLVED IN FAVOUR OF THIS ADR (omit)
+
+Codex argued for defaulting to `'anonymous'`: an origin-tainted canvas
+contradicts the first-class canvas contract, and a CDN without CORS headers
+would fail loudly through `imageError` instead of appearing to work while
+permanently breaking `getImageData()` / `toDataURL()`.
+
+That is a real cost and it is understated in the body above. It is still the
+wrong default, because the two failures are not comparable in severity:
+
+- **Tainting** breaks pixel readback. The book renders correctly and every
+  reader sees their pages. Only a consumer who reads pixels back is affected,
+  and that is a minority of one — our own Phase 0 e2e harness, which can set
+  `crossOrigin` explicitly because we own it.
+- **`'anonymous'` against a server with no `Access-Control-Allow-Origin`**
+  breaks rendering. The image does not load at all. Every reader sees fallback
+  artwork where the story should be.
+
+Defaulting to the option that can blank the book, in order to protect a facility
+most consumers never use, is the wrong trade. `crossOrigin` is omitted by
+default, the taint consequence is documented on the field, and a consumer who
+needs readback opts in.
+
+**Reversal cost is asymmetric and favours this direction**: adding a default
+later turns working books into failing ones, whereas removing one turns failing
+books into working-but-tainted ones. The recoverable direction is the one to
+start from.
+
+### 2. Intrinsic `width` / `height` — RESOLVED IN FAVOUR OF CODEX (drop them)
+
+The body above lists them as optional and advisory. Codex is right that they
+should not exist at all: `naturalWidth` / `naturalHeight` are authoritative
+after decode, canvas pages have no layout shift to prevent, and page dimensions
+already come from the book settings. A second caller-declared authority can
+disagree with the decoded bitmap and produce wrong `contain` / `cover` geometry
+— an advisory field that is only consulted when it cannot be checked.
+
+Dropping them is also the cheap direction: adding optional metadata later is
+additive.
+
+### 3. `inset` units — RESOLVED IN FAVOUR OF THIS ADR (fraction, not CSS px)
+
+Codex specified a CSS-pixel inset. The evidence favours a fraction: the
+downstream consumer's only real inset is `padding: 2.8%` on a book that is
+continuously resized, and a pixel inset does not survive that — it would have to
+be recomputed by the consumer on every resize, which is the work the engine
+exists to do. A fraction of page width is resolution-independent by
+construction.
+
+### 4. Error fallback artwork — RESOLVED IN FAVOUR OF CODEX (draw a glyph)
+
+The body says paper only, with the spinner stopping. Codex's deterministic
+vector broken-image glyph is better: a blank leaf is indistinguishable from a
+deliberately blank one, and from a book that is still loading. Drawn as Canvas2D
+strokes with no text, so core introduces no unlocalizable English string, and
+the semantic mirror keeps exposing the descriptor's `alt`.
+
+### 5. Recovery API — BOTH, because they are not the same operation
+
+This ADR proposed `replaceImage(page, source)`; Codex proposed
+`retryImage(page)`. They were treated as competing and are not:
+
+- `retryImage(page)` re-attempts **the same URL**. It is the right response to a
+  transient network failure, and it is what a "try again" button does.
+- `replaceImage(page, source)` swaps in a **different** URL. It is the right
+  response to a permanently missing asset, and it is exactly what the downstream
+  consumer already does in `BackCoverLeaf`'s `onError` handler.
+
+Neither expresses the other: retrying a 404 fails again forever, and swapping to
+recover from a dropped connection needs a URL the consumer does not have. Both
+ship, both canvas-only, both throwing `WRONG_MODE` in HTML mode.
+
+### Still blocked on the owner
+
+Nothing above unblocks the one question that matters: **canvas mode as specified
+here is images-only, and the downstream consumer's book is not.** Verified in
+its own source rather than assumed — `apps/web/lib/book-leaves.ts` defines five
+leaf kinds and `renderLeaf` in `reader-leaves.tsx` shows that `inside-cover` and
+`pad` draw `<BlankLeaf />`, `front-cover` falls back to a text title when
+`coverImage` is null, and `ReaderPage` renders text whenever `page.imagePath` is
+absent. An images-only canvas mode cannot draw that book, so either canvas mode
+grows non-image leaves (a materially larger Phase 2) or its first real consumer
+is somebody else. Every decision in this ADR assumes one bitmap per leaf.
