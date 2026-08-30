@@ -40,6 +40,21 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — a canvas page that will never load no longer spins forever
+
+- **A cached 404 left the loader arc turning for the life of the session.** When
+  an image had already settled as a failure, `load()` correctly saw it was not
+  drawable and then fell through to arm an `onload` that can never fire again —
+  so the leaf promised a page that was never coming. A slow 404 was no better:
+  nothing was listening for `error` at all.
+- **A `load` event with a zero-size bitmap counted as success.** The page was
+  drawn as loaded, producing a blank leaf beside siblings that look fine, with
+  nothing reporting it.
+
+  A failed leaf now paints paper. That is the honest interim answer, not the
+  final one: the broken-image glyph and the `imageError` event belong to the
+  Phase 2 error contract.
+
 ### Fixed — a tall narrow leaf started its turn already past the spine
 
 - **The curl's corner inset was derived from height alone.** On a valid 20×300

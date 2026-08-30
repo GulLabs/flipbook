@@ -32,6 +32,16 @@ export class ImagePage extends Page {
   private isLoad = false;
 
   /**
+   * The request settled and there is no bitmap: a 404, a decode failure, a CORS
+   * refusal. Distinct from `isLoad === false`, which means "not yet".
+   *
+   * Only the two are distinguishable at all — an `<img>` error event carries no
+   * diagnostic — so this is deliberately a boolean and not a reason. The typed
+   * `imageError` payload is Phase 2's (see docs/adr/0001-image-page-api.md).
+   */
+  private failed = false;
+
+  /**
    * Set by `dispose()`. A disposed page has given up its bitmap, but the
    * renderer may still hold a reference to it for a frame or two, so it has to
    * keep drawing *something* — plain paper, never a spinner for an image that
@@ -83,6 +93,19 @@ export class ImagePage extends Page {
   private drawState(): 'paper' | 'loader' | 'image' {
     if (this.disposed) return 'paper';
     if (this.origin !== null) return this.origin.drawState();
+
+    // BH-1. A LEAF THAT WILL NEVER ARRIVE MUST NOT KEEP SPINNING.
+    //
+    // The loader is a promise that something is coming. For a 404, a decode
+    // failure, or a CORS refusal, nothing is — so it spun forever on a page
+    // that would never appear, and the book read as "still loading" for the
+    // rest of the session.
+    //
+    // Paper is the honest interim answer, not the final one: the ADR specifies
+    // a vector broken-image glyph (no text, so core ships no unlocalizable
+    // string) and an `imageError` event, both of which need the Phase 2 error
+    // contract. This stops the lie now without inventing that API early.
+    if (this.failed) return 'paper';
 
     return this.isLoad ? 'image' : 'loader';
   }
@@ -226,10 +249,37 @@ export class ImagePage extends Page {
     if (this.image.complete) {
       this.isLoad = this.image.naturalWidth > 0;
       if (this.isLoad) return;
+
+      // BH-1. RETURN, rather than falling through to arm `onload`.
+      //
+      // The image has already SETTLED, and it settled as a failure. `onload`
+      // will never fire again for it, so arming one left the leaf on the loader
+      // arc permanently — the exact case a cached 404 produces, which is also
+      // the most likely one, because a book that failed once is usually
+      // reloaded.
+      this.failed = true;
+      return;
     }
 
+    // Both handlers, and `onerror` is the one that was missing entirely: a slow
+    // 404 — one that errors AFTER this method runs — had nothing listening, so
+    // it spun forever too.
+    this.image.onerror = (): void => {
+      this.failed = true;
+    };
+
     this.image.onload = (): void => {
-      this.isLoad = true;
+      // BH-2. `naturalWidth`, not the mere fact that `load` fired. The
+      // `complete` branch above already documents that `naturalWidth` is the
+      // real signal for "drawable"; this branch ignored it and set `isLoad`
+      // unconditionally, so a decode that fires `load` with a zero-size bitmap
+      // was drawn as a successful page — an empty `drawImage` producing a blank
+      // leaf beside siblings that look fine, with nothing reporting it.
+      if (this.image.naturalWidth > 0) {
+        this.isLoad = true;
+      } else {
+        this.failed = true;
+      }
     };
   }
 

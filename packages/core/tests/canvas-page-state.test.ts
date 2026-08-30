@@ -363,3 +363,119 @@ describe('canvas construction failures are typed', () => {
     await expect(book.loadFromImages(['a.png'])).rejects.toThrow(PageFlipError);
   });
 });
+
+/**
+ * BH-1 / BH-2 — a leaf that will never arrive must stop promising it will.
+ *
+ * Reported by an independent bug hunt. The loader arc is a promise that
+ * something is coming; for a 404, a decode failure or a CORS refusal, nothing
+ * is.
+ */
+describe('BH-1 / BH-2 — a failed image stops the loader', () => {
+  /** An `<img>` that is already `complete` with no bitmap: a cached failure. */
+  function settledFailure(): void {
+    Object.defineProperty(HTMLImageElement.prototype, 'complete', {
+      configurable: true,
+      get: () => true,
+    });
+    Object.defineProperty(HTMLImageElement.prototype, 'naturalWidth', {
+      configurable: true,
+      get: () => 0,
+    });
+  }
+
+  function restoreImage(): void {
+    for (const prop of ['complete', 'naturalWidth']) {
+      delete (HTMLImageElement.prototype as unknown as Record<string, unknown>)[prop];
+    }
+  }
+
+  test('a cached 404 paints paper, not the loader, forever', async () => {
+    const ctx = stubCanvas2d();
+    settledFailure();
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+
+    const book = new PageFlip(host, { width: 100, height: 150 });
+    await book.loadFromImages(['gone.png', 'also-gone.png']);
+
+    ctx.arc.mockClear();
+    ctx.fillRect.mockClear();
+    book.getRender().update();
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+
+    // Reverted fix: `load()` saw `complete && naturalWidth === 0`, did NOT
+    // return, and armed an `onload` that can never fire for an image the
+    // browser has already settled — so the leaf spun for the life of the
+    // session. The loader is drawn with `arc`; paper is a `fillRect`.
+    expect(ctx.arc).not.toHaveBeenCalled();
+    expect(ctx.fillRect).toHaveBeenCalled();
+
+    // And it must not be drawn as an IMAGE either. `drawImage` on an element in
+    // the broken state is specified to throw `InvalidStateError`, so treating a
+    // failed page as loaded trades a spinner for an exception out of the render
+    // loop. A variant that returned 'image' instead of 'paper' passed the two
+    // assertions above — the loader still isn't drawn and the paper fill still
+    // happens before the bitmap — so this is the line that separates them.
+    expect(ctx.drawImage).not.toHaveBeenCalled();
+
+    book.destroy();
+    host.remove();
+    restoreImage();
+  });
+
+  test('a `load` event with a zero-size bitmap is a failure, not a success', async () => {
+    stubCanvas2d();
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+
+    const book = new PageFlip(host, { width: 100, height: 150 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    const page = book.getPageCollection().getPage(0) as unknown as {
+      image: HTMLImageElement;
+      isLoad: boolean;
+      failed: boolean;
+    };
+
+    Object.defineProperty(page.image, 'naturalWidth', { configurable: true, get: () => 0 });
+    page.image.onload?.(new Event('load'));
+
+    // Reverted fix: `isLoad = true` unconditionally, so a decode that fires
+    // `load` with no bitmap was drawn as a SUCCESSFUL page — an empty
+    // `drawImage` producing a blank leaf beside siblings that look fine, with
+    // nothing anywhere reporting it.
+    expect(page.isLoad).toBe(false);
+    expect(page.failed).toBe(true);
+
+    book.destroy();
+    host.remove();
+  });
+
+  test('a real bitmap still loads — the guard is not a blanket failure', async () => {
+    stubCanvas2d();
+
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+
+    const book = new PageFlip(host, { width: 100, height: 150 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    const page = book.getPageCollection().getPage(0) as unknown as {
+      image: HTMLImageElement;
+      isLoad: boolean;
+      failed: boolean;
+    };
+
+    Object.defineProperty(page.image, 'naturalWidth', { configurable: true, get: () => 800 });
+    page.image.onload?.(new Event('load'));
+
+    expect(page.isLoad).toBe(true);
+    expect(page.failed).toBe(false);
+
+    book.destroy();
+    host.remove();
+  });
+});
