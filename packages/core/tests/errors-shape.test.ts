@@ -13,7 +13,7 @@ import { describe, expect, test } from 'vitest';
 // re-broken by a tsconfig edit — while the package-specifier import below is
 // what proves the PUBLIC surface actually re-exports these.
 import { PageFlipError } from '../src/errors';
-import type { FlipbookEventName } from '@gullabs/flipbook-core';
+import type { FlipbookEventName, PageFlipErrorCode } from '@gullabs/flipbook-core';
 import { PageFlipError as ExportedPageFlipError } from '@gullabs/flipbook-core';
 
 describe('PageFlipError shape', () => {
@@ -97,5 +97,70 @@ describe('E10 — the event-name union is part of the public surface', () => {
 
     expect(names).toHaveLength(3);
     expect(bad).toHaveLength(1);
+  });
+});
+
+/**
+ * S7 — the code is a union, and the two overloaded codes are split.
+ *
+ * `code` was typed `string`, which is the whole point of having a code beside
+ * the message and was the one thing it could not do: narrow.
+ */
+describe('S7 — PageFlipErrorCode', () => {
+  test('a consumer can switch exhaustively on the code', () => {
+    // The exhaustiveness proof is the `never` assignment: add a code to the
+    // union without adding an arm and this stops compiling. A runtime
+    // assertion cannot check that, which is why the shape is a type test.
+    const describeCode = (code: PageFlipErrorCode): string => {
+      switch (code) {
+        case 'INVALID_SIZE':
+          return 'the size enum';
+        case 'INVALID_DIMENSIONS':
+          return 'width or height';
+        case 'INVALID_BOUNDS':
+          return 'min/max bounds';
+        case 'INVALID_PAGE':
+          return 'page out of range';
+        case 'PAGE_NOT_IN_SPREAD':
+          return 'page exists, no spread holds it';
+        default:
+          return 'other';
+      }
+    };
+
+    expect(describeCode('INVALID_DIMENSIONS')).toBe('width or height');
+    expect(describeCode('PAGE_NOT_IN_SPREAD')).toBe('page exists, no spread holds it');
+
+    // @ts-expect-error — a code the engine never emits is not assignable.
+    describeCode('NOPE');
+  });
+
+  test('a caught error’s own code narrows — the field is the union, not string', () => {
+    const err = new PageFlipError('Invalid min/max width or height', 'INVALID_BOUNDS');
+
+    // THE discriminating line. An earlier version of this block typed only its
+    // own helper parameter as `PageFlipErrorCode`, so reverting the CLASS FIELD
+    // back to `string` changed nothing and the whole block still compiled — the
+    // test proved the union existed, not that the error used it.
+    const code: PageFlipErrorCode = err.code;
+    expect(code).toBe('INVALID_BOUNDS');
+
+    // And through a catch, which is how a consumer actually gets one.
+    try {
+      throw new PageFlipError('Page 9 not in spread', 'PAGE_NOT_IN_SPREAD');
+    } catch (caught) {
+      if (!(caught instanceof PageFlipError)) throw caught;
+      const narrowed: PageFlipErrorCode = caught.code;
+      expect(narrowed).toBe('PAGE_NOT_IN_SPREAD');
+    }
+  });
+
+  test('the two overloaded codes are actually distinguishable at runtime', () => {
+    // The type split is worthless if the throw sites still emit the old code.
+    const dims = new PageFlipError('Invalid width or height', 'INVALID_DIMENSIONS');
+    const bounds = new PageFlipError('Invalid min/max width or height', 'INVALID_BOUNDS');
+
+    expect(dims.code).not.toBe(bounds.code);
+    expect(dims.code).not.toBe('INVALID_SIZE');
   });
 });

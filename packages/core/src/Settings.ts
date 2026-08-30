@@ -154,7 +154,7 @@ export class Settings {
     }
 
     if (!isPositive(result.width) || !isPositive(result.height)) {
-      throw new PageFlipError('Invalid width or height', 'INVALID_SIZE');
+      throw new PageFlipError('Invalid width or height', 'INVALID_DIMENSIONS');
     }
 
     // `0` is the documented "unset" value for the stretch bounds below, so the
@@ -165,7 +165,7 @@ export class Settings {
       !isNonNegative(result.minHeight) ||
       !isNonNegative(result.maxHeight)
     ) {
-      throw new PageFlipError('Invalid min/max width or height', 'INVALID_SIZE');
+      throw new PageFlipError('Invalid min/max width or height', 'INVALID_BOUNDS');
     }
 
     // `0` is documented as instant, so only negatives and non-numbers are bad.

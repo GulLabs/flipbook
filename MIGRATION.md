@@ -60,6 +60,26 @@ orientation, shadow gradients, hard-page z-order — wanted that already. If you
 were reading it to learn which way a turn was heading, read the `flip` event or
 compare page indices instead.
 
+### `PageFlipError.code` is a union, and three codes changed
+
+`code` was `string`; it is now the exported `PageFlipErrorCode` union. If you
+compare it against a string literal nothing changes. If you assign it to a
+`string`-typed variable, that still works. If you were constructing
+`PageFlipError` with a code of your own, that is now a type error — the codes are
+the engine's.
+
+Three throw sites now report a more specific code:
+
+| Condition                                                   | Was                          | Now                  |
+| ----------------------------------------------------------- | ---------------------------- | -------------------- |
+| Invalid `width` / `height`                                  | `INVALID_SIZE`               | `INVALID_DIMENSIONS` |
+| Invalid `minWidth` / `maxWidth` / `minHeight` / `maxHeight` | `INVALID_SIZE`               | `INVALID_BOUNDS`     |
+| `turnToPage` / `flipToPage` on a page in no spread          | `INVALID_PAGE`, `FLIP_SETUP` | `PAGE_NOT_IN_SPREAD` |
+
+`INVALID_SIZE` still exists and now means only "the `size` value is not
+`fixed` or `stretch`". If you branch on any of these codes, update the
+comparison; if you only log `err.code`, nothing to do.
+
 ### `PageFlipError.cause` is now part of the published type
 
 `PageFlipError` has always attached `cause` when constructed with

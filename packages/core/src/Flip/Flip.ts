@@ -462,7 +462,7 @@ export class Flip {
     if (next == null) {
       throw new PageFlipError(
         `Cannot flip to page ${page}: page is not in any spread`,
-        'FLIP_SETUP',
+        'PAGE_NOT_IN_SPREAD',
       );
     }
     // F7. Asking for a page that is ALREADY on screen is a no-op, deliberately,

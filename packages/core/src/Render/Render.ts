@@ -154,8 +154,42 @@ export abstract class Render {
    */
   protected timer: number | null = null;
 
-  /** Active requestAnimationFrame id; 0 when the loop is stopped. */
+  /** Active requestAnimationFrame id; 0 when no frame is pending. */
   private rafId = 0;
+
+  /**
+   * True between `start()` and `stop()`.
+   *
+   * R8: `rafId !== 0` used to be the same question as "is this book alive?"
+   * because the loop re-armed unconditionally. Now that it parks when there is
+   * nothing to draw, the two questions are different — a parked loop has no
+   * pending frame and is still perfectly alive — and only this field answers
+   * the second one. It is what stops {@link requestFrame} resurrecting a loop
+   * that was deliberately stopped (`destroy`, `attachMode` replacing a mode).
+   */
+  private running = false;
+
+  /**
+   * Something changed that the last drawn frame does not reflect.
+   *
+   * Cleared at the TOP of {@link render}, so anything a frame action, an
+   * `onAnimateEnd` or a `drawFrame` mutates re-arms the loop for one more
+   * frame. Every mutator on this class sets it through {@link requestFrame};
+   * there is no other way for renderer state to change, which is what makes
+   * "nothing to draw" a decidable question rather than a guess.
+   */
+  private dirty = true;
+
+  /**
+   * The scheduler closure of the current loop generation, or `null` when the
+   * loop has never started or has been stopped.
+   *
+   * Kept so a parked loop can be resumed **without** going through `start()`:
+   * `start()` calls `update()` (two forced layout reads) and bumps the
+   * generation, and doing that on every pointer move — a parked loop is woken
+   * by each one — would trade a rAF for a layout thrash.
+   */
+  private frameLoop: ((timer: number) => void) | null = null;
 
   /**
    * Bumped by every `start()` and `stop()`. A scheduled `loop` callback only
@@ -232,6 +266,13 @@ export abstract class Render {
    * @param timer
    */
   private render(timer: number, generation = this.loopGeneration): void {
+    // R8: this frame is about to draw everything asked for so far, so the
+    // request is consumed HERE — before the frame actions, the callback and
+    // `drawFrame` run. Anything any of them changes sets the flag again and
+    // buys one more frame; clearing it afterwards instead would swallow
+    // whatever `drawFrame` itself observed as changed.
+    this.dirty = false;
+
     // R2: stamp the frame clock BEFORE running any frame action or callback.
     // `startAnimation` reads `this.timer` for `startedAt`, so an animation
     // started from inside a frame action — or from an `onAnimateEnd` that

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'vitest';
-import { PageCollection, PageFlipError, Settings } from '@gullabs/flipbook-core';
+import { PageCollection, PageFlipError, Settings, SizeType } from '@gullabs/flipbook-core';
 import type { FlipSetting, Page, PageFlip, Render, Segment } from '@gullabs/flipbook-core';
 import { angleBetweenSegments, limitToCircle, pointsBetween } from '../src/Helper';
 
@@ -62,8 +62,14 @@ describe('I12 — Settings rejects non-finite numbers instead of leaking NaN', (
       return 'NO_THROW';
     };
 
-    expect(codeOf({ ...base, width: NaN })).toBe('INVALID_SIZE');
-    expect(codeOf({ ...base, minWidth: NaN })).toBe('INVALID_SIZE');
+    // S7. These three used to be ONE code, `INVALID_SIZE`, separable only by
+    // reading the human-readable message — the one part of an error a library
+    // is free to reword. A caller that wants to fall back on a bad `size` enum
+    // but surface a bad width to its own developer could not tell them apart.
+    expect(codeOf({ ...base, size: 'huge' as SizeType })).toBe('INVALID_SIZE');
+    expect(codeOf({ ...base, width: NaN })).toBe('INVALID_DIMENSIONS');
+    expect(codeOf({ ...base, minWidth: NaN })).toBe('INVALID_BOUNDS');
+
     expect(codeOf({ ...base, flippingTime: NaN })).toBe('INVALID_FLIPPING_TIME');
     expect(codeOf({ ...base, swipeDistance: -5 })).toBe('INVALID_SWIPE_DISTANCE');
     expect(codeOf({ ...base, startZIndex: Infinity })).toBe('INVALID_Z_INDEX');

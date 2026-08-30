@@ -14,6 +14,7 @@ export { HTMLPageCollection } from './Collection/HTMLPageCollection';
 export { HTMLPage } from './Page/HTMLPage';
 export { Page, PageDensity, PageOrientation } from './Page/Page';
 export { PageFlipError } from './errors';
+export type { PageFlipErrorCode } from './errors';
 export {
   convertPageToGlobal,
   portraitCurlLocal,

@@ -18,6 +18,25 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Changed — `PageFlipError.code` is a union, and two overloaded codes are split
+
+- **`code` was typed `string`**, so a consumer could not narrow on it — the one
+  thing a code exists to do. It is now `PageFlipErrorCode`, exported, so
+  `switch (err.code)` is exhaustive and a typo in a comparison is a compile
+  error.
+- **`INVALID_SIZE` covered three different failures** — the `size` enum, the
+  `width`/`height` pair, and the min/max bounds — separable only by reading the
+  human-readable message, which is the one part of an error a library is free to
+  reword. It is now the enum only; the others are `INVALID_DIMENSIONS` and
+  `INVALID_BOUNDS`.
+- **`INVALID_PAGE` covered both** "that page number is out of range" and "that
+  page exists but is in no spread". The second is now `PAGE_NOT_IN_SPREAD`,
+  which is also what `flipToPage` throws for the same condition (it used
+  `FLIP_SETUP`).
+
+Done now because neither package is published, so it costs nothing today and
+would be a breaking change the moment it is.
+
 ### Added — public type surface
 
 - **`FlipbookEventName` is exported.** The union of event names existed in the

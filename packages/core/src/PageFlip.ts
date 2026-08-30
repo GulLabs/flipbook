@@ -793,7 +793,7 @@ export class PageFlip extends EventObject {
       throw new PageFlipError(`Invalid page: ${page}`, 'INVALID_PAGE');
     }
     if (pages.getSpreadIndexByPage(page) === null) {
-      throw new PageFlipError(`Page ${page} not in spread`, 'INVALID_PAGE');
+      throw new PageFlipError(`Page ${page} not in spread`, 'PAGE_NOT_IN_SPREAD');
     }
 
     pages.show(page);
