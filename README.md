@@ -17,6 +17,12 @@ Forked from [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) and [Nodli
 
 On a phone, a back swipe must curl the **current** leaf away and show the previous leaf underneath. Upstream slides the previous page in from the left. That is the bug this fork exists to kill — in the engine, not with a monkey-patch.
 
+Fixed in **both renderers**. That qualification is deliberate: canvas mode
+carried the bug for the whole of 3.0's development while this line read as an
+unqualified claim, because `ImagePage.newTemporaryCopy()` returned `this` and
+the engine quietly fell back to upstream's previous-leaf path. Both are now
+covered by tests that fail if the fix is reverted.
+
 ---
 
 ## Packages
