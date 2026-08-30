@@ -9,9 +9,16 @@
  * of a consumer hitting `Cannot read properties of undefined`.
  */
 // @vitest-environment jsdom
-import { afterEach, describe, expect, test, vi } from 'vitest';
-import { PageFlip, PageFlipError, FlippingState } from '@gullabs/flipbook-core';
-import type { FlipSetting } from '@gullabs/flipbook-core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { PageFlip, PageFlipError, FlippingState, HTMLPageCollection } from '@gullabs/flipbook-core';
+import type { FlipSetting, PageCollection, Render } from '@gullabs/flipbook-core';
+// Canvas mode is the lazily-imported chunk, so its collection is not on the
+// public surface. At run time the package specifier is aliased to `src`, so
+// this is the same module the engine itself resolves — but `tsc` checks tests
+// against the BUILT `.d.ts`, where the source class is a second, structurally
+// identical type. `imageCollection` below is where that is laundered, once.
+import { ImagePageCollection } from '../src/Collection/ImagePageCollection';
+
 import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
 
 function host(): HTMLElement {
@@ -995,19 +1002,325 @@ describe('U6 — no trailing frame after a teardown from onAnimateEnd', () => {
       flip.destroy();
     });
 
+    // Count the engine's OWN rAF requests. Asserting only that no draw happened
+    // could not see the re-arm at all: the extra scheduled callback exits at
+    // the loop's entry check without drawing, so the count stayed at 0 either
+    // way. Codex caught this — the eighth non-discriminating test found here.
+    let rafAfterTeardown = 0;
+    const realRaf = globalThis.requestAnimationFrame.bind(globalThis);
+    const countingRaf = ((cb: FrameRequestCallback) => {
+      if (tornDown) rafAfterTeardown += 1;
+      return realRaf(cb);
+    }) as typeof globalThis.requestAnimationFrame;
+
     for (let i = 0; i < 12 && !tornDown; i++) {
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      globalThis.requestAnimationFrame = countingRaf;
+      await new Promise((r) => realRaf(() => r(null)));
+      globalThis.requestAnimationFrame = realRaf;
     }
-    // One more tick: this is the frame the loop used to have already re-armed.
-    await new Promise((r) => requestAnimationFrame(() => r(null)));
 
     expect(tornDown).toBe(true);
 
-    // The loop used to draw unconditionally after `onAnimateEnd`, painting into
-    // a released collection and a detached canvas — and then re-arm, keeping
-    // the closure and the engine it captures alive for another frame.
+    // Two distinct claims. The loop used to draw unconditionally after
+    // `onAnimateEnd`, painting into a released collection and a detached
+    // canvas...
     expect(drawsAfterTeardown).toBe(0);
 
+    // ...and then re-arm regardless, scheduling one more frame and keeping the
+    // closure — and the engine it captures — alive until it fired.
+    expect(rafAfterTeardown).toBe(0);
+
     host.remove();
+  });
+});
+
+/**
+ * L5 / L6 / L7 — three holes in the lifecycle machinery, all of the same
+ * shape: an operation that changes what the engine is pointing at, without
+ * telling the mechanism that exists to notice exactly that.
+ */
+
+/** jsdom has no 2D context; the canvas renderer touches it on construction. */
+function stubCanvas2dContext(): void {
+  const ctx = {
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    closePath: vi.fn(),
+    clip: vi.fn(),
+    rect: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    arc: vi.fn(),
+    stroke: vi.fn(),
+    fill: vi.fn(),
+    fillRect: vi.fn(),
+    clearRect: vi.fn(),
+    translate: vi.fn(),
+    rotate: vi.fn(),
+    scale: vi.fn(),
+    drawImage: vi.fn(),
+    setTransform: vi.fn(),
+    getTransform: vi.fn(() => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 })),
+    createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
+    fillStyle: '',
+    strokeStyle: '',
+    lineWidth: 1,
+  };
+
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
+    ctx as unknown as CanvasRenderingContext2D,
+  );
+}
+
+/** An `ImagePageCollection` typed against the package surface. See the import. */
+function imageCollection(book: PageFlip, hrefs: string[]): PageCollection {
+  const Ctor = ImagePageCollection as unknown as new (
+    app: PageFlip,
+    render: Render,
+    hrefs: string[],
+  ) => PageCollection;
+
+  return new Ctor(book, book.getRender(), hrefs);
+}
+
+describe('L5 — replacePages claims a load generation', () => {
+  let hostEl: HTMLElement;
+
+  beforeEach(() => {
+    stubCanvas2dContext();
+    hostEl = host();
+    sizeElement(hostEl, 380, 300);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    hostEl.remove();
+  });
+
+  /**
+   * The race is the test. Asserting that a counter incremented proves nothing
+   * about the collection surviving, and the failure is only reachable while a
+   * dynamic import is genuinely in flight — so the swap happens synchronously
+   * between starting the load and awaiting it, exactly as an async consumer
+   * (or the React binding) would produce it.
+   */
+  test('a loadFromImages still importing cannot destroy the collection installed under it', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
+    await book.loadFromImages(['a.png', 'b.png']);
+    // In flight: the chunk import has not resolved, so `attachMode` has not run.
+    const stale = book.loadFromImages(['s1.png', 's2.png', 's3.png', 's4.png', 's5.png']);
+
+    const installed = imageCollection(book, ['x.png', 'y.png', 'z.png']);
+    book.replacePages(installed, 0);
+    expect(book.getPageCollection()).toBe(installed);
+
+    await stale;
+
+    // Without the generation claim the stale continuation ran `attachMode`,
+    // which calls `this.pages?.destroy()` — so the book ends up holding the
+    // 5-page collection of a load the consumer had already superseded, and the
+    // collection it does hold has had every page disposed underneath it.
+    expect(book.getPageCollection()).toBe(installed);
+    expect(book.getPageCount()).toBe(3);
+    expect(installed.getPages()).toHaveLength(3);
+
+    book.destroy();
+  });
+
+  test('an updateFromImages still importing cannot replace it either', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
+    await book.loadFromImages(['a.png', 'b.png']);
+    const stale = book.updateFromImages(['s1.png', 's2.png', 's3.png', 's4.png', 's5.png']);
+
+    const installed = imageCollection(book, ['x.png', 'y.png', 'z.png']);
+    book.replacePages(installed, 0);
+
+    await stale;
+
+    expect(book.getPageCollection()).toBe(installed);
+    expect(book.getPageCount()).toBe(3);
+    expect(installed.getPages()).toHaveLength(3);
+
+    book.destroy();
+  });
+
+  test('control: a load that is NOT superseded still attaches', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    // Nothing swaps under it, so the generation it captured is still current.
+    await book.loadFromImages(['s1.png', 's2.png', 's3.png']);
+    expect(book.getPageCount()).toBe(3);
+
+    book.destroy();
+  });
+});
+
+describe('L6 — a collection swap forgets the pointer gesture', () => {
+  function flippingPageOf(book: PageFlip): unknown {
+    return (book.getRender() as unknown as { flippingPage: unknown }).flippingPage;
+  }
+
+  /**
+   * The pointer is still physically down across the swap — that is the whole
+   * scenario: React re-renders the pages mid-drag, or an async page fetch
+   * lands. Asserting that a private field was cleared would pass against a
+   * `mousePosition = pos` "reset" that leaves the gesture live; what has to
+   * hold is that the next move does not fold the NEW book from the OLD anchor.
+   *
+   * Landscape, 6 pages, a slow `flippingTime`: in portrait the mover is a
+   * temporary copy, and with `flippingTime: 0` there is no fold state left to
+   * inspect.
+   */
+  test('updateFromHtml: the next move does not fold the new book from the stale anchor', () => {
+    const { book, destroy } = makeHtmlBook({
+      pageCount: 6,
+      usePortrait: false,
+      showCover: false,
+      flippingTime: 1000,
+    });
+    const flip = book.getFlipController()!;
+    const rect = book.getBoundsRect();
+
+    // Anchored on the right corner of the OLD book, as a pointerdown would.
+    book.startUserTouch({ x: rect.left + rect.width - 10, y: rect.top + 10 });
+
+    book.updateFromHtml(makePages(6));
+
+    // The finger keeps moving; `isTouch` so the corner-hover branch is not
+    // what answers here.
+    book.userMove({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, true);
+
+    expect(flip.getState()).toBe(FlippingState.READ);
+    expect(flip.getCalculation()).toBeNull();
+    expect(flippingPageOf(book)).toBeNull();
+
+    // And a gesture that properly starts on the NEW book still works — the fix
+    // drops the stale gesture, it does not deaden the engine.
+    book.startUserTouch({ x: rect.left + rect.width - 10, y: rect.top + 10 });
+    book.userMove({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, true);
+    expect(flip.getState()).toBe(FlippingState.USER_FOLD);
+
+    destroy();
+  });
+
+  test('replacePages: same, on the seam the canvas mode swaps through', () => {
+    const { book, destroy } = makeHtmlBook({
+      pageCount: 6,
+      usePortrait: false,
+      showCover: false,
+      flippingTime: 1000,
+    });
+    const flip = book.getFlipController()!;
+    const rect = book.getBoundsRect();
+    const dist = book.getUI().getDistElement();
+
+    book.startUserTouch({ x: rect.left + rect.width - 10, y: rect.top + 10 });
+
+    const items = makePages(6);
+    for (const el of items) dist.appendChild(el);
+    book.replacePages(new HTMLPageCollection(book, book.getRender(), dist, items), 0);
+
+    book.userMove({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, true);
+
+    expect(flip.getState()).toBe(FlippingState.READ);
+    expect(flip.getCalculation()).toBeNull();
+    expect(flippingPageOf(book)).toBeNull();
+
+    destroy();
+  });
+});
+
+/**
+ * L7 — a load the consumer abandoned must not reject.
+ *
+ * The `destroyed` check used to live inside `.then`, AFTER the `.catch` that
+ * wraps an import failure, so the two outcomes of the same import were judged
+ * by different rules: a resolved chunk was discarded quietly, a failed one was
+ * reported — to a consumer who had already destroyed the engine, and (for the
+ * ordinary `book.loadFromImages(...)` with no `.catch`) as an unhandled
+ * rejection.
+ */
+describe('L7 — an abandoned canvas load resolves, a live one still throws', () => {
+  let hostEl: HTMLElement;
+
+  beforeEach(() => {
+    stubCanvas2dContext();
+    // A chunk that 404s — the CDN case the `catch` exists for. `doMock` + a
+    // module-registry reset is what makes the *dynamic* import inside the
+    // engine pick it up; the chunk is already cached from the tests above.
+    vi.doMock('../src/canvas-loader', () => {
+      throw new Error('chunk 404');
+    });
+    vi.resetModules();
+    hostEl = host();
+    sizeElement(hostEl, 380, 300);
+  });
+
+  afterEach(() => {
+    vi.doUnmock('../src/canvas-loader');
+    vi.resetModules();
+    vi.restoreAllMocks();
+    hostEl.remove();
+  });
+
+  test('control: a chunk failure on a live engine is still reported', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150 });
+
+    // Not swallowed. A book that never appears with no error to explain it is
+    // the failure this guard must not create.
+    await expect(book.loadFromImages(['a.png'])).rejects.toMatchObject({
+      code: 'CANVAS_LOAD',
+    });
+
+    book.destroy();
+  });
+
+  test('destroying while the chunk is loading resolves rather than rejecting', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150 });
+
+    const loading = book.loadFromImages(['a.png']);
+    book.destroy();
+
+    await expect(loading).resolves.toBeUndefined();
+  });
+
+  test('the same holds for updateFromImages', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150 });
+
+    const updating = book.updateFromImages(['a.png']);
+    book.destroy();
+
+    await expect(updating).resolves.toBeUndefined();
+  });
+
+  test('a load superseded by a newer mode is not reported either', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150 });
+
+    const stale = book.loadFromImages(['a.png']);
+
+    // The newer mode claims the generation synchronously, so the canvas chunk
+    // is still in flight when its load stops mattering. Nobody is waiting on
+    // that failure any more — the mode the consumer actually asked for is HTML,
+    // and it is already up.
+    const nodes = makePages(2);
+    for (const n of nodes) hostEl.appendChild(n);
+    book.loadFromHTML(nodes);
+
+    await expect(stale).resolves.toBeUndefined();
+    expect(book.getPageCount()).toBe(2);
+
+    book.destroy();
+  });
+
+  test('a load started on an already-destroyed engine never reaches the chunk', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150 });
+    book.destroy();
+
+    // The chunk import would fail here, so a rejection is proof the engine
+    // fetched it at all — for a call the destroy contract calls a safe no-op.
+    await expect(book.loadFromImages(['a.png'])).resolves.toBeUndefined();
+    await expect(book.updateFromImages(['a.png'])).resolves.toBeUndefined();
   });
 });

@@ -17,6 +17,9 @@ import type { FlipSetting } from './Settings';
 import { Settings } from './Settings';
 import type { UI } from './UI/UI';
 import { PageFlipError } from './errors';
+// Type-only, so the canvas chunk stays out of the HTML bundle: this names the
+// module `loadCanvasModule` resolves at run time, it does not import it.
+import type * as CanvasLoader from './canvas-loader';
 
 /**
  * Settings that are consumed once while the book is being built and never read
@@ -313,12 +316,22 @@ export class PageFlip extends EventObject {
 
     const render = this.renderOrThrow;
 
+    // L5: this is a mode-changing path like any other — it throws away the
+    // collection the current mode was attached with — so it has to claim a
+    // generation too. Without it, a `loadFromImages` / `updateFromImages`
+    // whose dynamic import is still in flight still matched the generation it
+    // captured, so its continuation ran `attachMode` *after* this and
+    // destroyed the collection just installed. That is exactly the class the
+    // counter was added to prevent, on the one path that never opted in.
+    this.nextGeneration();
+
     // An in-flight turn belongs to the OLD collection. `finishAnimation()`
     // would COMMIT it — running `onAnimateEnd` against pages that are about to
     // be destroyed — so it is abandoned instead, along with the fold state and
     // the renderer's transient page references.
     render.cancelAnimation();
     this.flipController?.abandon();
+    this.resetUserGesture();
 
     this.pagesOrThrow.destroy();
     this.pages = pages;
@@ -410,6 +423,48 @@ export class PageFlip extends EventObject {
     }, 1);
   }
 
+  /** Claim the next generation; the caller's continuation must still match it. */
+  private nextGeneration(): number {
+    this.loadGeneration += 1;
+    return this.loadGeneration;
+  }
+
+  /**
+   * Fetch the canvas chunk for one load, or `null` if that load no longer
+   * matters (L7).
+   *
+   * Both outcomes of the import are judged by the SAME question — "does this
+   * load still have a consumer?" — because the old shape asked it only of the
+   * success path: the `.catch` that wraps an import failure sat *before* the
+   * `destroyed` check, so a consumer who destroyed the engine while the chunk
+   * was downloading got a rejected (and, for the common
+   * `book.loadFromImages(...)` without a `.catch`, unhandled) promise for a
+   * load they had explicitly abandoned. That contradicts the destroy contract
+   * documented above: mutating lifecycle calls are safe no-ops after destroy.
+   *
+   * A superseded load (`generation !== loadGeneration`) is swallowed for the
+   * same reason and with the same safety: it imports the very same module as
+   * the load that replaced it, so a genuine failure is still reported — by the
+   * newer load, which is the one with a caller waiting on it.
+   *
+   * A failure that is still current is NOT swallowed. Turning a broken chunk
+   * into a silently resolved promise would leave the consumer with a book that
+   * never appears and no error to explain it.
+   */
+  private loadCanvasModule(generation: number): Promise<typeof CanvasLoader | null> {
+    return import('./canvas-loader').then(
+      (m) => (this.destroyed || generation !== this.loadGeneration ? null : m),
+      (err: unknown) => {
+        if (this.destroyed || generation !== this.loadGeneration) return null;
+
+        throw new PageFlipError(
+          `Failed to load canvas renderer: ${err instanceof Error ? err.message : String(err)}`,
+          'CANVAS_LOAD',
+        );
+      },
+    );
+  }
+
   /**
    * Load pages from images on the Canvas mode.
    *
@@ -417,26 +472,16 @@ export class PageFlip extends EventObject {
    * downloads it. Budgets live in `packages/core/package.json`; the enforced
    * one is brotli, which is what a consumer actually pays for.
    */
-  /** Claim the next generation; the caller's continuation must still match it. */
-  private nextGeneration(): number {
-    this.loadGeneration += 1;
-    return this.loadGeneration;
-  }
-
   public loadFromImages(imagesHref: string[]): Promise<void> {
+    // Cheapest form of the same no-op: an engine that is already destroyed
+    // does not download the chunk at all. `loadFromHTML` guards here too.
+    if (this.destroyed) return Promise.resolve();
+
     const generation = this.nextGeneration();
 
-    return import('./canvas-loader')
-      .catch((err: unknown) => {
-        throw new PageFlipError(
-          `Failed to load canvas renderer: ${err instanceof Error ? err.message : String(err)}`,
-          'CANVAS_LOAD',
-        );
-      })
-      .then((m) => {
-        if (this.destroyed || generation !== this.loadGeneration) return;
-        m.loadFromImages(this, imagesHref);
-      });
+    return this.loadCanvasModule(generation).then((m) => {
+      m?.loadFromImages(this, imagesHref);
+    });
   }
 
   /**
@@ -470,19 +515,13 @@ export class PageFlip extends EventObject {
    * @param {string[]} imagesHref - List of paths to images
    */
   public updateFromImages(imagesHref: string[]): Promise<void> {
+    if (this.destroyed) return Promise.resolve();
+
     const generation = this.nextGeneration();
 
-    return import('./canvas-loader')
-      .catch((err: unknown) => {
-        throw new PageFlipError(
-          `Failed to load canvas renderer: ${err instanceof Error ? err.message : String(err)}`,
-          'CANVAS_LOAD',
-        );
-      })
-      .then((m) => {
-        if (this.destroyed || generation !== this.loadGeneration) return;
-        m.updateFromImages(this, imagesHref);
-      });
+    return this.loadCanvasModule(generation).then((m) => {
+      m?.updateFromImages(this, imagesHref);
+    });
   }
 
   /**
@@ -524,6 +563,7 @@ export class PageFlip extends EventObject {
     // that were no longer in the book.
     render.cancelAnimation();
     this.flipController?.abandon();
+    this.resetUserGesture();
 
     previous.destroy();
 
@@ -643,6 +683,7 @@ export class PageFlip extends EventObject {
     // the pages that had just been discarded.
     render.releasePages();
     this.flipController?.abandon();
+    this.resetUserGesture();
     // Was an unconditional `as HTMLUI` cast. `CanvasUI` has no `clear()`, so
     // this threw a TypeError in canvas mode — a public method that could not be
     // called in one of the two supported modes.
@@ -940,6 +981,27 @@ export class PageFlip extends EventObject {
     if (this.teardownPages !== null) return this.teardownPages;
 
     return this.pagesOrThrow;
+  }
+
+  /**
+   * Forget the pointer gesture in progress (L6).
+   *
+   * `Flip.abandon()` drops the fold *the controller* owns; `isUserTouch` /
+   * `isUserMove` / `mousePosition` are owned here and were left as they were
+   * across a collection swap. The pointer is still physically down — the swap
+   * came from a React re-render or an async page fetch, not from the user
+   * lifting a finger — so the next `userMove` past the 5 px threshold called
+   * `fold()` against the NEW collection with no `startUserTouch` for it and an
+   * anchor measured in the book that no longer exists.
+   *
+   * Dropping the gesture is the honest answer rather than re-anchoring it: the
+   * book under the finger was replaced, so there is no turn the user can be
+   * said to have started. The next `pointerdown` starts a fresh one.
+   */
+  private resetUserGesture(): void {
+    this.isUserTouch = false;
+    this.isUserMove = false;
+    this.mousePosition = { x: 0, y: 0 };
   }
 
   /**
