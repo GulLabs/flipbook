@@ -30,7 +30,7 @@ describe('SSR / Node import of shipped core', () => {
     expect(got.pageBackground.length).toBeGreaterThan(0);
   });
 
-  test('loadFromImages after destroy does not attach a canvas', async () => {
+  test('loadFromImages after destroy is a no-op; live call rejects CANVAS_REMOVED', async () => {
     const fakeRoot = {} as HTMLElement;
     const book = new PageFlip(fakeRoot, {
       width: 200,
@@ -41,5 +41,9 @@ describe('SSR / Node import of shipped core', () => {
     await expect(book.loadFromImages([{ src: 'x.jpg', alt: 'Page x' }])).resolves.toBeUndefined();
     expect(book.isDestroyed()).toBe(true);
     expect(book.getFlipController()).toBeNull();
+
+    const live = new PageFlip(fakeRoot, { width: 200, height: 300, flippingTime: 0 });
+    await expect(live.loadFromImages([])).rejects.toMatchObject({ code: 'CANVAS_REMOVED' });
+    await expect(live.updateFromImages([])).rejects.toMatchObject({ code: 'CANVAS_REMOVED' });
   });
 });

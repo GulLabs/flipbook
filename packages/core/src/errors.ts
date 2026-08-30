@@ -25,17 +25,17 @@
  * today and would be a breaking change the moment it is.
  */
 export type PageFlipErrorCode =
-  | 'CANVAS_LOAD'
+  | 'CANVAS_REMOVED'
   | 'COLLINEAR_SEGMENTS'
   | 'DEGENERATE_SEGMENT'
   | 'DESTROYED'
   | 'DETACHED_PAGE'
   | 'FLIP_SETUP'
+  | 'INVALID_BOOLEAN'
   | 'INVALID_BOUNDS'
   | 'INVALID_DIMENSIONS'
   | 'INVALID_DIRECTION'
   | 'INVALID_FLIPPING_TIME'
-  | 'INVALID_IMAGE_SOURCE'
   | 'INVALID_INDEX'
   | 'INVALID_PAGE'
   | 'INVALID_SHADOW_OPACITY'

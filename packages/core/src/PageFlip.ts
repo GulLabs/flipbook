@@ -3,10 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { PageCollection } from './Collection/PageCollection';
-// `import type`, and that is load-bearing: the class it describes lives in the
-// lazy canvas chunk, so a value import here would drag the canvas renderer into
-// the graph every HTML-only consumer downloads. Erased entirely — zero bytes.
-import type { CanvasAltSource } from './Collection/ImagePageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
 import type { PageRect, Point } from './BasicTypes';
 import { Flip, FlipCorner, FlippingState } from './Flip/Flip';
@@ -21,17 +17,6 @@ import type { FlipSetting } from './Settings';
 import { Settings } from './Settings';
 import type { UI } from './UI/UI';
 import { PageFlipError } from './errors';
-// Value import, deliberately eager. Validation has to run BEFORE the canvas
-// chunk is fetched (an invalid list must not build a canvas), so it cannot live
-// in the chunk. `canvasLeaf.ts` is pure predicate code — no `window`, no
-// `document`, no canvas — and it costs the HTML-only consumer the bytes of the
-// validator. That is headroom spent on a feature, per AGENTS.md §2; the
-// measured delta is reported in the commit message.
-import type { CanvasLeaf } from './canvasLeaf';
-import { validateCanvasLeaves } from './canvasLeaf';
-// Type-only, so the canvas chunk stays out of the HTML bundle: this names the
-// module `loadCanvasModule` resolves at run time, it does not import it.
-import type * as CanvasLoader from './canvas-loader';
 
 /**
  * Settings that are consumed once while the book is being built and never read
@@ -86,7 +71,7 @@ export class PageFlip extends EventObject {
   private readonly setting: FlipSetting;
   private readonly block: HTMLElement; // Root HTML Element
 
-  // Nullable, not `!`: these only exist after `loadFromHTML` / `loadFromImages`.
+  // Nullable, not `!`: these only exist after `loadFromHTML`.
   // The public getters below keep their non-null signatures and throw a typed
   // error instead — a definite-assignment `!` here would hand callers
   // `undefined` and fail as "cannot read properties of undefined" deep in the
@@ -101,11 +86,10 @@ export class PageFlip extends EventObject {
   private destroyed = false;
 
   /**
-   * Bumped by every operation that replaces or tears down the current mode.
-   * `loadFromImages` / `updateFromImages` await a dynamic import, so a load
-   * started before a newer one could still call `attachMode` afterwards and
-   * silently replace the newer mode. A continuation may only act if the
-   * generation it captured is still current.
+   * Bumped by every operation that replaces or tears down the current book
+   * (attach, replacePages, updateFromHtml, clear, load). Kept so a future
+   * async attach path cannot re-introduce the stale-continuation class of bug
+   * the counter was added to prevent; HTML paths claim a generation too.
    */
   private loadGeneration = 0;
 
@@ -151,7 +135,7 @@ export class PageFlip extends EventObject {
    * - Always safe: `getSettings`, `getState` (`READ`), `getFlipController`
    *   (`null`), `getBlock`, `isDestroyed`.
    *
-   * A destroyed engine is not reusable — `loadFromHTML` / `loadFromImages`
+   * A destroyed engine is not reusable — `loadFromHTML`
    * after `destroy()` do not revive it. Construct a new `PageFlip`.
    *
    * ## Destroying from inside an event handler (X4)
@@ -383,8 +367,8 @@ export class PageFlip extends EventObject {
   /**
    * Host element the engine was constructed with.
    *
-   * @internal Wiring seam for the lazily-loaded canvas mode. Not part of the
-   * supported API; it may change in a minor release.
+   * @internal Wiring seam for load/attach. Not part of the supported API; it
+   * may change in a minor release.
    */
   public getBlock(): HTMLElement {
     return this.block;
@@ -404,10 +388,7 @@ export class PageFlip extends EventObject {
       );
     }
     if (value === null) {
-      throw new PageFlipError(
-        `${what} not available (loadFromHTML/loadFromImages first)`,
-        'NOT_LOADED',
-      );
+      throw new PageFlipError(`${what} not available (loadFromHTML first)`, 'NOT_LOADED');
     }
     return value;
   }
@@ -427,21 +408,16 @@ export class PageFlip extends EventObject {
   /**
    * Swap the page collection in place, keeping the current UI and render.
    *
-   * @internal Wiring seam for the lazily-loaded canvas mode. Not part of the
-   * supported API; it may change in a minor release.
+   * @internal Wiring seam. Not part of the supported API; it may change in a
+   * minor release.
    */
   public replacePages(pages: PageCollection, current: number): void {
     if (this.destroyed) return;
 
     const render = this.renderOrThrow;
 
-    // L5: this is a mode-changing path like any other — it throws away the
-    // collection the current mode was attached with — so it has to claim a
-    // generation too. Without it, a `loadFromImages` / `updateFromImages`
-    // whose dynamic import is still in flight still matched the generation it
-    // captured, so its continuation ran `attachMode` *after* this and
-    // destroyed the collection just installed. That is exactly the class the
-    // counter was added to prevent, on the one path that never opted in.
+    // L5: collection-replacing paths claim a generation so a stale async
+    // attach cannot destroy the collection just installed.
     this.nextGeneration();
 
     // An in-flight turn belongs to the OLD collection. `finishAnimation()`
@@ -480,11 +456,10 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Wire UI + render + pages after construction. Used by HTML load and by the
-   * lazily-loaded canvas chunk, so `CanvasRender` stays out of the HTML bundle.
+   * Wire UI + render + pages after construction.
    *
-   * @internal Wiring seam. Not part of the supported API; it may change in a
-   * minor release. Use `loadFromHTML` / `loadFromImages`.
+   * @internal Wiring seam for HTML load and any future renderer. Not part of
+   * the supported API; it may change in a minor release. Use `loadFromHTML`.
    */
   public attachMode(ui: UI, render: Render, pages: PageCollection): void {
     // Mode attachment is the boundary a stale async load must not cross.
@@ -497,8 +472,7 @@ export class PageFlip extends EventObject {
     }
     // Replace any previous mode wholesale so a second load cannot leave the
     // old UI listening on the host element. The collection goes too: it was
-    // simply overwritten below, so a second load or a mode switch leaked every
-    // page it held — which for canvas means every decoded image.
+    // simply overwritten below, so a second load leaked every page it held.
     this.ui?.destroy();
     this.render?.stop();
     this.pages?.destroy();
@@ -577,90 +551,33 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Fetch the canvas chunk for one load, or `null` if that load no longer
-   * matters (L7).
+   * Canvas mode was removed in 3.0.0 (ADR 0002).
    *
-   * Both outcomes of the import are judged by the SAME question — "does this
-   * load still have a consumer?" — because the old shape asked it only of the
-   * success path: the `.catch` that wraps an import failure sat *before* the
-   * `destroyed` check, so a consumer who destroyed the engine while the chunk
-   * was downloading got a rejected (and, for the common
-   * `book.loadFromImages(...)` without a `.catch`, unhandled) promise for a
-   * load they had explicitly abandoned. That contradicts the destroy contract
-   * documented above: mutating lifecycle calls are safe no-ops after destroy.
-   *
-   * A superseded load (`generation !== loadGeneration`) is swallowed for the
-   * same reason and with the same safety: it imports the very same module as
-   * the load that replaced it, so a genuine failure is still reported — by the
-   * newer load, which is the one with a caller waiting on it.
-   *
-   * A failure that is still current is NOT swallowed. Turning a broken chunk
-   * into a silently resolved promise would leave the consumer with a book that
-   * never appears and no error to explain it.
+   * Always rejects with `CANVAS_REMOVED` unless the engine is already
+   * destroyed, in which case it is a safe no-op like other mutating lifecycle
+   * calls. Use `loadFromHTML` with `<img>` elements instead — see MIGRATION.md.
    */
-  private loadCanvasModule(generation: number): Promise<typeof CanvasLoader | null> {
-    return import('./canvas-loader').then(
-      (m) => (this.destroyed || generation !== this.loadGeneration ? null : m),
-      (err: unknown) => {
-        if (this.destroyed || generation !== this.loadGeneration) return null;
-
-        throw new PageFlipError(
-          `Failed to load canvas renderer: ${err instanceof Error ? err.message : String(err)}`,
-          'CANVAS_LOAD',
-        );
-      },
+  public loadFromImages(_leaves?: unknown): Promise<void> {
+    if (this.destroyed) return Promise.resolve();
+    return Promise.reject(
+      new PageFlipError(
+        'Canvas mode was removed in 3.0.0. Use loadFromHTML with <img> elements instead. See MIGRATION.md.',
+        'CANVAS_REMOVED',
+      ),
     );
   }
 
   /**
-   * Load pages from images on the Canvas mode.
-   *
-   * The canvas renderer is a separate chunk, so an HTML-only consumer never
-   * downloads it. Budgets live in `packages/core/package.json`; the enforced
-   * one is brotli, which is what a consumer actually pays for.
-   *
-   * Takes leaf DESCRIPTORS, not URLs (ADR 0001, Decision 1): `alt` is required,
-   * because a canvas book has no DOM per page and the descriptor is therefore
-   * the only accessible name a screen reader can ever be given. `string[]` is
-   * broken deliberately and is not normalised, because normalising it would
-   * mean the engine inventing `alt: ''` — silently declaring every page
-   * decorative — for every consumer who did not notice.
-   *
-   * @param {readonly CanvasLeaf[]} leaves - image and blank leaf descriptors
-   * @throws {PageFlipError} `INVALID_IMAGE_SOURCE` (as a rejection) for a
-   *   malformed list. `CANVAS_LOAD` if the canvas chunk cannot be fetched.
+   * Canvas mode was removed in 3.0.0 (ADR 0002). See {@link PageFlip.loadFromImages}.
    */
-  public loadFromImages(leaves: readonly CanvasLeaf[]): Promise<void> {
-    // Cheapest form of the same no-op: an engine that is already destroyed
-    // does not download the chunk at all. `loadFromHTML` guards here too.
-    //
-    // Ahead of validation on purpose: the destroy contract documented above is
-    // that mutating lifecycle calls are no-ops after `destroy()`, and a no-op
-    // that inspects its argument and can still throw is not one.
+  public updateFromImages(_leaves?: unknown): Promise<void> {
     if (this.destroyed) return Promise.resolve();
-
-    // BEFORE `nextGeneration()`, and therefore before the chunk import.
-    //
-    // `nextGeneration()` is not bookkeeping — it INVALIDATES every load still
-    // in flight (L7/G8). Validating after it would mean a typo'd descriptor
-    // list cancelled the good book that was already on screen or on its way,
-    // leaving the consumer with a rejected promise AND no book: the
-    // half-applied load `loadGeneration` exists to prevent, arrived at from the
-    // one direction it did not cover.
-    try {
-      validateCanvasLeaves(leaves);
-    } catch (err: unknown) {
-      // A rejection, not a synchronous throw: the signature promises a
-      // `Promise`, and a method that sometimes throws before returning one
-      // cannot be handled with `.catch` alone.
-      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
-    }
-
-    const generation = this.nextGeneration();
-
-    return this.loadCanvasModule(generation).then((m) => {
-      m?.loadFromImages(this, leaves);
-    });
+    return Promise.reject(
+      new PageFlipError(
+        'Canvas mode was removed in 3.0.0. Use loadFromHTML with <img> elements instead. See MIGRATION.md.',
+        'CANVAS_REMOVED',
+      ),
+    );
   }
 
   /**
@@ -689,32 +606,6 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Update current pages from images.
-   *
-   * Same descriptor contract, same validation ordering and same reasons as
-   * `loadFromImages` — see there.
-   *
-   * @param {readonly CanvasLeaf[]} leaves - image and blank leaf descriptors
-   * @throws {PageFlipError} `INVALID_IMAGE_SOURCE` (as a rejection) for a
-   *   malformed list, `WRONG_MODE` in HTML mode.
-   */
-  public updateFromImages(leaves: readonly CanvasLeaf[]): Promise<void> {
-    if (this.destroyed) return Promise.resolve();
-
-    try {
-      validateCanvasLeaves(leaves);
-    } catch (err: unknown) {
-      return Promise.reject(err instanceof Error ? err : new Error(String(err)));
-    }
-
-    const generation = this.nextGeneration();
-
-    return this.loadCanvasModule(generation).then((m) => {
-      m?.updateFromImages(this, leaves);
-    });
-  }
-
-  /**
    * Update current pages from HTML
    *
    * @param {(NodeListOf<HTMLElement>|HTMLElement[])} items - List of pages as HTML Element
@@ -729,9 +620,9 @@ export class PageFlip extends EventObject {
 
     const ui = this.uiOrThrow;
 
-    // Cross-mode updates are not supported and used to fail deep in: this cast
-    // `CanvasUI` to `HTMLUI` and called `updateItems` on it. Load the mode you
-    // want instead of updating across modes.
+    // Non-HTML UI (none today; kept for a future renderer) cannot adopt HTML
+    // page nodes. Load via the matching entry point instead of updating across
+    // renderers.
     if (!(ui instanceof HTMLUI)) {
       throw new PageFlipError(
         'updateFromHtml requires HTML mode; use loadFromHTML to switch modes.',
@@ -922,14 +813,10 @@ export class PageFlip extends EventObject {
    */
   public clear(): void {
     // PF2: resolve every piece of engine state FIRST, and only then claim the
-    // generation. `nextGeneration()` used to run before `uiOrThrow`, so
-    // `loadFromImages(x)` immediately followed by `clear()` — `render`/`ui` are
-    // null until the canvas chunk lands — threw `NOT_LOADED` out of `clear()`
-    // having ALREADY invalidated the pending load: the continuation saw a stale
-    // generation, returned early, and the book silently never appeared, with no
-    // error on the load promise either. Same family as L5, inverted — a
-    // generation claimed by an operation that then fails. An operation that
-    // cannot proceed must not invalidate the one that can.
+    // generation. `nextGeneration()` used to run before `uiOrThrow`, so a
+    // `clear()` that then threw `NOT_LOADED` had ALREADY invalidated an in-
+    // flight load. An operation that cannot proceed must not invalidate the
+    // one that can.
     const ui = this.uiOrThrow;
     const render = this.renderOrThrow;
     const pages = this.pagesOrThrow;
@@ -965,9 +852,8 @@ export class PageFlip extends EventObject {
     // the pages that had just been discarded.
     render.releasePages();
     this.resetUserGesture();
-    // Was an unconditional `as HTMLUI` cast. `CanvasUI` has no `clear()`, so
-    // this threw a TypeError in canvas mode — a public method that could not be
-    // called in one of the two supported modes.
+    // HTML mode only today; `instanceof` stays so a future non-HTML UI is not
+    // cast blindly (WRONG_MODE family — same guard as updateFromHtml).
     if (ui instanceof HTMLUI) ui.clear();
 
     this.flipController?.abandon();
@@ -1202,7 +1088,7 @@ export class PageFlip extends EventObject {
   /**
    * Get the current rendering object.
    *
-   * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML` / `loadFromImages`.
+   * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML`.
    * @returns {Render}
    */
   public getRender(): Render {
@@ -1212,7 +1098,7 @@ export class PageFlip extends EventObject {
   /**
    * Get current object responsible for flipping
    *
-   * @returns {Flip} `null` until `loadFromHTML` / `loadFromImages` runs.
+   * @returns {Flip} `null` until `loadFromHTML` runs.
    */
   public getFlipController(): Flip | null {
     return this.flipController;
@@ -1248,7 +1134,7 @@ export class PageFlip extends EventObject {
   /**
    * Get UI object.
    *
-   * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML` / `loadFromImages`.
+   * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML`.
    * @returns {UI}
    */
   public getUI(): UI {
@@ -1267,67 +1153,11 @@ export class PageFlip extends EventObject {
   /**
    * Get page collection.
    *
-   * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML` / `loadFromImages`.
+   * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML`.
    * @returns {PageCollection}
    */
   public getPageCollection(): PageCollection {
     return this.pagesOrThrow;
-  }
-
-  /**
-   * The accessible name of one canvas leaf, or `undefined` if nobody gave it one.
-   *
-   * Canvas mode only. This exists because without it the canvas mode ships an
-   * accessibility story no consumer can implement: a canvas book has no DOM per
-   * page, so the descriptors are the ONLY thing a screen reader can be told —
-   * and they were reachable solely by casting `getPageCollection()` to an
-   * unexported class living in the lazy chunk.
-   *
-   * **Three-valued, and the three values are not interchangeable:**
-   *
-   * - a string — use it;
-   * - `''` — the author asserted the leaf is decorative, so announce nothing;
-   * - `undefined` — the author said *nothing at all*. This is "unknown", never
-   *   "decorative". Render a positional fallback ("Page 7") for it.
-   *
-   * Collapsing the last two is the failure the whole descriptor design avoids:
-   * it silently declares every unlabelled page decorative, which is exactly the
-   * outcome requiring `alt` was meant to prevent.
-   *
-   * The engine does not supply the positional fallback itself, because it would
-   * have to ship an unlocalisable English string to do it (ADR 0001).
-   *
-   * @throws {PageFlipError} `WRONG_MODE` in HTML mode — where a page is a real
-   * element the consumer already labelled themselves — and `INVALID_PAGE` for
-   * an index outside the book.
-   */
-  public getPageAltText(index: number): string | undefined {
-    return this.altSourceOrThrow().getAltText(index);
-  }
-
-  /** Every leaf's accessible name, in page order. See {@link PageFlip.getPageAltText}. */
-  public getPageAltTexts(): readonly (string | undefined)[] {
-    return this.altSourceOrThrow().getAltTexts();
-  }
-
-  /**
-   * Duck-typed on purpose — `instanceof ImagePageCollection` would import the
-   * class, and the class lives in the lazily-imported canvas chunk. That import
-   * would pull the whole canvas renderer into the eager graph that every
-   * HTML-only consumer downloads, to answer a question only canvas books ask.
-   */
-  private altSourceOrThrow(): CanvasAltSource {
-    const collection: unknown = this.pagesOrThrow;
-    const candidate = collection as Partial<CanvasAltSource>;
-
-    if (typeof candidate.getAltText !== 'function' || typeof candidate.getAltTexts !== 'function') {
-      throw new PageFlipError(
-        'Page alt text is canvas mode only; in HTML mode the page element carries its own label.',
-        'WRONG_MODE',
-      );
-    }
-
-    return candidate as CanvasAltSource;
   }
 
   /**
