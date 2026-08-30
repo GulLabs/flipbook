@@ -202,7 +202,7 @@ export abstract class Render {
    *
    * @param timer
    */
-  private render(timer: number): void {
+  private render(timer: number, generation = this.loopGeneration): void {
     // R2: stamp the frame clock BEFORE running any frame action or callback.
     // `startAnimation` reads `this.timer` for `startedAt`, so an animation
     // started from inside a frame action — or from an `onAnimateEnd` that
@@ -247,6 +247,16 @@ export abstract class Render {
       }
     }
 
+    // U6 / the X4 follow-up. `onAnimateEnd` emitted `flip` synchronously above,
+    // and a consumer may have torn the book down from that handler — the
+    // documented, supported way to clean up when a turn completes. Drawing
+    // afterwards paints into a released collection and a detached canvas.
+    //
+    // `stop()` bumps the generation, so this is the same signal the loop guard
+    // uses; checking it here removes the trailing frame instead of trying to
+    // make it survivable.
+    if (generation !== this.loopGeneration) return;
+
     this.drawFrame();
   }
 
@@ -283,7 +293,14 @@ export abstract class Render {
 
     const loop = (timer: number): void => {
       if (generation !== this.loopGeneration) return;
-      this.render(timer);
+      this.render(timer, generation);
+
+      // Re-check AFTER the frame. `onAnimateEnd` fires a `flip` event
+      // synchronously from inside `render()`, and a consumer is entitled to
+      // call `destroy()` from it — which calls `stop()` and bumps the
+      // generation. Re-arming regardless scheduled one more frame and kept this
+      // closure (and the engine it captures) alive until it fired.
+      if (generation !== this.loopGeneration) return;
       this.rafId = requestAnimationFrame(loop);
     };
 

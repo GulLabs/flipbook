@@ -960,3 +960,54 @@ describe('PageFlip lifecycle — load, init timer, clear and settings', () => {
     }
   });
 });
+
+describe('U6 — no trailing frame after a teardown from onAnimateEnd', () => {
+  test('destroying from the completion callback stops the frame at source', async () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    sizeElement(host, 400, 300);
+    const pages = makePages(4);
+    for (const p of pages) host.appendChild(p);
+
+    const flip = new PageFlip(host, { width: 200, height: 300, size: 'fixed' });
+    flip.loadFromHTML(pages);
+
+    const render = flip.getRender() as unknown as {
+      drawFrame: () => void;
+      startAnimation: (f: (() => void)[], d: number, cb: () => void) => void;
+    };
+
+    let drawsAfterTeardown = 0;
+    let tornDown = false;
+    const realDraw = render.drawFrame.bind(render);
+    render.drawFrame = () => {
+      if (tornDown) drawsAfterTeardown += 1;
+      realDraw();
+    };
+
+    // A REAL animation with a duration, so `onAnimateEnd` fires from inside
+    // `render()` on an rAF tick. An instant turn runs the callback inside
+    // `startAnimation` instead and never reaches the loop at all — which is why
+    // the first version of this test passed against the unfixed code.
+    const frames = Array.from({ length: 3 }, () => () => undefined);
+    render.startAnimation(frames, 30, () => {
+      tornDown = true;
+      flip.destroy();
+    });
+
+    for (let i = 0; i < 12 && !tornDown; i++) {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+    }
+    // One more tick: this is the frame the loop used to have already re-armed.
+    await new Promise((r) => requestAnimationFrame(() => r(null)));
+
+    expect(tornDown).toBe(true);
+
+    // The loop used to draw unconditionally after `onAnimateEnd`, painting into
+    // a released collection and a detached canvas — and then re-arm, keeping
+    // the closure and the engine it captures alive for another frame.
+    expect(drawsAfterTeardown).toBe(0);
+
+    host.remove();
+  });
+});
