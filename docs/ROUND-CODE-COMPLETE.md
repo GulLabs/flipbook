@@ -20,16 +20,26 @@ next round.
 
 ## Commit ledger
 
-| #   | SHA       | What                                              |
-| --- | --------- | ------------------------------------------------- |
-| 0   | `3565533` | round start — 793 tests green, brotli 14000/14000 |
+| #   | SHA       | What                                                                                            |
+| --- | --------- | ----------------------------------------------------------------------------------------------- |
+| 0   | `3565533` | round start — 793 tests green, brotli 14000/14000                                               |
+| 1   | `0ffec68` | owner raises the size ceilings: 57→62 raw, 14→16 brotli, 16→18 gzip                             |
+| 2   | `7500ffe` | **the design tranche** — D1–D21, H4, C7. Settings model, error model, event map, React binding. |
 
 ## Broken tests
 
 Recorded as they break, with the reason, so round 2 is mechanical.
 
-| Test file | Why it broke | Fix in round 2 |
-| --------- | ------------ | -------------- |
+| Test file                | Why it broke                                                                                                                                                   | Fix in round 2                                                   |
+| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| ~all core + react suites | 12 settings renamed; event map reshaped (`init`→`ready`/`loaded`, `update`+`collectionRebuild`→`pagesChanged`, every payload an object); error codes collapsed | Mechanical: rename keys, unwrap payloads, update code assertions |
+| `errors-shape.test.ts`   | 8 `INVALID_*` codes removed                                                                                                                                    | Assert `INVALID_SETTING` + `setting` key + the new `kind` axis   |
+| `HTMLFlipBook.test.tsx`  | `onFlip`/`onInit`/`onUpdate`/`onCollectionRebuild`/`onNavigationError` removed; handlers take payloads, not `WidgetEvent`                                      | Rename handlers, drop `.data`                                    |
+| `settings*.test.ts`      | `Settings.getSettings` → `Settings.resolve`; `maxHeight` gone                                                                                                  | Rename; delete `maxHeight` cases; add `setting` assertions       |
+
+**Two round-scoped tsconfigs exist for this:** `packages/core/tsconfig.src.json`
+and `packages/react/tsconfig.src.json` type-check `src` only, because the
+repo-wide `tsconfig.json` includes `tests`. Delete both once `tests` is green.
 
 ## Decisions taken without asking
 
