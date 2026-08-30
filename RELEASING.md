@@ -84,9 +84,9 @@ All packages are published to the `@gullabs` scope with `publishConfig.access = 
 
 ## Required repository secret
 
-| Secret      | Description                                                                                                                                                                                                                                                     |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NPM_TOKEN` | npm automation token with publish access to the `@gullabs` scope. Same value as `gul-labs/any-llm` (vault key `NPM_GULLABS_PUBLISH_TOKEN` in `.env.infra.local`). Generate at https://www.npmjs.com/settings → Access Tokens → Generate New Token → Automation. |
+| Secret      | Description                                                                                                                                                                                                                 |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NPM_TOKEN` | npm automation token with publish access to the `@gullabs` scope. Same token used to publish the other `@gullabs/*` packages. Generate at https://www.npmjs.com/settings → Access Tokens → Generate New Token → Automation. |
 
 `GITHUB_TOKEN` is provided by GitHub Actions.
 

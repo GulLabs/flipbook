@@ -1,6 +1,6 @@
 name: Dependency Review
 
-# Supply-chain gate on PRs (Veloir pattern). Blocks known-vulnerable deps
+# Supply-chain gate on PRs. Blocks known-vulnerable deps
 # from merging when GitHub Dependency Review is enabled for the org/repo.
 on:
   pull_request:
