@@ -2385,8 +2385,14 @@ describe('RE-2 — the collection pair must be true, not just atomic', () => {
     // desync atomicity exists to prevent.
     expect(book.getPageCount()).toBe(2);
 
+    // Every rebuild must describe the book that EXISTS. Reverted fix:
+    // `rebuild:4` arrived last, for a two-page book. The count of pairs is not
+    // the contract — a nested full `loadFromHTML` emits `init` and no rebuild at
+    // all, so suppressing the outer one would leave a consumer with no
+    // page-count event whatsoever. What matters is that none of them lies.
     const rebuilds = events.filter((e) => e.startsWith('rebuild:'));
-    expect(rebuilds).toEqual(['rebuild:2']);
+    expect(rebuilds.length).toBeGreaterThan(0);
+    expect(rebuilds.every((e) => e === 'rebuild:2')).toBe(true);
     expect(rebuilds).not.toContain('rebuild:4');
 
     book.destroy();
@@ -2417,6 +2423,36 @@ describe('RE-2 — the collection pair must be true, not just atomic', () => {
     book.destroy();
   });
 
+  test('a nested full load still leaves a page-count event behind', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
+    book.loadFromHTML(makePages(6));
+
+    const rebuilds: number[] = [];
+    let once = false;
+
+    book.on('update', () => {
+      if (once) return;
+      once = true;
+      // A FULL LOAD, not an update. `loadFromHTML` / `attachMode` announce
+      // `init` and never `collectionRebuild`, so a guard that simply SKIPS the
+      // outer pair on a moved generation leaves nothing at all behind — the
+      // hole the first version of this fix had, and the reason it re-derives
+      // instead of returning.
+      book.loadFromHTML(makePages(3));
+    });
+    book.on('collectionRebuild', (e) => {
+      rebuilds.push((e.data as { pageCount: number }).pageCount);
+    });
+
+    book.updateFromHtml(makePages(4));
+
+    expect(book.getPageCount()).toBe(3);
+    expect(rebuilds.length).toBeGreaterThan(0);
+    expect(rebuilds.every((n) => n === 3)).toBe(true);
+
+    book.destroy();
+  });
+
   test('an unraced pair still delivers both halves', () => {
     const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 0 });
     book.loadFromHTML(makePages(6));
@@ -2439,7 +2475,7 @@ describe('RE-2 — the collection pair must be true, not just atomic', () => {
 describe('RE-3 — updateSettings survives a listener destroying mid-call', () => {
   test('a destroy from a refreshHandlers dispatch does not throw a TypeError', () => {
     installPointerCaptureShims();
-    const { book } = makeHtmlBook({
+    const { host: hostEl, book } = makeHtmlBook({
       pageCount: 6,
       usePortrait: false,
       showCover: false,
@@ -2484,6 +2520,15 @@ describe('RE-3 — updateSettings survives a listener destroying mid-call', () =
     expect(() => {
       book.updateSettings({ useMouseEvents: false });
     }).not.toThrow();
+
+    expect(book.isDestroyed()).toBe(true);
+
+    // …AND the host was handed back. Hoisting the reference stops the
+    // `TypeError`, but the hoisted UI must not then restyle a host its own
+    // `destroy()` has already restored — that trades a loud failure for a
+    // silent ownership violation, which is worse.
+    expect(hostEl.style.minWidth).toBe('');
+    expect(hostEl.classList.contains('stf__parent')).toBe(false);
 
     expect(book.isDestroyed()).toBe(true);
   });

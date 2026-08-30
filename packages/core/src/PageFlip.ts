@@ -298,10 +298,23 @@ export class PageFlip extends EventObject {
     }
 
     if (this.loadGeneration !== generation) {
-      // Still surface a listener's error: superseding is not a reason to
-      // swallow a consumer defect (the `requestTurn` rule).
-      if (failure !== null) throw failure.err;
-      return;
+      // RE-DERIVED, NOT SKIPPED. The first version returned here, on the
+      // reasoning that the newer operation emits its own complete pair. That is
+      // true of `updateFromHtml`, `replacePages` and `clear` — and FALSE of a
+      // full load: `loadFromHTML` / `attachMode` announce `init`, never
+      // `collectionRebuild`. So an `update` listener calling `loadFromHTML()`
+      // suppressed the outer rebuild and nothing replaced it, leaving a
+      // consumer with no page-count event at all. The original RE-2 test only
+      // covered nested `updateFromHtml`, which does emit a pair, so it could
+      // not see the difference.
+      //
+      // Reading the live collection instead satisfies both halves of what this
+      // method is for: the pair still completes, and it describes the book that
+      // actually exists rather than the one this call was told about.
+      const live = this.pages;
+
+      page = live === null ? 0 : this.resolvedPageIndex(live);
+      pageCount = live === null ? 0 : live.getPageCount();
     }
 
     try {
@@ -813,6 +826,14 @@ export class PageFlip extends EventObject {
       if (mouseChanged) {
         ui.refreshHandlers();
       }
+
+      // …but the hoist only makes the reference SAFE to hold, not correct to
+      // use. `refreshHandlers()` dispatches, and a listener calling `destroy()`
+      // runs `UI.destroy()`, which hands the consumer's host back with its
+      // original styles restored. Calling `applyHostSize` afterwards stamps the
+      // engine's sizing straight back onto a host the engine no longer owns —
+      // trading a `TypeError` for a silent ownership violation, which is worse.
+      if (this.ui !== ui || this.destroyed) return this.setting;
       // Size-shaped settings are stamped onto the host element, so a changed
       // `width` / `height` / `size` has to be restamped here. Otherwise the
       // only way to resize a book is to rebuild the engine.

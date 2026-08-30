@@ -57,3 +57,43 @@ describe('portrait curl geometry (shipped engine)', () => {
     expect(to.x).toBeLessThan(from.x);
   });
 });
+
+/**
+ * The curl's corner inset is bounded by the leaf's SHORTER side.
+ *
+ * `height / 10` is sensible on ordinary proportions and nonsense on a tall
+ * narrow leaf — and `Settings` permits any positive dimensions.
+ */
+describe('portraitCurlLocal — extreme aspect ratios', () => {
+  test('a tall narrow leaf does not start the turn already past the spine', () => {
+    const pageWidth = 20;
+    const height = 300;
+    const curl = portraitCurlLocal(pageWidth, height);
+
+    // Reverted fix: `pad = 30`, so `from.x = 20 - 30 = -10` — past the spine
+    // before the first frame, which `FlipCalculation` reads as roughly 75% of
+    // the turn already done. A programmatic turn jumps most of the way
+    // instantly instead of animating.
+    expect(curl.from.x).toBeGreaterThan(0);
+    expect(curl.from.x).toBeLessThan(pageWidth);
+  });
+
+  test('a wide short leaf is bounded too, and the start stays inside', () => {
+    const curl = portraitCurlLocal(400, 20);
+
+    // The control on the other axis: a variant that clamped only by width would
+    // satisfy the case above and fail here.
+    expect(curl.from.x).toBeGreaterThan(0);
+    expect(curl.from.x).toBeLessThan(400);
+    expect(curl.from.y).toBeGreaterThan(0);
+    expect(curl.from.y).toBeLessThan(20);
+  });
+
+  test('ordinary proportions are unchanged', () => {
+    // Inert where it should be: a 400x600 leaf keeps the 60px inset it always
+    // had, so this is a bound and not a re-tuning of every book's curl.
+    const curl = portraitCurlLocal(400, 600);
+    expect(curl.from).toEqual({ x: 340, y: 60 });
+    expect(curl.to).toEqual({ x: -400, y: 0 });
+  });
+});

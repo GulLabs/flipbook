@@ -40,6 +40,20 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — a tall narrow leaf started its turn already past the spine
+
+- **The curl's corner inset was derived from height alone.** On a valid 20×300
+  leaf that put the start point at `x = -10` — beyond the spine before the first
+  frame, which the calculation reads as roughly three-quarters of the turn
+  already done, so a programmatic turn jumped most of the way instantly instead
+  of animating. Settings permit any positive dimensions; the geometry tests only
+  ever used ordinary ratios.
+- **A refused canvas context left the host dirty.** `CanvasUI`'s constructor
+  mutates the host — wrapper, block, styles, class, handlers — and
+  `CanvasRender` acquiring a 2D context is the next thing that can fail
+  (browsers cap live contexts). With no cleanup bracket the wrapper stayed in the
+  consumer's DOM and a retry built a second UI on top of the first.
+
 ### Changed — `ImageFlipBook` is not part of 3.0.0
 
 - **The React canvas binding is deliberately not exported.** It is written to

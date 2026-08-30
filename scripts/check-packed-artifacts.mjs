@@ -185,6 +185,30 @@ for (const pkg of PACKAGES) {
   if (/"workspace:/.test(rawManifest)) {
     passed = fail(`${pkg.name}: packed manifest still contains a workspace: protocol range`);
   }
+  // REQUIRED dependencies, not just well-formed ones. This loop validated the
+  // SYNTAX of whatever happened to be declared, so deleting
+  // `@gullabs/flipbook-core` from the react manifest left the gate green — and
+  // the consumer step below could not catch it either, because it unpacks both
+  // tarballs by hand regardless of what react asks for. A consumer running
+  // `npm i @gullabs/react-flipbook` alone would then fail at runtime and in its
+  // declarations, which is precisely the failure this script exists to prevent.
+  if (pkg.name === '@gullabs/react-flipbook') {
+    const core = manifest.dependencies?.['@gullabs/flipbook-core'];
+    if (typeof core !== 'string' || core.length === 0) {
+      passed = fail(
+        `${pkg.name}: must declare @gullabs/flipbook-core in "dependencies" — ` +
+          'installing it alone would resolve neither the runtime nor the types',
+      );
+    }
+    const peers = manifest.peerDependencies ?? {};
+    if (typeof peers['react'] !== 'string') {
+      passed = fail(`${pkg.name}: react must stay a peerDependency`);
+    }
+    if (manifest.dependencies?.['react'] !== undefined) {
+      passed = fail(`${pkg.name}: react must NOT be a hard dependency`);
+    }
+  }
+
   for (const [dep, range] of Object.entries(manifest.dependencies ?? {})) {
     if (!/^[\^~]?\d/.test(range) && !/^(>=|<|>)/.test(range)) {
       passed = fail(

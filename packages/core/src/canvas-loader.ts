@@ -9,10 +9,27 @@ import { PageFlipError } from './errors';
 import { ImagePageCollection } from './Collection/ImagePageCollection';
 
 export function loadFromImages(app: PageFlip, imagesHref: string[]): void {
+  // `CanvasUI`'s constructor MUTATES THE HOST — it builds the wrapper and
+  // block, stamps `stf__parent`, records the caller's styles and binds
+  // handlers — and `CanvasRender`'s constructor is the next thing that can
+  // throw, because acquiring a 2D context can be refused (browsers cap live
+  // contexts). Without a bracket, that throw left the wrapper in the consumer's
+  // DOM, the host restyled, the `stf__parent` reference count incremented and
+  // the handlers bound, while `PageFlip` never received the UI and so had
+  // nothing to destroy. The book was unusable AND the page was left dirty, and
+  // a retry then built a second UI on top of the first.
   const ui = new CanvasUI(app.getBlock(), app, app.getSettings());
-  const render = new CanvasRender(app, app.getSettings(), ui.getCanvas());
-  const pages = new ImagePageCollection(app, render, imagesHref);
-  app.attachMode(ui, render, pages);
+
+  try {
+    const render = new CanvasRender(app, app.getSettings(), ui.getCanvas());
+    const pages = new ImagePageCollection(app, render, imagesHref);
+    app.attachMode(ui, render, pages);
+  } catch (err: unknown) {
+    // Hand the host back before rethrowing. `attachMode` is the point of no
+    // return: once it has the UI, teardown is its job, and it does not throw.
+    ui.destroy();
+    throw err;
+  }
 }
 
 export function updateFromImages(app: PageFlip, imagesHref: string[]): void {
