@@ -4,29 +4,101 @@
 
 export const DEFAULT_PAGE_BACKGROUND = '#fff';
 
+/**
+ * WHY THIS MODULE WAS REWRITTEN.
+ *
+ * The boundary and the draw path used DIFFERENT predicates, so a value could
+ * pass construction and then be rejected on every frame. Measured against the
+ * built engine:
+ *
+ *   'oklch(0.7 0.1 200)'   accepted   → painted #fff
+ *   'color-mix(in srgb…)'  accepted   → painted #fff
+ *   'var(--paper)'         accepted   → painted #fff
+ *   'rgb(0 0 0 / 50%)'     accepted as OPAQUE → painted #fff
+ *
+ * So an ordinary 2026 colour produced a white fold with no error and no
+ * warning, and a genuinely see-through modern colour was reported opaque —
+ * the opacity check this module exists for did not understand the syntax it
+ * was checking.
+ *
+ * Twenty lines away in the same function, `Settings.resolve` throws loudly for
+ * `drawShadow: 'false'`. Two philosophies in one validator. The loud one is
+ * right.
+ *
+ * THE RULE NOW: one predicate, used by both ends.
+ *
+ *  1. Reject anything that could break out of the declaration — this value is
+ *     interpolated into `cssText`, so `red;position:fixed` is an injection, not
+ *     a colour, and it is refused on syntax whatever its opacity.
+ *  2. Ask the PLATFORM whether it is a colour (`CSS.supports`), rather than
+ *     enumerating the colour functions CSS will keep adding. Falling back to a
+ *     pattern only where there is no DOM.
+ *  3. Reject what is provably translucent.
+ *
+ * Anything that passes is DRAWN VERBATIM. The draw-time fallback survives only
+ * for the untyped path (assigning to the live settings object bypasses the
+ * boundary entirely), and can no longer silently disagree with a value the
+ * boundary accepted.
+ */
+
 /** Keywords that resolve to something the fold can be seen through. */
 const SEE_THROUGH_RE =
   /^(?:transparent|inherit|initial|unset|revert(?:-layer)?|none|currentcolor)$/;
 
 /**
- * Safe CSS color subset for `pageBackground`.
+ * Characters and constructs that let a value escape the declaration it is
+ * interpolated into, or reach the network.
  *
- * The value is interpolated into an element's `cssText`, so a caller that pipes
- * user input into it must not be able to smuggle in `url()`, `expression()`,
- * `var()`, or an extra declaration. Legacy comma syntax only — modern
- * space-separated `rgb(0 0 0 / 50%)`, `color-mix()` and `oklch()` are rejected
- * rather than parsed; they fall back to the default.
+ * Deliberately NOT a colour grammar: `/` is legal in modern colour syntax
+ * (`rgb(0 0 0 / 50%)`), so this bans only what cannot appear in any colour.
  */
-const SAFE_CSS_COLOR =
-  /^(#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})|rgba?\(\s*[\d.]+\s*(?:,\s*[\d.%]+\s*){2,3}\)|hsla?\(\s*[\d.]+\s*(?:,\s*[\d.%]+\s*){2,3}\)|[a-z]{3,20})$/i;
+const INJECTION_RE = /[;{}\\]|\/\*|<|url\s*\(|expression\s*\(|@import/i;
 
-/** Alpha channel of a legacy `rgba()` / `hsla()` value, or `null`. */
+/**
+ * SSR fallback for "is this a colour", used only where there is no `CSS`.
+ *
+ * Deliberately permissive about the FUNCTION NAME — `oklch`, `lab`, `lch`,
+ * `color-mix`, `color`, `hwb` and whatever comes next all take the same shape —
+ * because the injection guard above is what provides the safety, and guessing
+ * at the closed set of colour functions is how this module got it wrong before.
+ *
+ * It is therefore MORE PERMISSIVE than a browser: `notacolour` matches the
+ * named-colour shape and passes under SSR, where `CSS.supports` would refuse
+ * it. Accepted knowingly — the engine only paints in a browser, so the strict
+ * check runs in the one place the value can do damage, and shipping the ~148
+ * real colour names to tighten a path that never paints is the wrong trade.
+ */
+const COLOUR_SHAPE_RE =
+  /^(?:#[0-9a-f]{3,8}|[a-z][a-z-]{1,30}|[a-z-]{2,20}\(\s*[^()]*(?:\([^()]*\)[^()]*)*\))$/i;
+
+/** `var(--x)` and `var(--x, fallback)`. Cannot be statically resolved. */
+const VAR_RE = /^var\(\s*--[\w-]+\s*(?:,[^;]*)?\)$/i;
+
+/**
+ * Alpha channel, for both legacy comma syntax and the modern slash form.
+ *
+ * The old version split on commas and required four parts, so it saw
+ * `rgb(0 0 0 / 50%)` as having one part and reported `null` — "no alpha
+ * found" — which the caller then read as opaque. A translucent colour passing
+ * an opacity check is the failure this whole module exists to prevent.
+ */
 function functionalAlpha(value: string): number | null {
   const open = value.indexOf('(');
   const close = value.lastIndexOf(')');
   if (open === -1 || close === -1) return null;
 
-  const parts = value.slice(open + 1, close).split(',');
+  const inner = value.slice(open + 1, close);
+
+  // Modern: the alpha follows a slash, in any colour function.
+  const slash = inner.lastIndexOf('/');
+  if (slash !== -1) {
+    const raw = inner.slice(slash + 1).trim();
+    const alpha = raw.endsWith('%') ? Number(raw.slice(0, -1)) / 100 : Number(raw);
+    return Number.isFinite(alpha) ? alpha : null;
+  }
+
+  // Legacy: the fourth comma-separated component.
+  const parts = inner.split(',');
   if (parts.length < 4) return null;
 
   const raw = (parts[3] ?? '').trim();
@@ -49,77 +121,95 @@ function hexAlpha(value: string): number | null {
 /**
  * Whether the given background would paint an opaque leaf.
  *
- * This inspects the value the caller supplied, *not* the normalized one — the
- * whole point is to tell a see-through background apart from a solid one.
- * Absent / empty means "not set", which the engine fills with the opaque
- * default, so it counts as opaque.
+ * `var()` returns TRUE and that is a deliberate, stated trade: a custom
+ * property cannot be resolved without layout, and `var(--paper)` is the single
+ * most likely value a design-system consumer passes. Rejecting it to defend an
+ * invariant we cannot verify either way would be worse than accepting it and
+ * saying so — a translucent custom property is then the caller's to get right.
  */
 export function isOpaquePageBackground(pageBackground?: string): boolean {
   const value = (pageBackground ?? '').trim().toLowerCase();
 
   if (value.length === 0) return true;
   if (SEE_THROUGH_RE.test(value)) return false;
+  if (VAR_RE.test(value)) return true;
 
   const alpha = functionalAlpha(value) ?? hexAlpha(value);
 
   return alpha === null ? true : alpha >= 1;
 }
 
+/** Why a background was refused, or `null` when it is acceptable. */
+export type PageBackgroundRejection = 'unsafe' | 'unparseable' | 'translucent';
+
 /**
- * Pattern + opacity: the half that is cheap enough to repeat on every draw.
+ * The ONE predicate. Both the settings boundary and the draw path consult it,
+ * which is what stops them disagreeing.
+ */
+export function rejectPageBackground(value: string): PageBackgroundRejection | null {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+
+  if (INJECTION_RE.test(trimmed)) return 'unsafe';
+
+  const lower = trimmed.toLowerCase();
+
+  if (!VAR_RE.test(lower)) {
+    // Ask the platform first: it knows every colour function, including the
+    // ones that do not exist yet. The DOM lib types `CSS` as always present, so
+    // the type system thinks these checks are dead — they are not. Node has no
+    // `CSS` at all, and an older engine can expose it without `supports`.
+    const hasCssSupports = typeof CSS !== 'undefined' && typeof CSS.supports === 'function';
+
+    if (hasCssSupports) {
+      if (!CSS.supports('color', trimmed)) return 'unparseable';
+    } else if (!COLOUR_SHAPE_RE.test(trimmed)) {
+      return 'unparseable';
+    }
+  }
+
+  if (!isOpaquePageBackground(trimmed)) return 'translucent';
+
+  return null;
+}
+
+const REJECTION_TEXT: Record<PageBackgroundRejection, string> = {
+  unsafe:
+    'a colour with no declaration syntax in it (this value is written into a style attribute)',
+  unparseable: 'a valid CSS colour',
+  translucent: 'an opaque colour (a see-through fold lets the page underneath read through)',
+};
+
+export const describePageBackgroundRejection = (reason: PageBackgroundRejection): string =>
+  REJECTION_TEXT[reason];
+
+/**
+ * Draw-time guard for every leaf.
  *
- * A fold you can read the next page through is the §4.2 bug this setting
- * exists to fix, so a translucent value is rejected exactly like an unsafe one.
+ * `Settings.resolve` already ran exactly this check, so for any value that came
+ * through the boundary this is an identity function — which is the point. It
+ * survives only for the untyped path: `getSettings()` hands back the LIVE
+ * settings object, and assigning to it skips validation and puts the value
+ * straight in front of the fold. An untyped consumer writing
+ * `settings.pageBackground = 0` used to reach `.trim()` and throw a bare
+ * TypeError out of the render loop — the book stops mid-turn, not at the
+ * assignment.
  */
 function normalizePageBackground(pageBackground?: string): string {
-  // `typeof`, not a null check. The declared parameter type is not a guarantee
-  // here: `foldFill` runs every frame on `getSettings().pageBackground`, and
-  // `getSettings()` returns the LIVE settings object — the whole reason this
-  // draw-time guard exists (see `foldFill` below). An untyped consumer
-  // assigning `settings.pageBackground = 0` skipped the settings boundary
-  // entirely and reached `.trim()`, which threw a bare TypeError out of the
-  // render loop on the next frame: the book stops mid-turn, not at the
-  // assignment. A wrong-typed value takes the same route a missing one does.
   if (typeof pageBackground !== 'string') return DEFAULT_PAGE_BACKGROUND;
 
   const value = pageBackground.trim();
-
   if (value.length === 0) return DEFAULT_PAGE_BACKGROUND;
-  if (!SAFE_CSS_COLOR.test(value)) return DEFAULT_PAGE_BACKGROUND;
-  if (!isOpaquePageBackground(value)) return DEFAULT_PAGE_BACKGROUND;
 
-  return value;
+  return rejectPageBackground(value) === null ? value : DEFAULT_PAGE_BACKGROUND;
 }
 
 /**
- * Full validation, for the settings boundary — crossed once per book, or once
- * per `updateSettings`.
- *
- * Adds the platform check the pattern cannot do: it accepts any short word as a
- * named colour, but only ~148 are real, and an invented one fails silently in
- * the place it matters. CSS drops an unparseable declaration, leaving a
- * transparent fold, and canvas keeps whatever `fillStyle` was there before.
- * Node has no `CSS`, and an older engine can have `CSS` without `supports`.
+ * Full validation for the settings boundary. Kept as a named export because it
+ * is the shape a non-throwing caller wants; `Settings.resolve` throws instead.
  */
 export function safePageBackground(pageBackground?: string): string {
-  const value = normalizePageBackground(pageBackground);
-
-  // The DOM lib types `CSS` as always present, so the type system thinks these
-  // checks are dead. They are not: Node has no `CSS` at all, and an older
-  // engine can expose it without `supports`.
-  if (typeof CSS === 'undefined' || typeof CSS.supports !== 'function') return value;
-  if (!CSS.supports('color', value)) return DEFAULT_PAGE_BACKGROUND;
-
-  return value;
+  return normalizePageBackground(pageBackground);
 }
 
-/**
- * Draw-time guard for the turning leaf and its temporary copy.
- *
- * `Settings.getSettings` already ran the full check, so this is a second line
- * rather than the first: `getSettings()` hands back the live settings object,
- * and assigning to it skips validation entirely and puts the value straight in
- * front of the fold. `CSS.supports` parses, and this runs for every page on
- * every frame, so only the cheap half is repeated here.
- */
 export const foldFill = normalizePageBackground;

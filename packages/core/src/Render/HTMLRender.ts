@@ -332,7 +332,10 @@ export class HTMLRender extends Render {
         page !== this.flippingPage &&
         page !== this.bottomPage
       ) {
-        (page as HTMLPage).getElement().style.cssText = 'display: none';
+        // Hide by REMOVING the shown class, not by writing `display:none`
+        // inline — and certainly not by wiping cssText, which took the
+        // consumer's own inline styles with it every frame.
+        (page as HTMLPage).getElement().classList.remove('--shown');
       }
 
       if (page.getTemporaryCopy() !== this.flippingPage) {

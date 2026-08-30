@@ -27,7 +27,6 @@ import { PageFlipError } from '../errors';
  */
 const ENGINE_STYLE_PROPS = [
   'position',
-  'display',
   'z-index',
   'left',
   'top',
@@ -85,6 +84,7 @@ export const ENGINE_LEAF_CLASSES = [
   '--left',
   '--right',
   '--simple',
+  '--shown',
 ] as const;
 
 /**
@@ -238,7 +238,9 @@ export class HTMLPage extends Page {
     // classes. An inline declaration beats every author rule short of
     // `!important`, and `cssText` is not public surface. It also makes the two
     // draw paths agree, which is what made this asymmetry survivable.
-    const commonStyle = `position:absolute;display:block;${zIndexStyle}left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;background-color:${foldFill(this.render.getSettings().pageBackground)};${this.isTemporaryCopy ? 'pointer-events:none;' : ''}`;
+    const commonStyle = `position:absolute;${zIndexStyle}left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;background-color:${foldFill(this.render.getSettings().pageBackground)};${this.isTemporaryCopy ? 'pointer-events:none;' : ''}`;
+
+    this.element.classList.add('--shown');
 
     if (density === PageDensity.HARD) {
       this.drawHard(commonStyle);
@@ -357,11 +359,12 @@ export class HTMLPage extends Page {
     const y = rect.top;
 
     this.element.classList.add('--simple');
+    this.element.classList.add('--shown');
     // Static pages are opaque too: a transparent leaf lets the page under
     // the fold read through at the start / end of a turn.
     applyEngineStyle(
       this.element,
-      `position:absolute;display:block;height:${pageHeight}px;left:${x}px;top:${y}px;` +
+      `position:absolute;height:${pageHeight}px;left:${x}px;top:${y}px;` +
         `width:${pageWidth}px;background-color:${foldFill(this.render.getSettings().pageBackground)};` +
         `z-index:${this.render.getSettings().startZIndex + 1};`,
     );

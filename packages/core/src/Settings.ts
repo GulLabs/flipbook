@@ -2,7 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { DEFAULT_PAGE_BACKGROUND, isOpaquePageBackground } from './Render/pageBackground';
+import {
+  DEFAULT_PAGE_BACKGROUND,
+  describePageBackgroundRejection,
+  rejectPageBackground,
+} from './Render/pageBackground';
 import { PageFlipError } from './errors';
 
 /**
@@ -422,13 +426,17 @@ export class Settings {
     if (typeof background !== 'string') {
       reject('pageBackground', background, 'a CSS colour string');
     }
-    if (background.trim() !== '' && !isOpaquePageBackground(background)) {
-      reject(
-        'pageBackground',
-        background,
-        'an opaque CSS colour (a translucent fold lets the page underneath bleed through)',
-      );
+
+    // ONE predicate, shared with the draw path. They used to differ, so an
+    // ordinary modern colour was accepted here and then painted white on every
+    // frame with no error — the silent failure this setting's own validation
+    // was supposed to remove, reintroduced by having two opinions about the
+    // same value twenty lines apart.
+    const rejection = rejectPageBackground(background);
+    if (rejection !== null) {
+      reject('pageBackground', background, describePageBackgroundRejection(rejection));
     }
+
     result.pageBackground = background.trim() === '' ? DEFAULT_PAGE_BACKGROUND : background;
 
     if (result.sizing === SizeMode.RESPONSIVE) {

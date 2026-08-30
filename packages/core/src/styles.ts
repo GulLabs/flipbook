@@ -16,6 +16,13 @@ export const FLIPBOOK_CSS =
   '.stf__wrapper{position:relative;width:100%;box-sizing:border-box}' +
   '.stf__block{position:absolute;width:100%;height:100%;box-sizing:border-box;perspective:2000px;user-select:none;-webkit-user-select:none;-webkit-user-drag:none;user-drag:none}' +
   '.stf__item{display:none;position:absolute;transform-style:preserve-3d}' +
+  // The engine used to stamp `display:block` inline on every frame, which
+  // silently reverted a consumer's `display:flex` on a page — content stuck
+  // to the top-left and the library looked like it did not support flex.
+  // It never needed `block`: an absolutely positioned element is already
+  // block-LEVEL, and `display:flex` on one stays flex. All the engine needs
+  // is 'not none', which a class says without overriding anything.
+  '.stf__item.--shown{display:block}' +
   '.stf__outerShadow,.stf__innerShadow,.stf__hardShadow,.stf__hardInnerShadow{position:absolute;left:0;top:0}' +
   // The book root's focus ring, and the H4 controls' skip-link reveal.
   //
