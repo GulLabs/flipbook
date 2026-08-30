@@ -1,66 +1,150 @@
 # Releasing
 
-Publishing runs from GitHub Actions, never from a laptop. The **Release**
-workflow triggers on a successful **CI** run on `main` and checks out that
-exact commit (`workflow_run` + `head_sha`), so what ships is what CI proved.
+This monorepo uses [Changesets](https://github.com/changesets/changesets) for version management and publishing to npm. Publishing is done by GitHub Actions, not from a developer machine. The pipeline matches [`gul-labs/any-llm`](https://github.com/gul-labs/any-llm).
 
-Packages are `@gullabs/flipbook-core` and `@gullabs/react-flipbook`, currently
-versioned **3.0.0**. They are `fixed` in `.changeset/config.json` and always
-move together.
+## Provenance
 
-The release job:
+This repository is public. The Release workflow requests `id-token: write` and sets `NPM_CONFIG_PROVENANCE=true` so every `changeset publish` attaches [npm provenance](https://docs.npmjs.com/generating-provenance-statements).
 
-1. `pnpm install --frozen-lockfile`
-2. `pnpm preflight` — publishable packages point at this repo, ship dist-only,
-   core stays dependency-free, TypeScript stays inside typescript-eslint's
-   supported range
-3. `changesets/action` → `pnpm release`, which is `pnpm build && changeset publish`
+If the repository is ever made private again, npm will reject those provenance bundles (`E422 Unsupported GitHub Actions source repository visibility: "private"`). Disable both `id-token: write` and `NPM_CONFIG_PROVENANCE` in that case.
 
-The build is inside the publish script on purpose: both packages declare
-`files: ["dist"]`, so publishing an unbuilt workspace ships an empty tarball.
-`prepack` in each package covers `npm pack` and manual publishes for the same
-reason.
+When `NPM_CONFIG_PROVENANCE=true`, npm compares the manifest `repository.url` against the provenance attestation's `sourceRepositoryURI` (derived from the Actions OIDC claims, which include `GITHUB_REPOSITORY`). The org/repo path must be exactly `gul-labs/flipbook`. The comparison is literal, so it is not satisfied by different casing, and **not** by a GitHub redirect from a former org name either. A `git+https://….git` form is valid npm metadata; change the path only. The emergency laptop path does not attach this provenance bundle, so this is a CI-publish constraint.
 
-## One-time setup
+The Release workflow fails fast if any public package's `repository.url` path does not equal `GITHUB_REPOSITORY`, before `changeset publish` starts. `packages/core/tests/package-metadata.test.ts` asserts the same path on every public package and that this file lists each one. After an org/repo rename, update that test's `repoPath` first.
 
-1. **`NPM_TOKEN` repository secret.** An npm **granular access token** scoped to
-   the `@gullabs` packages, with write access and the shortest expiry you will
-   tolerate re-issuing. Repo → Settings → Secrets and variables → Actions.
+Registry provenance validation is not exercised by `npm publish --dry-run`. A rejected publish does not consume that package's version, so retry by rolling the path fix forward — never revert to a stale path. `changeset publish` is sequential: if a later package fails after an earlier one succeeded, the published versions are immutable. Before merging a metadata-only fix, verify with `npm view @gullabs/<pkg> version` and `git ls-remote --tags origin` and add a patch changeset for any version already on the registry. If a later Release still returns E422 after the path matches, check that `NPM_CONFIG_PROVENANCE` actually attached a bundle rather than mutating the URL shape.
 
-   The workflow sets both `NODE_AUTH_TOKEN` (which the `.npmrc` written by
-   `setup-node` expands) and `NPM_TOKEN` (which changesets reads). Setting only
-   one is the classic failure: publish dies with `ENEEDAUTH`.
+## How it works
 
-2. **Provenance.** `NPM_CONFIG_PROVENANCE=true` with `id-token: write` makes npm
-   attach a signed provenance attestation linking each published tarball to this
-   repository, workflow and commit. Consumers can verify it with
-   `npm audit signatures`. This works with a token — it is not the same thing as
-   trusted publishing.
+1. **Add a changeset** while you work — which packages, which semver bump, what changed. (`@gullabs/flipbook-core` and `@gullabs/react-flipbook` are `fixed` and always move together.)
+2. **Open and merge the feature PR to `main`.** Feature-branch CI does not publish.
+3. **Let the `Release` workflow run after `main` CI succeeds.** `.github/workflows/release.yml` is triggered by a successful `CI` workflow run on `main`.
+4. **Changesets decides whether to version or publish:**
+   - Pending `.changeset/*.md` files → `changesets/action` opens a "Version Packages" PR.
+   - Versions already bumped and no pending changesets → `changesets/action` runs `pnpm release` and publishes unpublished versions with the `NPM_TOKEN` secret.
 
-3. **Branch protection on `main`.** Require the `CI / verify` and `CI / e2e`
-   checks. Restrict who can push. (Not verifiable from the repo; a human must
-   confirm it.)
+Do not block a normal CI release on local `npm whoami`. Local npm auth is only for the emergency manual path.
 
-### On OIDC trusted publishing
-
-npm's trusted publishing would remove the long-lived token entirely, and it is
-worth moving to — but not silently. Two things must be true first: `changeset
-publish` resolves to `pnpm publish` in this workspace, so pnpm must be a version
-that implements OIDC (10+), and each package needs a trusted publisher
-registered on npmjs.com naming this repository and `release.yml` **before** the
-first publish. Until both are done, a token-less workflow fails closed at
-publish time. `gul-labs/any-llm` publishes with the token + provenance path
-today; this repo matches it deliberately.
-
-## Manual release (emergency only)
+## Day-to-day: adding a changeset
 
 ```bash
-pnpm install --frozen-lockfile
-pnpm quality:ci
-pnpm release          # builds, then changeset publish
+# From the repo root, on your feature branch:
+pnpm changeset
 ```
 
-Prefer restoring CI publishing over leaving a long-lived token on a laptop.
+The CLI asks which packages changed, the bump level, and a one-line summary. Commit the file under `.changeset/` with the code.
+
+Docs-only, CI-only, and internal-chore PRs do not need a changeset.
+
+## Release flow
+
+```
+feature branch  →  PR + changeset file merged to main
+                        ↓
+              GitHub Actions: Release workflow
+                        ↓
+         changesets/action opens "Version Packages" PR
+         (bumps package.json versions + writes CHANGELOGs)
+                        ↓
+         Maintainer reviews & squash-merges "Version Packages" PR
+                        ↓
+              GitHub Actions: Release workflow
+                        ↓
+         changesets/action publishes to npm with provenance
+         GitHub Release tags are created automatically
+```
+
+There is also a valid fast path when the feature branch already includes the version commit:
+
+```
+feature branch  →  PR with code + package.json/CHANGELOG version bumps merged to main
+                        ↓
+              GitHub Actions: CI succeeds on main
+                        ↓
+              GitHub Actions: Release workflow
+                        ↓
+         changesets/action publishes the already-versioned unpublished packages
+```
+
+Use only one path per release:
+
+- **Normal path:** commit `.changeset/*.md`, merge to `main`, then merge the generated "Version Packages" PR.
+- **Pre-versioned path:** run `pnpm version-packages` on the feature branch, commit package/changelog updates, and merge that PR directly to `main`.
+
+Do not keep both a pending changeset file and a committed version bump for the same change.
+
+## Packages published
+
+All packages are published to the `@gullabs` scope with `publishConfig.access = "public"`:
+
+| Package                   | npm                                                   |
+| ------------------------- | ----------------------------------------------------- |
+| `@gullabs/flipbook-core`  | https://www.npmjs.com/package/@gullabs/flipbook-core  |
+| `@gullabs/react-flipbook` | https://www.npmjs.com/package/@gullabs/react-flipbook |
+
+## Required repository secret
+
+| Secret      | Description                                                                                                                                                                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NPM_TOKEN` | npm automation token with publish access to the `@gullabs` scope. Same value as `gul-labs/any-llm` (vault key `NPM_GULLABS_PUBLISH_TOKEN` in `.env.infra.local`). Generate at https://www.npmjs.com/settings → Access Tokens → Generate New Token → Automation. |
+
+`GITHUB_TOKEN` is provided by GitHub Actions.
+
+The workflow sets both `NODE_AUTH_TOKEN` (which the `.npmrc` written by `setup-node` expands) and `NPM_TOKEN` (which changesets reads). Setting only one fails publish with `ENEEDAUTH`.
+
+### Scope the token to `@gullabs`, not to selected packages
+
+This is the trap specific to a **first** publish, and it costs a full CI round
+trip to discover. If you use a **granular access token**, its package permission
+must be **"All packages in selected scopes and organizations" → `@gullabs`**.
+npm's "Only select packages" list can only contain packages that already exist,
+and neither `@gullabs/flipbook-core` nor `@gullabs/react-flipbook` does yet — so
+a token scoped that way carries no permission for the name it is being used to
+create, and publish fails `E403` on a package the token looks like it covers.
+(The `@gullabs` scope itself must already exist; `gul-labs/any-llm` created it.)
+
+A classic **automation** token has no such list and is fine. A classic
+**publish** token is not: changesets runs non-interactively, so a token that
+still wants an OTP fails `ERR_PNPM_OTP_NON_INTERACTIVE`, which changesets
+reports as `failed:needs-2fa`.
+
+### What actually runs at publish time
+
+`changeset publish` detects pnpm and, per package, runs `pnpm pack` and then
+`pnpm publish <tarball> --access public --tag latest --no-git-checks`. Three
+consequences worth knowing:
+
+- The **detached HEAD** this job checks out (`ref: workflow_run.head_sha`) is
+  fine — `--no-git-checks` is passed for us.
+- What ships is a **`pnpm pack` tarball**, which is exactly what
+  `pnpm test:packed` (`scripts/check-packed-artifacts.mjs`) inspects, so that
+  gate is checking the real artifact and not an approximation.
+- `workspace:*` in `@gullabs/react-flipbook`'s dependency on the core is
+  rewritten to the concrete version by `pnpm pack`. Verified in the packed
+  manifest: `"@gullabs/flipbook-core": "3.0.0"`.
+
+For the very first publish, changesets asks the registry (`pnpm info`) whether
+each version exists; a 404 means "not published", so both packages publish even
+though there is no pending changeset and no version bump. It does **not**
+no-op.
+
+## Manual release (emergency)
+
+```bash
+pnpm build
+pnpm version-packages
+changeset publish   # requires npm login on this machine
+```
+
+Prefer CI. A laptop publish will not attach the same provenance as the Actions OIDC identity.
+
+## Snapshot / pre-releases
+
+```bash
+pnpm changeset pre enter alpha
+# ... commit changesets as normal ...
+pnpm changeset pre exit   # when ready to graduate
+```
 
 ## Rollback / yank
 
@@ -74,9 +158,5 @@ If a bad version reaches npm:
    npm deprecate @gullabs/react-flipbook@X.Y.Z "Broken release; use X.Y.Z+1"
    ```
 
-3. Open a **patch** release via Changesets that fixes the defect and publish
-   through the normal Release workflow.
-4. Unpublish is rarely allowed after 72h and is discouraged; prefer deprecate +
-   patch. See npm docs on
-   [deprecate](https://docs.npmjs.com/cli/v10/commands/npm-deprecate) vs
-   [unpublish](https://docs.npmjs.com/cli/v10/commands/npm-unpublish).
+3. Open a **patch** release via Changesets that fixes the defect and publish through the normal Release workflow.
+4. Unpublish is rarely allowed after 72h and is discouraged; prefer deprecate + patch.

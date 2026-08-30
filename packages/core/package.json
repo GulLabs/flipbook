@@ -6,7 +6,7 @@
   "author": "Atif Gul",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gul-labs/flipbook.git",
+    "url": "git+https://github.com/gul-labs/flipbook.git",
     "directory": "packages/core"
   },
   "type": "module",
@@ -59,10 +59,8 @@
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
   },
-  "bugs": {
-    "url": "https://github.com/gul-labs/flipbook/issues"
-  },
-  "homepage": "https://github.com/gul-labs/flipbook",
+  "bugs": "https://github.com/gul-labs/flipbook/issues",
+  "homepage": "https://github.com/gul-labs/flipbook/tree/main/packages/core#readme",
   "publishConfig": {
     "access": "public"
   }

@@ -10,7 +10,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/gul-labs/flipbook.git"
+    "url": "git+https://github.com/gul-labs/flipbook.git"
   },
   "homepage": "https://github.com/gul-labs/flipbook",
   "bugs": {
@@ -33,6 +33,7 @@
     "quality:examples": "pnpm build:examples",
     "quality:full": "pnpm quality:ci && pnpm quality:examples && pnpm audit --audit-level=high",
     "size": "pnpm --filter @gullabs/flipbook-core size",
+    "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm build && changeset publish",
     "prepare": "husky",

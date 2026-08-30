@@ -1,8 +1,5 @@
 name: Release
 
-# Runs only after CI has gone green on `main`, against that exact commit — the
-# same shape as gul-labs/any-llm, which publishes @gullabs/* today. Re-running
-# the whole quality bar here would only repeat what CI just did on this SHA.
 on:
   workflow_run:
     workflows: ['CI']
@@ -11,6 +8,8 @@ on:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
+# Least privilege at the top: any job added to this file later starts read-only
+# and has to ask. The publish job's elevated grants are scoped to that job.
 permissions:
   contents: read
 
@@ -21,35 +20,88 @@ jobs:
     timeout-minutes: 20
     if: github.event.workflow_run.conclusion == 'success'
     permissions:
+      # changeset publish pushes version tags; changesets/action opens the
+      # release PR.
       contents: write
       pull-requests: write
       # Required to sign the npm provenance attestation.
       id-token: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
 
-      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - name: Check repository.url matches GITHUB_REPOSITORY
+        run: |
+          node --input-type=module <<'EOF'
+          import { readdirSync, readFileSync } from 'node:fs'
+          import { join } from 'node:path'
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+          const expected = process.env.GITHUB_REPOSITORY
+          if (!expected) {
+            throw new Error('GITHUB_REPOSITORY is unset')
+          }
+
+          const failures = []
+          for (const entry of readdirSync('packages', { withFileTypes: true })) {
+            if (!entry.isDirectory()) continue
+            let pkg
+            try {
+              pkg = JSON.parse(readFileSync(join('packages', entry.name, 'package.json'), 'utf8'))
+            } catch (error) {
+              if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') continue
+              throw error
+            }
+            if (pkg.private === true || typeof pkg.name !== 'string') continue
+            const url = String(pkg.repository?.url ?? '')
+            const match = url.match(/^(?:git\+)?https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\.git)?$/)
+            const path = match?.[1]
+            if (path === undefined) {
+              failures.push(`${entry.name}: unparseable repository.url=${JSON.stringify(url)}`)
+            } else if (path !== expected) {
+              failures.push(`${entry.name}: repository.url path ${path} !== ${expected}`)
+            }
+          }
+          if (failures.length > 0) {
+            console.error(failures.join('\n'))
+            process.exitCode = 1
+          } else {
+            console.log(`repository.url path matches ${expected}`)
+          }
+          EOF
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.nvmrc'
           registry-url: 'https://registry.npmjs.org'
-          cache: pnpm
+          cache: 'pnpm'
 
-      - run: pnpm install --frozen-lockfile
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      # Publishable packages must point at this repo, ship dist-only, and keep
-      # the core dependency-free.
-      - run: pnpm preflight
+      # Cheap structural gate, repeated here on purpose: publishable packages
+      # point at this repo, ship dist-only, core stays dependency-free, and the
+      # licence fields / upstream notices are the ones the owner decided on.
+      # CI proved it on this SHA, but this is the last step before bytes leave
+      # for a registry that does not let you take them back.
+      - name: Preflight
+        run: pnpm preflight
 
       # `pnpm release` builds before it publishes: both packages are
       # `files: ["dist"]`, so publishing an unbuilt workspace ships an empty
       # tarball. `prepack` covers manual publishes for the same reason.
-      - name: Create Release PR or publish to npm
-        uses: changesets/action@e98c6107e7918c57adc9790f48eb50a62ddc6a16 # v1.5.3
+      #
+      # changesets runs `pnpm pack` then `pnpm publish <tarball> --access public
+      # --no-git-checks`, so the detached HEAD this job checks out is fine and
+      # `workspace:*` is rewritten to the real version on the way out.
+      - name: Create Release PR or Publish to npm
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
           version: pnpm version-packages
           publish: pnpm release
@@ -57,8 +109,6 @@ jobs:
           commit: 'chore: version packages'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # `setup-node` writes an .npmrc that expands NODE_AUTH_TOKEN, while
-          # changesets reads NPM_TOKEN. Set both, or publish fails ENEEDAUTH.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: 'true'

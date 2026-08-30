@@ -6,13 +6,11 @@
   "author": "Atif Gul",
   "repository": {
     "type": "git",
-    "url": "https://github.com/gul-labs/flipbook.git",
+    "url": "git+https://github.com/gul-labs/flipbook.git",
     "directory": "packages/react"
   },
-  "bugs": {
-    "url": "https://github.com/gul-labs/flipbook/issues"
-  },
-  "homepage": "https://github.com/gul-labs/flipbook",
+  "bugs": "https://github.com/gul-labs/flipbook/issues",
+  "homepage": "https://github.com/gul-labs/flipbook/tree/main/packages/react#readme",
   "publishConfig": {
     "access": "public"
   },
