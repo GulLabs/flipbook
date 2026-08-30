@@ -1249,3 +1249,246 @@ describe('live region announcement (H5)', () => {
     });
   });
 });
+
+/**
+ * RB1 — a controlled `page` is compared against the engine's index, which is
+ * the spread HEAD (`spread[0]`). In landscape, spread [0, 1] reports 0, so a
+ * consumer passing `page={1}` never matched: the effect re-issued
+ * `turnToPage(1)`, the engine showed the same spread and emitted `flip` with
+ * 0, and `onPageChange(0)` rewrote the consumer's controlled value behind its
+ * back. "Satisfied" for a two-leaf spread is *membership*, not equality.
+ */
+describe('controlled page against a two-leaf spread (RB1)', () => {
+  useMeasuredLayout();
+
+  test('a controlled page already on screen is left alone, a farther one still turns', async () => {
+    blockSize = LANDSCAPE_BLOCK;
+    const handleRef = createRef<FlipBookHandle | null>();
+
+    function Harness() {
+      const [page, setPage] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setPage(1)}>
+            near
+          </button>
+          <button type="button" onClick={() => setPage(2)}>
+            far
+          </button>
+          <span data-testid="controlled">{page}</span>
+          <HTMLFlipBook
+            ref={handleRef}
+            width={200}
+            height={300}
+            flippingTime={0}
+            page={page}
+            onPageChange={setPage}
+          >
+            {pages('a', 'b', 'c', 'd')}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
+    });
+
+    // Without this the book is portrait, leaf 1 is a spread of its own, and
+    // every assertion below passes with the defect still in place.
+    expect(handleRef.current?.pageFlip()?.getOrientation()).toBe('landscape');
+
+    fireEvent.click(screen.getByText('near'));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    // Leaf 1 is the right-hand leaf of the spread already open. The engine's
+    // canonical index stays 0 — but the consumer asked for a page it can see,
+    // so its value must survive.
+    expect(screen.getByTestId('controlled').textContent).toBe('1');
+    expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(0);
+
+    // …and the effect must still be live: a page on another spread turns.
+    fireEvent.click(screen.getByText('far'));
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(2);
+    });
+  });
+
+  test('with a cover, leaf 1 is a different spread and must actually turn', async () => {
+    blockSize = LANDSCAPE_BLOCK;
+    const handleRef = createRef<FlipBookHandle | null>();
+
+    function Harness() {
+      const [page, setPage] = useState(0);
+      return (
+        <>
+          <button type="button" onClick={() => setPage(1)}>
+            go
+          </button>
+          <HTMLFlipBook
+            ref={handleRef}
+            width={200}
+            height={300}
+            flippingTime={0}
+            showCover
+            page={page}
+            onPageChange={setPage}
+          >
+            {pages('a', 'b', 'c', 'd')}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
+    });
+    expect(handleRef.current?.pageFlip()?.getOrientation()).toBe('landscape');
+
+    // Spreads are [0], [1, 2], [3]: the cover stands alone, so "is 1 within
+    // the current spread" must be answered by the collection, not by pairing
+    // indices two at a time.
+    fireEvent.click(screen.getByText('go'));
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(1);
+    });
+  });
+});
+
+/**
+ * RB2 — the load effect refreshed `pageCount` on a rebuild but never the page
+ * index, so shrinking the book below the current index left the binding
+ * describing a spread the engine is not showing.
+ */
+describe('collection shrink (RB2)', () => {
+  useMeasuredLayout();
+
+  test('the page index is re-derived from the engine after a rebuild', async () => {
+    blockSize = PORTRAIT_BLOCK;
+    const handleRef = createRef<FlipBookHandle | null>();
+
+    function Harness() {
+      const [labels, setLabels] = useState(['a', 'b', 'c', 'd', 'e']);
+      return (
+        <>
+          <button type="button" onClick={() => setLabels(['a', 'b', 'c'])}>
+            shrink
+          </button>
+          <HTMLFlipBook ref={handleRef} width={200} height={300} flippingTime={0} usePortrait>
+            {pages(...labels)}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    const live = () => container.querySelector('[data-flipbook-live]')?.textContent;
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-e"]')).toBeTruthy();
+    });
+
+    act(() => {
+      handleRef.current?.turnToPage(4);
+    });
+    await waitFor(() => {
+      expect(live()).toBe('Page 5 of 5');
+    });
+
+    fireEvent.click(screen.getByText('shrink'));
+
+    // The engine resolved the rebuild to leaf 0; the binding must say so
+    // rather than keep describing leaf 4 (announced as "Page 3 of 3" once
+    // `spreadPages` clamps it, and handed to a consumer `liveRegionText` as a
+    // literal 4 of 3).
+    await waitFor(() => {
+      expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(0);
+      expect(live()).toBe('Page 1 of 3');
+    });
+
+    // The inert map follows the same stale index, so the leaf the reader is
+    // actually looking at was the one removed from the tab order.
+    const inert = ['a', 'b', 'c'].map((label) =>
+      container.querySelector(`[data-testid="page-${label}"]`)?.hasAttribute('inert'),
+    );
+    expect(inert).toEqual([false, true, true]);
+  });
+});
+
+/**
+ * RB3 — lazy placeholders were keyed `lazy-${index}` while real pages keep
+ * their own key, so crossing the window boundary unmounted and remounted the
+ * DOM node. `sameNodes` then failed and the load effect rebuilt the whole
+ * PageCollection — mid-turn — on every flip, through a supported prop.
+ */
+describe('lazy mounting keeps page identity (RB3)', () => {
+  /**
+   * `<section>`, not `<div>`: a stable key alone still remounts the node when
+   * the element TYPE changes under it, so pages made of divs would let a
+   * key-only fix pass while any other tag kept rebuilding.
+   */
+  function sectionPages(...labels: string[]) {
+    return labels.map((label) => (
+      <section key={label} data-testid={`page-${label}`}>
+        {label}
+      </section>
+    ));
+  }
+
+  test('crossing the lazy window boundary does not rebuild the collection', async () => {
+    const onCollectionRebuild = vi.fn();
+
+    function Harness() {
+      const book = usePageFlip();
+      return (
+        <>
+          <button type="button" onClick={() => book.flipNext()}>
+            next
+          </button>
+          <HTMLFlipBook
+            ref={book.ref}
+            width={200}
+            height={300}
+            flippingTime={0}
+            lazyRadius={1}
+            onCollectionRebuild={onCollectionRebuild}
+          >
+            {sectionPages('a', 'b', 'c', 'd', 'e')}
+          </HTMLFlipBook>
+        </>
+      );
+    }
+
+    const { container } = render(<Harness />);
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-a"]')).toBeTruthy();
+    });
+    // Page c starts outside the window (radius 1 around leaf 0).
+    expect(container.querySelector('[data-testid="page-c"]')).toBeNull();
+
+    // The placeholders are, in order, leaves c, d and e.
+    const placeholders = Array.from(
+      container.querySelectorAll<HTMLElement>('[data-flipbook-lazy]'),
+    );
+    expect(placeholders.length).toBe(3);
+    const leafC = placeholders[0];
+    onCollectionRebuild.mockClear();
+
+    fireEvent.click(screen.getByText('next'));
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="page-c"]')).toBeTruthy();
+    });
+
+    // The leaf that entered the window must be the SAME node, not a
+    // replacement: node identity is what `sameNodes` compares, and a
+    // replacement sends the load effect into a full PageCollection rebuild —
+    // mid-turn — on every flip.
+    expect(container.querySelector('[data-testid="page-c"]')).toBe(leafC);
+    expect(onCollectionRebuild).not.toHaveBeenCalled();
+  });
+});

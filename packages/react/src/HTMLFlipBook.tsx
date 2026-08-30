@@ -3,6 +3,7 @@
 import {
   Children,
   cloneElement,
+  createElement,
   forwardRef,
   isValidElement,
   useCallback,
@@ -200,16 +201,39 @@ function wrapChildren(
         ? Math.abs(index - currentPage) > lazyRadius
         : false;
 
+    // One identity per leaf, whether or not it is currently inside the lazy
+    // window. Keying placeholders `lazy-${index}` gave the same leaf two
+    // different identities, so crossing the window boundary UNMOUNTED and
+    // REMOUNTED its DOM node — `sameNodes` compares node references, so the
+    // load effect then rebuilt the whole PageCollection on every turn, which
+    // is precisely the mid-animation teardown the reference check exists to
+    // prevent.
+    const keyed = isValidElement(child) ? child : null;
+    const key = keyed?.key ?? `page-${index}`;
+
     if (far) {
+      // Same element TYPE as the real page too, for the same reason: React
+      // replaces the node when the type changes, even under a stable key. The
+      // placeholder carries none of the page's own props, so its content stays
+      // unmounted — which is the point of lazy mounting. A component child has
+      // no host type to match, so that case still remounts; the escape is to
+      // give the page a host element of its own.
+      const type = typeof keyed?.type === 'string' ? keyed.type : 'div';
+
       list.push(
-        <div key={`lazy-${index}`} data-flipbook-lazy="1" aria-hidden="true" ref={collect} />,
+        createElement(type, {
+          key,
+          'data-flipbook-lazy': '1',
+          'aria-hidden': 'true',
+          ref: collect,
+        }),
       );
       return;
     }
 
     if (!isValidElement(child)) {
       list.push(
-        <div key={`page-${index}`} ref={collect}>
+        <div key={key} ref={collect}>
           {child}
         </div>,
       );
@@ -220,7 +244,7 @@ function wrapChildren(
 
     list.push(
       cloneElement(element, {
-        key: child.key ?? `page-${index}`,
+        key,
         ref: composeRefs(collect, element.props.ref ?? element.ref ?? null),
       }),
     );
@@ -415,6 +439,17 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       });
       flip.on('collectionRebuild', (e: WidgetEvent<FlipbookEventMap['collectionRebuild']>) => {
         setPageCount(e.data.pageCount);
+        // Re-derive the index too. A rebuild that shrinks the book below the
+        // current index leaves the engine on a different leaf, and a
+        // `pageCount` refreshed without it announced "Page 5 of 3" and inerted
+        // the leaf the reader is actually looking at.
+        //
+        // The ENGINE is asked, not `e.data.page`: `replacePages` reports a
+        // clamped, resolved index, but `updateFromHtml` — the path this
+        // binding uses — reports the index it carried IN, before the new
+        // collection refused it. `getCurrentPageIndex()` is the one value that
+        // is true on both paths.
+        setEnginePage(flip.getCurrentPageIndex());
         eventHandlersRef.current.onCollectionRebuild?.(e);
       });
       flip.on('turnRejected', (e: WidgetEvent<FlipbookEventMap['turnRejected']>) => {
@@ -601,7 +636,21 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       if (!engine.getFlipController()) return;
       // Empty portal shell has no leaves yet — don't treat start page as OOB.
       if (engine.getPageCount() <= 0) return;
-      if (controlledPage === engine.getCurrentPageIndex()) return;
+
+      // A controlled page is satisfied when it is ON SCREEN, not when it
+      // equals the engine's index: that index is the spread HEAD, so in
+      // landscape the spread [0, 1] reports 0 and `page={1}` never matched.
+      // The effect re-issued `turnToPage(1)`, the engine showed the same
+      // spread and emitted `flip` with 0, and `onPageChange(0)` rewrote the
+      // consumer's own value — the component and the engine then disagreed
+      // about a book that was already showing the requested leaf.
+      //
+      // Membership is asked of the collection rather than derived here: the
+      // cover is a spread of one, so "pair the leaves two at a time" is wrong
+      // exactly when `showCover` is set.
+      const collection = engine.getPageCollection();
+      const targetSpread = collection.getSpreadIndexByPage(controlledPage);
+      if (targetSpread !== null && targetSpread === collection.getCurrentSpreadIndex()) return;
       try {
         engine.turnToPage(controlledPage);
       } catch (error: unknown) {

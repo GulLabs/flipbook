@@ -11,6 +11,7 @@ import { PageOrientation } from '../Page/Page';
 import type { FlipSetting } from '../Settings';
 import { SizeType } from '../Settings';
 import { convertPageToGlobal } from '../geometry';
+import { PageFlipError } from '../errors';
 
 type FrameAction = () => void;
 type AnimationSuccessAction = () => void;
@@ -49,10 +50,11 @@ type AnimationProcess = {
   /** Animation start time (Global Timer) */
   startedAt: number;
   /**
-   * Index of the last frame the render loop actually played, or -1 before the
-   * first one. Used to guarantee the final frame runs exactly once when the
-   * loop overshoots the end of the list (a dropped rAF), without re-running it
-   * when the loop landed on it normally.
+   * Index of the last frame that actually ran, or -1 before the first one.
+   * It enforces one invariant — *every frame action runs at most once per
+   * animation* — on both paths that can play the final frame: the render
+   * loop's overshoot branch (a dropped rAF) and `finishAnimation()`'s forced
+   * commit. Neither may replay a frame the other already played.
    */
   lastPlayedIndex: number;
 };
@@ -133,6 +135,16 @@ export abstract class Render {
    * @param timer
    */
   private render(timer: number): void {
+    // R2: stamp the frame clock BEFORE running any frame action or callback.
+    // `startAnimation` reads `this.timer` for `startedAt`, so an animation
+    // started from inside a frame action — or from an `onAnimateEnd` that
+    // chains another turn (auto-advance, a queued turn, a consumer calling
+    // `flipNext()` from `onFlip`) — would otherwise be stamped with the
+    // PREVIOUS frame's timestamp and begin one whole frame in the past. With a
+    // short `flippingTime` that is enough for the very next tick to overshoot
+    // the frame list, so the chained turn plays only its final frame.
+    this.timer = timer;
+
     if (this.animation !== null) {
       // Find current frame of animation
       const frameIndex = Math.round(
@@ -162,7 +174,6 @@ export abstract class Render {
       }
     }
 
-    this.timer = timer;
     this.drawFrame();
   }
 
@@ -170,6 +181,25 @@ export abstract class Render {
    * Running requestAnimationFrame, and rendering process
    */
   public start(): void {
+    // R3: `stop()` guards `cancelAnimationFrame`; this guards its counterpart.
+    // The asymmetry is deliberate, not symmetric-by-copy: teardown must never
+    // throw (a loop you cannot cancel in an environment without the API was
+    // never running), but a loop that cannot START is a fatal misconfiguration
+    // — every subsequent frame, turn and commit silently never happens. A
+    // book that quietly renders nothing is exactly the failure mode this repo
+    // keeps paying for, so it is a typed `PageFlipError` like every other
+    // boundary failure here, not a raw `ReferenceError` and not a shrug.
+    //
+    // This is a call-time guard, not a module-scope one, so the SSR import
+    // rule is unaffected: importing the engine on a server stays legal, and
+    // only actually driving a render loop there fails.
+    if (typeof requestAnimationFrame !== 'function') {
+      throw new PageFlipError(
+        'requestAnimationFrame is not available in this environment',
+        'NO_ANIMATION_FRAME',
+      );
+    }
+
     this.update();
     this.stop();
 
@@ -230,7 +260,24 @@ export abstract class Render {
    */
   public finishAnimation(): void {
     if (this.animation !== null) {
-      at(this.animation.frames, this.animation.frames.length - 1)();
+      // R1: the same "exactly once" rule the render loop's overshoot branch
+      // obeys. `lastPlayedIndex` is one invariant — *every frame action runs at
+      // most once per animation* — so it cannot have two implementations.
+      //
+      // The rejected alternative was to call this an "external forced commit"
+      // whose job is to re-assert final geometry. It does not survive contact
+      // with the two call sites (Flip.ts:65, Flip.ts:314): both fire from
+      // pointer handling with no geometry change in between, so re-running the
+      // last frame re-asserts something that was asserted microseconds ago and
+      // buys nothing. The risk is asymmetric — a redundant idempotent
+      // `this.do(p)` is worth zero, while a frame action that ever acquires a
+      // side effect runs twice — so the guard is the cheap side of the trade.
+      const lastIndex = this.animation.frames.length - 1;
+
+      if (this.animation.lastPlayedIndex !== lastIndex) {
+        this.animation.lastPlayedIndex = lastIndex;
+        at(this.animation.frames, lastIndex)();
+      }
 
       this.animation.onAnimateEnd();
     }
