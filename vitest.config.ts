@@ -38,11 +38,17 @@ export default defineConfig({
       // (stmts ~90.2 / branches ~75.1 / fns ~95.1 / lines ~92.2).
       // Floors only move UP (AGENTS.md §2). Per-file floors live in
       // scripts/check-coverage-areas.mjs (also run from quality:ci).
+      // Ratcheted 2026-08-29 after the audit push: measured 96.13 / 97.76 /
+      // 87.24 / 94.71. Set a couple of points below each so an unrelated change
+      // does not fail on noise, but close enough that deleting a tested path is
+      // caught. Do not lower these to make a change pass — the floors exist to
+      // stop the average hiding a newly untested renderer, which is exactly how
+      // canvas mode reached 0% once already.
       thresholds: {
-        lines: 90,
-        functions: 94,
-        branches: 74,
-        statements: 88,
+        lines: 94,
+        functions: 96,
+        branches: 85,
+        statements: 92,
       },
     },
     projects: [
