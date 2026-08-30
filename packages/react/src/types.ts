@@ -89,3 +89,83 @@ export type HTMLFlipBookProps = {
   ref?: Ref<FlipBookHandle | null>;
 } & Partial<Omit<FlipSetting, 'width' | 'height'>> &
   IEventProps;
+
+// ---------------------------------------------------------------------------
+// Canvas / images mode — ADR 0001
+//
+// Mirrored here until `@gullabs/flipbook-core` exports the same types. When
+// core lands them, re-export from core and delete the duplicates.
+// ---------------------------------------------------------------------------
+
+/** How a bitmap is fitted into its leaf rect. */
+export type ImageFit = 'contain' | 'cover' | 'fill';
+
+/** Per-page image descriptor. */
+export interface ImagePageSource {
+  readonly src: string;
+  /**
+   * Accessible name. Required. Empty string means decorative (`aria-hidden` in
+   * the semantic mirror). Omitting it is a type error.
+   */
+  readonly alt: string;
+  readonly crossOrigin?: 'anonymous' | 'use-credentials';
+  readonly fit?: ImageFit;
+  /** Fraction of page width on all four edges. Range [0, 0.5). */
+  readonly inset?: number;
+  /** Opaque CSS colour; rejected overrides fall back to the book's paper. */
+  readonly background?: string;
+  readonly density?: 'soft' | 'hard';
+}
+
+/**
+ * Blank leaf — no bitmap, painted with the page background.
+ * `alt: ''` is the decorative assertion a pad leaf wants.
+ */
+export interface BlankPageSource {
+  readonly blank: true;
+  readonly alt: string;
+  readonly background?: string;
+  readonly density?: 'soft' | 'hard';
+}
+
+/** One leaf of an images book: a bitmap or a blank pad. */
+export type ImagePageLeaf = ImagePageSource | BlankPageSource;
+
+export type ImageErrorPayload = {
+  page: number;
+  src: string;
+  attempt: number;
+};
+
+/**
+ * Canvas-only settings. Typed here so `ImageFlipBook` can accept them before
+ * core's `FlipSetting` grows the fields; unknown keys are passed through
+ * `updateSettings` and ignored by a pre-Phase-2 engine.
+ */
+export type ImageFlipSettings = {
+  imageFit?: ImageFit;
+  imageInset?: number;
+  imageLoadRadius?: number;
+  imageKeepRadius?: number;
+  imageCrossOrigin?: 'anonymous' | 'use-credentials';
+};
+
+export type ImageFlipBookProps = {
+  width: number;
+  height: number;
+  /** Leaves of the book. No `children` — canvas mode has no page DOM. */
+  images: readonly ImagePageLeaf[];
+  className?: string;
+  style?: CSSProperties;
+  /** Controlled page index. */
+  page?: number;
+  useKeyboard?: boolean;
+  'aria-label'?: string;
+  roleDescription?: string;
+  liveRegion?: boolean;
+  liveRegionText?: LiveRegionTextFn;
+  ref?: Ref<FlipBookHandle | null>;
+  onImageError?: (flipEvent: WidgetEvent<ImageErrorPayload>) => void;
+} & Partial<Omit<FlipSetting, 'width' | 'height'>> &
+  ImageFlipSettings &
+  IEventProps;

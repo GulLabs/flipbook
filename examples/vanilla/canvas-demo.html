@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@gullabs/flipbook-core — canvas / images demo</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #0f1419;
+        --panel: #1a222c;
+        --ink: #e7ecf2;
+        --muted: #8b98a8;
+        --accent: #5b9fd4;
+        --paper: #f4ecd8;
+        font-family:
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #eef1f5;
+          --panel: #ffffff;
+          --ink: #1a222c;
+          --muted: #5a6573;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      main {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 24px 20px 48px;
+      }
+      h1 {
+        font-size: 1.35rem;
+        font-weight: 650;
+        margin: 0 0 0.35rem;
+      }
+      .lede {
+        color: var(--muted);
+        margin: 0 0 1.25rem;
+        line-height: 1.45;
+        max-width: 42rem;
+      }
+      .layout {
+        display: grid;
+        gap: 1.25rem;
+      }
+      @media (min-width: 840px) {
+        .layout {
+          grid-template-columns: 1fr 280px;
+          align-items: start;
+        }
+      }
+      #book {
+        width: 100%;
+        max-width: 720px;
+        aspect-ratio: 8 / 3;
+        background: var(--panel);
+        border-radius: 8px;
+        box-shadow: 0 12px 40px rgb(0 0 0 / 0.25);
+      }
+      .panel {
+        background: var(--panel);
+        border-radius: 8px;
+        padding: 14px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+      .panel h2 {
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: var(--muted);
+        margin: 0;
+        font-weight: 600;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      button,
+      select,
+      label {
+        font: inherit;
+      }
+      button {
+        appearance: none;
+        border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+        background: color-mix(in srgb, var(--accent) 18%, transparent);
+        color: var(--ink);
+        border-radius: 6px;
+        padding: 0.4rem 0.7rem;
+        cursor: pointer;
+      }
+      button:hover {
+        background: color-mix(in srgb, var(--accent) 32%, transparent);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        font-size: 0.8rem;
+        color: var(--muted);
+      }
+      select {
+        border-radius: 6px;
+        border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+        background: var(--bg);
+        color: var(--ink);
+        padding: 0.35rem 0.5rem;
+      }
+      .status {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 0.75rem;
+        color: var(--muted);
+        line-height: 1.4;
+        white-space: pre-wrap;
+      }
+      .status strong {
+        color: var(--ink);
+        font-weight: 600;
+      }
+      .note {
+        font-size: 0.8rem;
+        color: var(--muted);
+        line-height: 1.4;
+        margin: 0;
+      }
+      a {
+        color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Canvas / images mode</h1>
+      <p class="lede">
+        Public demo of <code>PageFlip.loadFromImages</code> — the API a picture-book reader actually
+        calls. Pixel-probe harness stays at <a href="./canvas.html"><code>canvas.html</code></a
+        >; HTML pages at <a href="./index.html"><code>index.html</code></a
+        >.
+      </p>
+
+      <div class="layout">
+        <div id="book" role="region" aria-label="Demo flipbook"></div>
+
+        <aside class="panel">
+          <h2>Navigate</h2>
+          <div class="row">
+            <button type="button" id="prev" aria-label="Previous page">Prev</button>
+            <button type="button" id="next" aria-label="Next page">Next</button>
+          </div>
+
+          <h2>Fit (ADR)</h2>
+          <label>
+            imageFit
+            <select id="fit" aria-label="Image fit mode">
+              <option value="contain">contain (default)</option>
+              <option value="cover">cover</option>
+              <option value="fill">fill (legacy stretch)</option>
+            </select>
+          </label>
+          <label>
+            imageInset (fraction of page width)
+            <select id="inset" aria-label="Image inset">
+              <option value="0">0</option>
+              <option value="0.028">0.028 (2.8%)</option>
+              <option value="0.08">0.08</option>
+            </select>
+          </label>
+          <p class="note">
+            Fit/inset apply when the engine exposes <code>imageFit</code> / <code>imageInset</code>.
+            Until then the control logs that the setting was ignored.
+          </p>
+
+          <h2>Status</h2>
+          <div class="status" id="status" aria-live="polite">loading…</div>
+        </aside>
+      </div>
+    </main>
+    <script type="module" src="./canvas-demo.ts"></script>
+  </body>
+</html>

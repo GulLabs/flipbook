@@ -4,6 +4,28 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Added — canvas fixtures, Phase 2 e2e harness, examples, `ImageFlipBook`
+
+- **`scripts/gen-canvas-fixtures.mjs`** grows fit/blank/error fixtures:
+  `square`, `stripe`, `corrupt` (undecodable PNG), `empty`, plus the existing
+  identity / tall / wide / transparent set. Written into both
+  `examples/vanilla/public` and `examples/vite-react/public`.
+- **`e2e/canvas-phase2.spec.ts`** — real-pixel tests for `contain` / `cover` /
+  `fill`, fractional inset, blank leaves, 404/corrupt error paths, and a
+  negative-control probe on every visual assertion. Suites that need Phase 2
+  engine surface **skip cleanly** until `imageFit` / descriptors land, so CI
+  stays green while the contract is already encoded.
+- **`examples/vanilla/canvas-demo.html`** — public canvas/images showcase
+  (defect F3). The pixel harness remains `canvas.html`.
+- **`examples/vite-react`** — controlled `page`, `usePageFlip()`, `onFlip` /
+  `onChangeState` / `onTurnRejected`, `direction: 'rtl'`, and `ImageFlipBook`.
+- **`ImageFlipBook`** in `@gullabs/react-flipbook` — separate component, no
+  children, `images: ImagePageLeaf[]`, semantic alt mirror. Tries ADR
+  descriptors then falls back to `string[]` until core Phase 2 lands.
+- **Read-only bug hunt** recorded in `docs/BUG_HUNT_2026-08-29.md` (failed-image
+  spinner routes, A3 still live, no blank leaf yet). No core patches from this
+  lane.
+
 ### Fixed — pointer coordinates under a transformed ancestor
 
 - **The fold followed the finger at the wrong ratio inside any `transform:

@@ -2,6 +2,35 @@
 
 Drop-in `HTMLFlipBook` keeps **required `width` and `height`**. Other settings stay optional.
 
+## 3.0.0 — `ImageFlipBook` (canvas / images React binding)
+
+New export alongside `HTMLFlipBook`. Canvas mode has no page DOM, so it is a
+**separate component** (ADR 0001), not a `mode` prop on `HTMLFlipBook`.
+
+```tsx
+import { ImageFlipBook } from '@gullabs/react-flipbook';
+
+<ImageFlipBook
+  width={400}
+  height={300}
+  images={[
+    { src: '/p1.jpg', alt: 'Cover of My Book' },
+    { blank: true, alt: '' }, // pad leaf — requires engine Phase 2
+    { src: '/p2.jpg', alt: 'Page 2' },
+  ]}
+/>;
+```
+
+- **No `children`.** Leaves are `images: readonly ImagePageLeaf[]`.
+- **`alt` is required** on every image descriptor. `alt: ''` means decorative.
+- **`lazyRadius` is not accepted** — it is HTML DOM-mount policy. Canvas uses
+  `imageLoadRadius` / `imageKeepRadius` on the engine once Phase 2 lands.
+- Until core accepts descriptors, `ImageFlipBook` falls back to bare `src`
+  strings and drops blank leaves with one `console.warn` per book.
+
+See `docs/adr/0001-image-page-api.md` for the full image-page contract
+(`imageFit`, `imageInset`, `imageError`, `replaceImage` / `retryImage`).
+
 ## 3.0.0 — engine lifecycle and settings validation
 
 These are behaviour changes on the public surface, landed while hardening the

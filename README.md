@@ -118,14 +118,16 @@ import { PageFlip } from '@gullabs/flipbook-core';
 
 const pageFlip = new PageFlip(root, { width: 400, height: 600 });
 pageFlip.loadFromHTML(pages);
-// canvas mode (lazy chunk):
+// canvas / images mode (lazy chunk). Today accepts string[] URLs; the 3.0
+// image-page API (required `alt`, fit/inset, blank leaves) is specified in
+// docs/adr/0001-image-page-api.md and landing as Phase 2.
 await pageFlip.loadFromImages(['page1.jpg', 'page2.jpg']);
 ```
 
 **React**
 
 ```tsx
-import HTMLFlipBook from '@gullabs/react-flipbook';
+import HTMLFlipBook, { ImageFlipBook, usePageFlip } from '@gullabs/react-flipbook';
 
 export function Book() {
   return (
@@ -135,7 +137,35 @@ export function Book() {
     </HTMLFlipBook>
   );
 }
+
+// Canvas / images mode — no children; one descriptor per leaf.
+export function ImageBook() {
+  const book = usePageFlip(0);
+  return (
+    <ImageFlipBook
+      ref={book.ref}
+      width={300}
+      height={400}
+      page={book.page}
+      {...book.bookProps}
+      images={[
+        { src: '/pages/1.jpg', alt: 'Cover' },
+        { src: '/pages/2.jpg', alt: 'Title page' },
+      ]}
+    />
+  );
+}
 ```
+
+### Examples
+
+| Example                | Path                                | What it shows                                          |
+| ---------------------- | ----------------------------------- | ------------------------------------------------------ |
+| Vanilla HTML           | `examples/vanilla/`                 | HTML pages, golden / gesture e2e host                  |
+| Vanilla canvas harness | `examples/vanilla/canvas.html`      | Pixel-probe rig for e2e (not a product demo)           |
+| Vanilla canvas demo    | `examples/vanilla/canvas-demo.html` | Public `loadFromImages` showcase (defect F3)           |
+| Vite + React           | `examples/vite-react/`              | Controlled `page`, `usePageFlip`, RTL, `ImageFlipBook` |
+| Next.js App Router     | `examples/nextjs/`                  | SSR placeholder → hydrate                              |
 
 ---
 

@@ -11,23 +11,25 @@
  * posture and is about 40 lines.
  *
  *   node ./scripts/gen-canvas-fixtures.mjs
+ *
+ * Phase 2 fixtures (ADR 0001) are included so pixel tests can land ahead of
+ * the engine implementation: known solids, known aspect ratios for
+ * contain/cover/fill, a deliberately broken URL target, and a blank-leaf
+ * probe colour.
  */
 import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Written where the harness serves them from. A symlink out of `e2e/` was the
-// first attempt and is fragile across checkouts and `vite build`'s asset copy.
-const outDir = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '..',
-  'examples',
-  'vanilla',
-  'public',
-  'fixtures',
-  'canvas',
-);
+// Written where the harness AND the React demo serve them from. A symlink out
+// of `e2e/` was the first attempt and is fragile across checkouts and
+// `vite build`'s asset copy. Two out dirs keep each example self-contained.
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const outDirs = [
+  join(root, 'examples', 'vanilla', 'public', 'fixtures', 'canvas'),
+  join(root, 'examples', 'vite-react', 'public', 'fixtures', 'canvas'),
+];
 
 // ---------------------------------------------------------------------------
 // Minimal PNG writer (RGBA, 8-bit, no interlace)
@@ -131,6 +133,19 @@ export const PAGE_COLORS = [
   '#f97316', // 5 orange
 ];
 
+/**
+ * Solid paper colours used as `pageBackground` / blank-leaf probes.
+ * Distinct from PAGE_COLORS so a blank leaf cannot pass a "page painted" test.
+ */
+export const PAPER = {
+  cream: '#f4ecd8',
+  // Deliberately loud so letterbox / blank / error-fallback probes cannot
+  // confuse paper with a missing sample (transparent black reads near 0,0,0).
+  magenta: '#ff00aa',
+  // Error-fallback paper when a glyph is drawn on top (ADR Decision 2 + glyph).
+  errorPaper: '#e8e0d0',
+};
+
 /** Corner markers identify orientation and catch mirroring. */
 const CORNERS = {
   tl: '#ffffff',
@@ -173,7 +188,19 @@ function transparencyFixture() {
   return encodePng(W, H, buf);
 }
 
-/** Four solid quadrants — makes contain/cover/fill cropping unambiguous. */
+/**
+ * Four solid quadrants — makes contain/cover/fill cropping unambiguous.
+ *
+ * Leaf geometry in the harness is 400×300 (4:3). Against that:
+ *   tall  200×400 (1:2) — contain letterboxes left/right; cover crops top/bottom
+ *   wide  600×200 (3:1) — contain letterboxes top/bottom; cover crops left/right
+ *   square 300×300 (1:1) — contain letterboxes left/right
+ *
+ * Centre of a contain-fitted tall image lands on the red/blue vertical split
+ * (x = half of image width after scale). Cover of the same image crops the
+ * top and bottom so the leaf centre is still on that split, but the top edge
+ * of the leaf is green/yellow rather than paper.
+ */
 function quadrants(width, height) {
   const buf = surface(width, height, hex('#111111'));
   const mx = Math.floor(width / 2);
@@ -185,20 +212,67 @@ function quadrants(width, height) {
   return encodePng(width, height, buf);
 }
 
-mkdirSync(outDir, { recursive: true });
-
-const written = [];
-for (let i = 0; i < PAGE_COLORS.length; i++) {
-  const name = `page-${String(i)}.png`;
-  writeFileSync(join(outDir, name), page(i));
-  written.push(name);
+/**
+ * Extreme aspect for fractional-inset probes: a 100×500 stripe so a 2.8%
+ * inset of page width is a measurable band of paper around a thin centre.
+ */
+function stripe() {
+  const width = 100;
+  const height = 500;
+  const buf = surface(width, height, hex('#0ea5e9'));
+  // Centre crosshair so a cover crop still has a known centre colour.
+  rect(buf, width, 40, 240, 60, 260, hex('#111111'));
+  return encodePng(width, height, buf);
 }
-writeFileSync(join(outDir, 'transparent.png'), transparencyFixture());
-written.push('transparent.png');
-writeFileSync(join(outDir, 'tall.png'), quadrants(200, 400));
-written.push('tall.png');
-writeFileSync(join(outDir, 'wide.png'), quadrants(600, 200));
-written.push('wide.png');
 
-console.log(`canvas fixtures -> ${outDir}`);
-console.log(written.join(', '));
+/**
+ * Deliberately invalid PNG bytes under a `.png` extension.
+ *
+ * A 404 is one failure mode; a 200 with undecodable body is another. The
+ * harness can point at either. This file is served (so the network succeeds)
+ * and must fail decode — proving the engine's error path is not only the
+ * missing-URL case.
+ */
+function corruptPng() {
+  // Valid PNG signature, then garbage — decoders reject after the header.
+  return Buffer.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x08, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0xde, 0xad, 0xbe, 0xef,
+  ]);
+}
+
+function writeAll(outDir) {
+  mkdirSync(outDir, { recursive: true });
+  const written = [];
+  for (let i = 0; i < PAGE_COLORS.length; i++) {
+    const name = `page-${String(i)}.png`;
+    writeFileSync(join(outDir, name), page(i));
+    written.push(name);
+  }
+  writeFileSync(join(outDir, 'transparent.png'), transparencyFixture());
+  written.push('transparent.png');
+  writeFileSync(join(outDir, 'tall.png'), quadrants(200, 400));
+  written.push('tall.png');
+  writeFileSync(join(outDir, 'wide.png'), quadrants(600, 200));
+  written.push('wide.png');
+  writeFileSync(join(outDir, 'square.png'), quadrants(300, 300));
+  written.push('square.png');
+  writeFileSync(join(outDir, 'stripe.png'), stripe());
+  written.push('stripe.png');
+  writeFileSync(join(outDir, 'corrupt.png'), corruptPng());
+  written.push('corrupt.png');
+
+  // A 1×1 fully-transparent pixel — used only as a negative-control companion
+  // when asserting "this leaf is blank paper", never as a page the book should
+  // paint as content.
+  writeFileSync(join(outDir, 'empty.png'), encodePng(1, 1, surface(1, 1, null)));
+  written.push('empty.png');
+  return written;
+}
+
+for (const outDir of outDirs) {
+  const written = writeAll(outDir);
+  console.log(`canvas fixtures -> ${outDir}`);
+  console.log(written.join(', '));
+}

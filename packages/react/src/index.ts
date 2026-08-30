@@ -1,7 +1,15 @@
 export { HTMLFlipBook } from './HTMLFlipBook';
+export { ImageFlipBook } from './ImageFlipBook';
 export { usePageFlip } from './usePageFlip';
 export type {
   HTMLFlipBookProps,
+  ImageFlipBookProps,
+  ImagePageSource,
+  BlankPageSource,
+  ImagePageLeaf,
+  ImageFit,
+  ImageErrorPayload,
+  ImageFlipSettings,
   FlipBookHandle,
   IFlipSetting,
   IEventProps,
