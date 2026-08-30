@@ -11,6 +11,7 @@ import { HTMLUI } from './UI/HTMLUI';
 import { distanceBetween } from './Helper';
 import type { Page } from './Page/Page';
 import { EventObject } from './Event/EventObject';
+import type { FlipbookEventMap } from './Event/EventObject';
 import { HTMLRender } from './Render/HTMLRender';
 import type { FlipSetting } from './Settings';
 import { Settings } from './Settings';
@@ -65,6 +66,23 @@ export class PageFlip extends EventObject {
   private loadGeneration = 0;
 
   /**
+   * How many engine-emitted events are currently on the stack.
+   *
+   * Non-zero means a consumer callback is running inside the engine, so
+   * anything that callback does to the engine is RE-ENTRANT: the engine will
+   * carry on with the rest of that operation after the callback returns. The
+   * one that matters is `destroy()` — see {@link teardownPages}.
+   */
+  private dispatchDepth = 0;
+
+  /**
+   * The emptied collection and the detached UI, kept alive for the remainder of
+   * a teardown that happened mid-dispatch. See {@link destroy}.
+   */
+  private teardownPages: PageCollection | null = null;
+  private teardownUi: UI | null = null;
+
+  /**
    * Create a new PageFlip instance
    *
    * @constructor
@@ -100,8 +118,54 @@ export class PageFlip extends EventObject {
    *
    * A destroyed engine is not reusable — `loadFromHTML` / `loadFromImages`
    * after `destroy()` do not revive it. Construct a new `PageFlip`.
+   *
+   * ## Destroying from inside an event handler (X4)
+   *
+   * `destroy()` from an `onFlip` handler is the cleanup this whole contract
+   * exists to support — a reader that unmounts the book when it reaches the
+   * last page — and it was the one path where `'DESTROYED'` was not safe. The
+   * render loop's turn completion runs `onAnimateEnd` (which is what emits
+   * `flip`) and then draws ONE more frame, unconditionally; the loop is already
+   * past the guard `render.stop()` moves. That trailing frame reads engine
+   * state back out — `getPageCollection()` in HTML mode, `getUI()` in canvas —
+   * so nulling both threw a `PageFlipError` out of the consumer's rAF callback
+   * for doing exactly what the docs told them to.
+   *
+   * The teardown is complete and synchronous either way; what changes is what
+   * that one already-scheduled frame finds. When `destroy()` runs re-entrantly
+   * (`dispatchDepth > 0`), the emptied collection and the detached UI are kept
+   * for the rest of the current task, so the frame finds a **coherent but empty
+   * engine**: no pages to iterate, no page references left in the renderer,
+   * nothing painted. Everything else — `isDestroyed()`, the released
+   * references, the stopped loop, every other guarded accessor — is unchanged
+   * and immediate.
+   *
+   * The window closes on a microtask, which is strictly inside the same task as
+   * the rAF callback and therefore before any consumer code that could observe
+   * it asynchronously. The deviation is real and deliberately narrow: for the
+   * remainder of that one dispatch, `getPageCollection()` and `getUI()` answer
+   * with the inert objects rather than throwing.
+   *
+   * This is a mitigation, not the whole fix. The trailing draw is `Render`'s
+   * (`render()` draws after `onAnimateEnd` with no generation check — U6), and
+   * only `Render` can decline to draw at all.
    */
   public destroy(): void {
+    // X4. Armed BEFORE the teardown, and only when a consumer callback is on
+    // the stack: outside a dispatch there is no frame in flight to keep
+    // coherent, and arming it unconditionally would weaken the contract for
+    // every ordinary teardown. The stand-ins are the same objects the teardown
+    // below empties and detaches — that is the point, they end up inert.
+    if (this.dispatchDepth > 0) {
+      this.teardownPages = this.pages;
+      this.teardownUi = this.ui;
+
+      queueMicrotask(() => {
+        this.teardownPages = null;
+        this.teardownUi = null;
+      });
+    }
+
     this.destroyed = true;
     this.cancelPendingInit();
     // May be called before create() finishes wiring render/ui.
@@ -131,6 +195,25 @@ export class PageFlip extends EventObject {
 
   public isDestroyed(): boolean {
     return this.destroyed;
+  }
+
+  /**
+   * Emit one engine event, recording that a consumer callback is on the stack.
+   *
+   * Every `trigger` in this class goes through here so the depth cannot drift:
+   * a call site that emitted directly would be invisible to `destroy()`, and
+   * the one that matters most (`flip`) is emitted from the render loop.
+   */
+  private dispatch<K extends keyof FlipbookEventMap>(
+    eventName: K,
+    data: FlipbookEventMap[K],
+  ): void {
+    this.dispatchDepth += 1;
+    try {
+      this.trigger(eventName, this, data);
+    } finally {
+      this.dispatchDepth -= 1;
+    }
   }
 
   /**
@@ -259,11 +342,11 @@ export class PageFlip extends EventObject {
 
     const resolved = this.resolvedPageIndex(this.pages);
 
-    this.trigger('update', this, {
+    this.dispatch('update', {
       page: resolved,
       mode: render.getOrientation(),
     });
-    this.trigger('collectionRebuild', this, {
+    this.dispatch('collectionRebuild', {
       page: resolved,
       pageCount,
     });
@@ -320,7 +403,7 @@ export class PageFlip extends EventObject {
       // still change the orientation (the host is often measured only after the
       // load), which re-resolves the spread. Reporting what the book actually
       // shows when the event fires is the only version a consumer can trust.
-      this.trigger('init', this, {
+      this.dispatch('init', {
         page: this.resolvedPageIndex(this.pages),
         mode: render.getOrientation(),
       });
@@ -472,11 +555,11 @@ export class PageFlip extends EventObject {
 
     const resolved = this.resolvedPageIndex(this.pages);
 
-    this.trigger('update', this, {
+    this.dispatch('update', {
       page: resolved,
       mode: render.getOrientation(),
     });
-    this.trigger('collectionRebuild', this, {
+    this.dispatch('collectionRebuild', {
       page: resolved,
       pageCount,
     });
@@ -573,11 +656,11 @@ export class PageFlip extends EventObject {
     // needs no special case: `update` because what is rendered changed,
     // `collectionRebuild` because the collection did. Not `flip` (no turn
     // happened) and not `init` (the book is not becoming ready).
-    this.trigger('update', this, {
+    this.dispatch('update', {
       page: 0,
       mode: render.getOrientation(),
     });
-    this.trigger('collectionRebuild', this, {
+    this.dispatch('collectionRebuild', {
       page: 0,
       pageCount: 0,
     });
@@ -657,7 +740,7 @@ export class PageFlip extends EventObject {
     const flip = this.flipController;
 
     if (flip !== null && this.setting.disableFlipByClick && !flip.isPointOnCorners(pos)) {
-      this.trigger('turnRejected', this, { reason: 'disabled' });
+      this.dispatch('turnRejected', { reason: 'disabled' });
       return;
     }
 
@@ -672,7 +755,7 @@ export class PageFlip extends EventObject {
     if (flip === null) {
       // Same distinction `requireLoaded` draws: "not loaded yet" is a retry,
       // "destroyed" never will be.
-      this.trigger('turnRejected', this, {
+      this.dispatch('turnRejected', {
         reason: 'setup',
         code: this.destroyed ? 'DESTROYED' : 'NOT_LOADED',
       });
@@ -693,13 +776,13 @@ export class PageFlip extends EventObject {
       // would hide it from the consumer and from us.
       if (!(err instanceof PageFlipError)) throw err;
 
-      this.trigger('turnRejected', this, { reason: 'setup', code: err.code });
+      this.dispatch('turnRejected', { reason: 'setup', code: err.code });
       return false;
     }
 
     if (started) return true;
 
-    this.trigger('turnRejected', this, { reason: 'boundary' });
+    this.dispatch('turnRejected', { reason: 'boundary' });
     return false;
   }
 
@@ -722,7 +805,7 @@ export class PageFlip extends EventObject {
    * @param {FlippingState} newState - New  state of the object
    */
   public updateState(newState: FlippingState): void {
-    this.trigger('changeState', this, newState);
+    this.dispatch('changeState', newState);
   }
 
   /**
@@ -731,7 +814,7 @@ export class PageFlip extends EventObject {
    * @param {number} newPage - New page Number
    */
   public updatePageIndex(newPage: number): void {
-    this.trigger('flip', this, newPage);
+    this.dispatch('flip', newPage);
   }
 
   /**
@@ -742,7 +825,7 @@ export class PageFlip extends EventObject {
   public updateOrientation(newOrientation: Orientation): void {
     this.uiOrThrow.setOrientationStyle(newOrientation);
     this.update();
-    this.trigger('changeOrientation', this, newOrientation);
+    this.dispatch('changeOrientation', newOrientation);
   }
 
   /**
@@ -828,6 +911,10 @@ export class PageFlip extends EventObject {
    * @returns {UI}
    */
   public getUI(): UI {
+    // X4: the canvas renderer asks for the UI on every frame (`backingScale`),
+    // including the frame already scheduled when a handler destroyed the book.
+    if (this.teardownUi !== null) return this.teardownUi;
+
     return this.uiOrThrow;
   }
 
@@ -847,6 +934,11 @@ export class PageFlip extends EventObject {
    * @returns {PageCollection}
    */
   public getPageCollection(): PageCollection {
+    // X4: the HTML renderer iterates the collection on every frame (`clear()`),
+    // including the frame already scheduled when a handler destroyed the book.
+    // `PageCollection.destroy()` has emptied it, so that iteration is a no-op.
+    if (this.teardownPages !== null) return this.teardownPages;
+
     return this.pagesOrThrow;
   }
 

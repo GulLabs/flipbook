@@ -26,6 +26,24 @@ type AdoptedLeaf = {
    * with them, so the ones already present are excluded from the removal.
    */
   preexistingEngineClasses: string[];
+  /**
+   * Where the leaf was before it was moved into `.stf__block`.
+   *
+   * X6. `clear()` used to `appendChild` every released leaf onto the host, so a
+   * consumer whose own markup follows the pages (a caption, a toolbar, a
+   * `<script>`) got the pages silently moved BEHIND it on `destroy()`: sibling
+   * combinators and `:last-child` flip, and a re-`loadFromHTML` over the same
+   * host picks the pages up in a different order — the book comes back
+   * reshuffled. The engine restores what it changed and nothing else (the same
+   * contract `UI` honours for the host's inline styles), and position is
+   * something it changed.
+   *
+   * `nextSibling` can itself have moved or been removed by the time the leaf is
+   * released, so it is validated at restore time rather than trusted — see
+   * `restorePosition`.
+   */
+  parent: ParentNode | null;
+  nextSibling: ChildNode | null;
 };
 
 /**
@@ -100,13 +118,47 @@ export class HTMLUI extends UI {
    *   already had when it was adopted.
    */
   public clear(): void {
-    // Hand back only what we took. See `adopted`.
-    for (const item of Array.from(this.adopted.keys())) {
+    // Hand back only what we took, to WHERE we took it from. See `adopted`.
+    //
+    // Reverse order, and that is load-bearing: consecutive pages are each
+    // other's recorded `nextSibling`, and while they are still inside the block
+    // that sibling is not back in the host yet. Restoring last-to-first means
+    // every leaf's anchor is already in place when its turn comes — the last
+    // page anchors against the consumer's own trailing markup, the one before
+    // it against the last page, and so on. Front-to-back, every anchor but the
+    // first is still missing and the whole run degrades to an append.
+    for (const [item, original] of Array.from(this.adopted).reverse()) {
       this.undress(item);
-      this.parentElement.appendChild(item);
+      this.restorePosition(item, original);
     }
 
     this.adopted.clear();
+  }
+
+  /**
+   * Put one released leaf back where it was adopted from.
+   *
+   * The recorded anchor is verified, never trusted: between adoption and
+   * release the consumer may have removed the following sibling, moved it, or
+   * emptied the original parent entirely. Each fallback is one step weaker than
+   * the last: the exact slot, then the end of the original parent, then — only
+   * for a leaf that was detached when it was adopted, and so has nowhere to go
+   * back to — the old behaviour of appending to the host.
+   */
+  private restorePosition(item: HTMLElement, original: AdoptedLeaf): void {
+    const { parent, nextSibling: anchor } = original;
+
+    if (parent === null) {
+      this.parentElement.appendChild(item);
+      return;
+    }
+
+    if (anchor !== null && anchor.parentNode === parent) {
+      parent.insertBefore(item, anchor);
+      return;
+    }
+
+    parent.appendChild(item);
   }
 
   /**
@@ -153,6 +205,11 @@ export class HTMLUI extends UI {
         preexistingEngineClasses: ENGINE_LEAF_CLASSES.filter((name) =>
           item.classList.contains(name),
         ),
+        // Captured HERE for the same reason the inline style is: after
+        // `appendChild` below the node's neighbours are the engine's, not the
+        // consumer's, and the original position is unrecoverable.
+        parent: item.parentNode,
+        nextSibling: item.nextSibling,
       });
     }
 

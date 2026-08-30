@@ -33,6 +33,24 @@ export abstract class UI {
   private handlersBound = false;
   /** Active pointer id, so `pointerleave` after `pointerup` is ignored. */
   private activePointerId: number | null = null;
+  /**
+   * Whether `setPointerCapture` actually took for {@link activePointerId}.
+   *
+   * X5. The capture call is wrapped in a `try`/`catch` because capture is
+   * optional — but the id was recorded either way, and `onPointerLeave`
+   * returned early whenever an id was set. So on a browser or an element where
+   * capture fails (a detached block, a UA that rejects the id, a synthetic
+   * pointer with no capture support) the engine believed it was captured:
+   * dragging out of the block produced no `pointerup`, no `pointerleave`
+   * handling, and the fold stayed on the page following a button-less cursor
+   * for the life of the book — the exact bug the capture work was supposed to
+   * close, through the door it left open.
+   *
+   * So the id and the capture are tracked separately: the id says which pointer
+   * owns the gesture (I11's filtering), this says whether the browser will keep
+   * routing that pointer's events here after it leaves.
+   */
+  private pointerCaptured = false;
   /** Whether `autoSize` currently owns the host's width / max-width. */
   private autoSizeOwnsHost = false;
   /** Host inline styles captured at construction so `destroy()` can restore them. */
@@ -236,11 +254,20 @@ export abstract class UI {
     this.distElement.removeEventListener('pointerup', this.onPointerUp);
     this.distElement.removeEventListener('pointercancel', this.onPointerCancel);
     this.distElement.removeEventListener('pointerleave', this.onPointerLeave);
+    this.distElement.removeEventListener('lostpointercapture', this.onLostPointerCapture);
     this.distElement.removeEventListener('dragstart', this.onDragStart);
     this.handlersBound = false;
   }
 
   protected setHandlers(): void {
+    // X7. Suppressing the native drag ghost is NOT a mouse-input feature, and
+    // it used to sit behind this early return: with `useMouseEvents: false` the
+    // engine turns off page turning by pointer, but the browser still starts
+    // its own image / text drag inside a page — a translucent copy of the
+    // artwork peeling away from a book that has deliberately disabled dragging.
+    // Bound before the return, removed unconditionally in `removeHandlers`.
+    this.distElement.addEventListener('dragstart', this.onDragStart);
+
     if (!this.app.getSettings().useMouseEvents) return;
 
     this.distElement.addEventListener('pointerdown', this.onPointerDown);
@@ -248,7 +275,11 @@ export abstract class UI {
     this.distElement.addEventListener('pointerup', this.onPointerUp);
     this.distElement.addEventListener('pointercancel', this.onPointerCancel);
     this.distElement.addEventListener('pointerleave', this.onPointerLeave);
-    this.distElement.addEventListener('dragstart', this.onDragStart);
+    // The browser can take a capture away mid-gesture (a `pointercancel`, the
+    // element being removed, an OS gesture claiming the pointer). After that
+    // the events stop coming here, so the gesture is in the same position as
+    // one that never captured at all — see `pointerCaptured`.
+    this.distElement.addEventListener('lostpointercapture', this.onLostPointerCapture);
     this.handlersBound = true;
   }
 
@@ -310,6 +341,7 @@ export abstract class UI {
     }
 
     this.activePointerId = null;
+    this.pointerCaptured = false;
   }
 
   /**
@@ -361,14 +393,41 @@ export abstract class UI {
   };
 
   /**
-   * Pointer left the book without a release — put the hover corner back.
+   * The browser took the capture back mid-gesture.
    *
-   * Skipped while a pointer is down: under pointer capture `pointerleave` also
-   * fires straight after `pointerup` (always so for touch), and re-entering
-   * `stopMove()` there starts a second snap-back over the one `userStop` began.
+   * The pointer id stays the gesture's owner — the finger is still down — but
+   * from here on its events are no longer routed to this element, so leaving
+   * the block is terminal exactly as it is for a gesture that never captured.
+   */
+  private onLostPointerCapture = (e: PointerEvent): void => {
+    if (this.activePointerId !== e.pointerId) return;
+
+    this.pointerCaptured = false;
+  };
+
+  /**
+   * Pointer left the book without a release.
+   *
+   * Three cases, and the middle one is X5:
+   *
+   * - **No gesture** — a hover walked off the book; put the hover corner back.
+   * - **A gesture we do NOT hold the capture for** — no `pointerup` will ever
+   *   reach this element again, so this is the last event of the gesture. It
+   *   has to end here, without committing (the pointer left the book; that is
+   *   an abandonment, not a turn) or the engine stays in `USER_FOLD` with the
+   *   fold following a button-less cursor forever.
+   * - **A captured gesture** — skipped. Under capture `pointerleave` also fires
+   *   straight after `pointerup` (always so for touch), and re-entering
+   *   `stopMove()` there starts a second snap-back over the one `userStop`
+   *   already began.
    */
   private onPointerLeave = (): void => {
-    if (this.activePointerId !== null) return;
+    if (this.activePointerId !== null) {
+      if (this.pointerCaptured) return;
+
+      this.cancelGesture();
+      return;
+    }
 
     this.touchPoint = null;
 
@@ -408,11 +467,27 @@ export abstract class UI {
     const pos = this.getMousePos(e.clientX, e.clientY);
 
     this.activePointerId = e.pointerId;
+    this.pointerCaptured = false;
 
     try {
       this.distElement.setPointerCapture(e.pointerId);
+      // Ask rather than assume. A UA that implements capture can still decline
+      // this particular one (a pointer that is no longer active, an element
+      // just detached) WITHOUT throwing, and believing the call is the same
+      // failure as swallowing the throw was. Written against the runtime value
+      // because `lib.dom` declares the query as always present: where it is
+      // missing — jsdom, older UAs — a bare call would throw into the `catch`
+      // below and report every capture as failed, so a call that did not throw
+      // is the best evidence available there.
+      this.pointerCaptured =
+        typeof this.distElement.hasPointerCapture === 'function'
+          ? this.distElement.hasPointerCapture(e.pointerId)
+          : true;
     } catch {
-      // capture is optional; the id is still tracked for pointerleave
+      // Capture is optional. The id is still tracked, so this pointer owns the
+      // gesture and others are filtered out — but `pointerleave` must now treat
+      // leaving the block as the end of it. See `pointerCaptured`.
+      this.pointerCaptured = false;
     }
 
     this.touchPoint = {
