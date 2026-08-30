@@ -126,12 +126,12 @@ describe('C12 — hard pages rotate about the spine, not block-local pageWidth',
   });
 });
 
-describe('C6 — shipped CSS does not restyle a consumer canvas', () => {
-  test('a canvas on an HTML page is left alone', () => {
-    // Canvas mode (and `.stf__canvas` rules) were removed (ADR 0002). This pins
-    // that a chart embedded in a page is not absolutely positioned by the
-    // engine stylesheet — the old `.stf__parent canvas` descendant selector
-    // used to stretch every nested canvas to the block.
+describe('C6 — shipped CSS has no canvas layout rules', () => {
+  test('even a leftover .stf__canvas is not absolutely stretched', () => {
+    // Canvas mode CSS was removed (ADR 0002). The old rule was
+    // `.stf__parent>.stf__wrapper>.stf__canvas{position:absolute;width:100%;…}`.
+    // Putting that class on a node and asserting it is NOT absolute is what
+    // fails if the rule is restored; a bare chart without the class would not.
     ensureFlipbookStyles();
 
     const parent = document.createElement('div');
@@ -139,6 +139,10 @@ describe('C6 — shipped CSS does not restyle a consumer canvas', () => {
     const wrapper = document.createElement('div');
     wrapper.className = 'stf__wrapper';
     parent.appendChild(wrapper);
+
+    const leftover = document.createElement('canvas');
+    leftover.className = 'stf__canvas';
+    wrapper.appendChild(leftover);
 
     const block = document.createElement('div');
     block.className = 'stf__block';
@@ -150,6 +154,10 @@ describe('C6 — shipped CSS does not restyle a consumer canvas', () => {
     parent.appendChild(block);
 
     document.body.appendChild(parent);
+
+    const leftoverStyle = getComputedStyle(leftover);
+    expect(leftoverStyle.position).not.toBe('absolute');
+    expect(leftoverStyle.width).not.toBe('100%');
 
     const chartStyle = getComputedStyle(chart);
     expect(chartStyle.position).not.toBe('absolute');

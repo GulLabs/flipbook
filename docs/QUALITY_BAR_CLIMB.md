@@ -283,7 +283,6 @@ both `test:coverage` (global) and `test:coverage-areas` (critical files).
 | HTMLRender.ts      | 89 / 63   | Fold opacity, z-order (cssText)  |
 | HTMLPage.ts        | 98 / 73   | Page draw path                   |
 | Flip.ts            | 86 / 78   | State machine                    |
-| ImagePage.ts       | 86 / 64   | Image page draw                  |
 | HTMLFlipBook.tsx   | 92 / 77   | React binding                    |
 | usePageFlip.ts     | 98 / 98   | Hook actions + pre-attach no-ops |
 
@@ -315,11 +314,11 @@ nobody had measured. Here is the measurement. Both artifacts are terser-minified
 single-line ESM/UMD; `page-flip@2.0.7` was measured from its published tarball
 (`npm pack page-flip@2.0.7`, `dist/js/page-flip.browser.js`).
 
-|                                                            | raw (min) |    gzip |  brotli |
-| ---------------------------------------------------------- | --------: | ------: | ------: |
-| `page-flip@2.0.7` (upstream)                               |    44,058 |  10,360 |   9,261 |
-| `@gullabs/flipbook-core` HTML engine (post canvas removal) |   ~55,700 | ~15,300 | ~13,600 |
-| delta                                                      |     +2.1% |  +18.4% |  +18.9% |
+|                                                            | raw (min) |   gzip | brotli |
+| ---------------------------------------------------------- | --------: | -----: | -----: |
+| `page-flip@2.0.7` (upstream)                               |    44,058 | 10,360 |  9,261 |
+| `@gullabs/flipbook-core` HTML engine (post canvas removal) |   ~55,470 | 15,210 | 13,570 |
+| delta                                                      |    +25.9% | +46.8% | +46.5% |
 
 Canvas mode was **removed** (ADR 0002). The HTML engine is the only renderer; ceilings were re-measured and lowered after the removal.
 
@@ -330,7 +329,7 @@ was a number with no derivation, and enforcing it produced only churn.
 
 Two claims that circulated and were both false: that upstream is "~26–27 kB"
 (it is 44,058 B), and that this engine is "~73% larger" than upstream (it is
-+2.1% raw for the common case). Neither was ever measured before being acted on.
+larger raw for the common case (post-canvas-removal ~55.5 kB vs upstream 44.1 kB)). Neither was ever measured before being acted on.
 
 ### The enforced numbers
 
@@ -340,13 +339,13 @@ happened to sit. A budget pinned to "current + 0" is not a budget; it turns
 every later fix into a negotiation, and it did — four correctness fixes cost 13
 bytes and a public helper was deleted to pay for them.
 
-They are now **52 kB raw / 13 kB brotli / 14.5 kB gzip**, roughly 16–18% above
-the current artifact. Gzip is gated as well as brotli because not every
-consumer's CDN negotiates brotli. All three are hard gates that fail the build;
-what makes them workable is headroom, not leniency. `AGENTS.md` §2 carries the
-policy: dead code always goes, working code never goes to buy bytes, fixes and
-features may spend the headroom and say so, and a breach is a question about
-growth rather than a hunt for something to delete.
+They are now **57 kB raw / 14 kB brotli / 16 kB gzip** (measured ~55.5 / 13.6 /
+15.2 after canvas removal, ADR 0002). Gzip is gated as well as brotli because
+not every consumer's CDN negotiates brotli. All three are hard gates that fail
+the build; what makes them workable is headroom, not leniency. `AGENTS.md` §2
+carries the policy: dead code always goes, working code never goes to buy
+bytes, fixes and features may spend the headroom and say so, and a breach is a
+question about growth rather than a hunt for something to delete.
 
 ### What the raw check is not
 

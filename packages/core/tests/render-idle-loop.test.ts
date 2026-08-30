@@ -465,8 +465,10 @@ describe('R8 — an idle HTML renderer parks', () => {
     expect(scheduled()).toBe(false);
   });
 
-  test('needsContinuousFrames is false (canvas spinner path removed)', () => {
-    const render = probeOn(document.createElement('div'));
+  test('needsContinuousFrames is false even for a canvas dist element', () => {
+    // Hostile variant: the removed predicate was `dist instanceof HTMLCanvasElement`.
+    // A div fixture would pass against that regression; a canvas fixture fails it.
+    const render = probeOn(document.createElement('canvas'));
     expect(
       (render as unknown as { needsContinuousFrames: () => boolean }).needsContinuousFrames(),
     ).toBe(false);

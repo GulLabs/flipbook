@@ -24,7 +24,7 @@ pnpm test               # vitest run, both projects
 pnpm build              # tsup per package (see caveat below)
 pnpm typecheck          # tsc --noEmit per package
 pnpm lint               # eslint flat config, repo-wide
-pnpm size               # size-limit on the packed html engine (58 kB raw / 14 kB brotli / 16 kB gzip)
+pnpm size               # size-limit on the packed html engine (57 kB raw / 14 kB brotli / 16 kB gzip)
 node ./scripts/check-isolated-types.mjs   # pnpm-isolated consumer type fixture
 ```
 
@@ -142,8 +142,8 @@ tears the book down mid-animation.
 
 ## Known gaps in the current state
 
-- **Bundle size.** The engine is ~52 kB raw / ~12.8 kB brotli against ceilings of
-  58 / 14 / 16 kB. The §5 target of 35 kB minified is **retired**: upstream
+- **Bundle size.** The engine is ~55.5 kB raw / ~13.6 kB brotli against ceilings of
+  57 / 14 / 16 kB. The §5 target of 35 kB minified is **retired**: upstream
   `page-flip@2.0.7` is itself 44,058 B minified (measured from its published
   tarball), so that target asked this fork to be ~20% smaller than the thing it
   forks while doing strictly more. See `docs/QUALITY_BAR_CLIMB.md` for the
