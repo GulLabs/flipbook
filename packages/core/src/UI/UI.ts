@@ -109,7 +109,16 @@ export abstract class UI {
    */
   public applyHostSize(setting: FlipSetting = this.app.getSettings()): void {
     const host = this.parentElement;
-    const k = this.app.getSettings().usePortrait ? 1 : 2;
+    // Y5. Read from the PARAMETER, like every other value here. This used to
+    // reach past it to `this.app.getSettings()`, which happens to be the same
+    // object today only because `updateSettings` mutates in place — the same
+    // class of bug as the cached `swipeDistance`, inverted: there a value was
+    // frozen at construction, here a parameter is ignored in favour of live
+    // state. A caller handing in a different settings object (a preview of a
+    // pending change, a test) got `minWidth` computed for the wrong
+    // orientation, so a landscape book was stamped with a single page's
+    // minimum width.
+    const k = setting.usePortrait ? 1 : 2;
 
     host.style.minWidth = `${setting.minWidth * k}px`;
     host.style.minHeight = `${setting.minHeight}px`;
@@ -467,8 +476,18 @@ export abstract class UI {
    *   straight after `pointerup` (always so for touch), and re-entering
    *   `stopMove()` there starts a second snap-back over the one `userStop`
    *   already began.
+   *
+   * Y3. `pointerleave` is dispatched PER POINTER ID, so this needs the same
+   * ownership filter every other handler applies. Without it this was the one
+   * input handler any pointer could drive: a hover mouse on a hybrid device,
+   * or a stray finger, entering and leaving the block while a drag was in
+   * flight landed in the uncaptured branch and abandoned the OWNING
+   * pointer's gesture. (`isActivePointer` also passes the no-gesture case
+   * through, which is the hover branch below.)
    */
-  private onPointerLeave = (): void => {
+  private onPointerLeave = (e: PointerEvent): void => {
+    if (!this.isActivePointer(e)) return;
+
     if (this.activePointerId !== null) {
       if (this.pointerCaptured) return;
 

@@ -25,7 +25,7 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { HTMLPage, PageFlip } from '@gullabs/flipbook-core';
+import { HTMLPage, PageDensity, PageFlip, PageOrientation } from '@gullabs/flipbook-core';
 import type { Point } from '@gullabs/flipbook-core';
 import { installPointerCaptureShims, makeHtmlBook } from './html-book-fixture';
 
@@ -485,5 +485,179 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
     expect(writes[0]).toContain('pointer-events:none;');
 
     page.hideTemporaryCopy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Y4
+// ---------------------------------------------------------------------------
+
+/**
+ * `commonStyle` used to omit the `position:absolute` that `simpleDraw` states
+ * inline, leaving DRAWN leaves — the folding one and every hard page — relying
+ * on `.stf__item{position:absolute}` from the injected stylesheet. Any consumer
+ * rule with higher specificity (`#book .page{position:relative}`) then
+ * un-positioned only the leaf being drawn.
+ *
+ * jsdom applies no stylesheet cascade, so the stylesheet cannot be the thing
+ * under test here — the assertion is that the ENGINE states it itself, which is
+ * what makes the cascade irrelevant in a browser too. Both the written string
+ * and the parsed read-back are asserted: the first is what the fix emits, the
+ * second proves the declaration is well-formed enough for the CSSOM to keep it
+ * (a `position:;` variant is discarded on assignment and would read back `''`).
+ */
+describe('drawn leaves state their own position (Y4)', () => {
+  test('a static leaf states it inline — the parity this fix restores (precondition)', () => {
+    const app = landscapeBook();
+    const page = app.getPage(2) as HTMLPage;
+    const el = page.getElement();
+
+    const writes = captureCssTextWrites(el);
+    page.simpleDraw(PageOrientation.RIGHT);
+
+    expect(writes[0]).toContain('position:absolute;');
+    expect(el.style.position).toBe('absolute');
+  });
+
+  test('a soft (folding) leaf states it too', () => {
+    const app = landscapeBook();
+    const page = app.getPage(2) as HTMLPage;
+    const el = page.getElement();
+
+    // Start from a leaf a consumer rule could have un-positioned: nothing
+    // inline. If `draw` does not write it, nothing else will.
+    el.style.removeProperty('position');
+    expect(el.style.position).toBe('');
+
+    const writes = captureCssTextWrites(el);
+    page.draw(PageDensity.SOFT);
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toContain('position:absolute;');
+    expect(el.style.position).toBe('absolute');
+    // The rest of the soft draw is untouched — this is one added declaration,
+    // not a rewritten block.
+    expect(writes[0]).toContain('clip-path:');
+    expect(writes[0]).toContain('transform:');
+  });
+
+  test('a hard leaf states it too — fixing only drawSoft leaves the cover behind', () => {
+    const app = landscapeBook();
+    const page = app.getPage(2) as HTMLPage;
+    const el = page.getElement();
+
+    el.style.removeProperty('position');
+
+    const writes = captureCssTextWrites(el);
+    page.draw(PageDensity.HARD);
+
+    expect(writes).toHaveLength(1);
+    expect(writes[0]).toContain('position:absolute;');
+    expect(el.style.position).toBe('absolute');
+    expect(writes[0]).toContain('backface-visibility:hidden;');
+  });
+
+  test('the temporary fold copy — the leaf that actually drops out — states it', () => {
+    const app = landscapeBook();
+    const page = app.getPage(2) as HTMLPage;
+
+    const copy = page.newTemporaryCopy() as HTMLPage;
+    expect(copy).not.toBe(page);
+
+    const el = copy.getElement();
+    el.style.removeProperty('position');
+
+    const writes = captureCssTextWrites(el);
+    copy.draw(PageDensity.SOFT);
+
+    expect(writes[0]).toContain('position:absolute;');
+    expect(el.style.position).toBe('absolute');
+    // ...without losing the clone's own declaration.
+    expect(writes[0]).toContain('pointer-events:none;');
+
+    page.hideTemporaryCopy();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Y5
+// ---------------------------------------------------------------------------
+
+/**
+ * `applyHostSize` read `usePortrait` off the LIVE settings while taking every
+ * other value from its `setting` parameter. With the engine's own object the
+ * broken and the fixed forms are byte-identical — which is exactly why it was
+ * latent — so every assertion below passes an object the engine does NOT hold,
+ * and asserts first that the two genuinely disagree.
+ */
+function hostBook(opts: Parameters<typeof makeHtmlBook>[0] = {}): {
+  app: PageFlip;
+  host: HTMLElement;
+} {
+  const b = makeHtmlBook({ pageCount: 4, flippingTime: 0, ...opts });
+  books.push(b);
+  return { app: b.book, host: b.host };
+}
+
+describe('applyHostSize honours the settings object it is given (Y5)', () => {
+  test('a portrait engine handed LANDSCAPE settings stamps the two-page minimum', () => {
+    const { app, host } = hostBook({ usePortrait: true, width: 200 });
+    const ui = app.getUI();
+
+    // PRECONDITION: the engine's live settings say the opposite of what is
+    // about to be passed in, and it is a different object. With the same object
+    // this test cannot fail against the bug.
+    const live = app.getSettings();
+    expect(live.usePortrait).toBe(true);
+    expect(host.style.minWidth).toBe('200px');
+
+    const other = { ...live, usePortrait: false };
+    expect(other).not.toBe(live);
+
+    ui.applyHostSize(other);
+
+    // FIXED size, so the width branch: 200 × 2.
+    expect(host.style.minWidth).toBe('400px');
+    // ...and the engine's own settings were not mutated on the way through.
+    expect(app.getSettings().usePortrait).toBe(true);
+  });
+
+  test('and the inverse: a landscape engine handed PORTRAIT settings', () => {
+    // A fix that hardcoded `k = 2`, or read the parameter in one branch only,
+    // passes the test above and fails this one.
+    const { app, host } = hostBook({ usePortrait: false, width: 200, hostWidth: 500 });
+    const ui = app.getUI();
+
+    const live = app.getSettings();
+    expect(live.usePortrait).toBe(false);
+    expect(host.style.minWidth).toBe('400px');
+
+    ui.applyHostSize({ ...live, usePortrait: true });
+
+    expect(host.style.minWidth).toBe('200px');
+  });
+
+  test('the non-fixed minWidth branch takes the same k', () => {
+    const { app, host } = hostBook({ usePortrait: true, width: 200 });
+    const ui = app.getUI();
+    const live = app.getSettings();
+
+    const stretched = { ...live, size: 'stretch' as const, minWidth: 111, usePortrait: false };
+    ui.applyHostSize(stretched);
+    expect(host.style.minWidth).toBe('222px');
+
+    ui.applyHostSize({ ...stretched, usePortrait: true });
+    expect(host.style.minWidth).toBe('111px');
+  });
+
+  test('called with no argument it still reads the live settings', () => {
+    // The default parameter is the production call path (`updateSettings`
+    // passes nothing in some paths); reading the parameter must not break it.
+    const { app, host } = hostBook({ usePortrait: false, width: 200, hostWidth: 500 });
+
+    host.style.minWidth = '1px';
+    app.getUI().applyHostSize();
+
+    expect(host.style.minWidth).toBe('400px');
   });
 });

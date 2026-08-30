@@ -546,3 +546,103 @@ describe('U1 destroy() returns the consumer’s nodes undressed', () => {
     host.remove();
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Y3 — `pointerleave` filters by pointer id like every other handler
+ * ------------------------------------------------------------------ */
+
+/**
+ * A book in the ONLY regime where `onPointerLeave` acts on a gesture: capture
+ * was requested and did NOT take. With a live capture the handler returns early
+ * whatever the id is, so a fixture that let capture succeed could not tell the
+ * fix from the bug — it would be the `flippingTime: 0` mistake in another
+ * costume.
+ */
+function uncapturedDragBook(): { app: PageFlip; dist: HTMLElement } {
+  const { book: app } = book({ pageCount: 6, flippingTime: 0 });
+  const dist = app.getUI().getDistElement();
+
+  // A UA that declines this particular capture without throwing — the case
+  // `pointerCaptured` exists for.
+  dist.hasPointerCapture = () => false;
+
+  const rect = app.getBoundsRect();
+  pointer('pointerdown', dist, {
+    pointerId: 1,
+    clientX: rect.left + rect.width - 6,
+    clientY: rect.top + 6,
+  });
+  pointer('pointermove', dist, {
+    pointerId: 1,
+    clientX: rect.left + rect.width - 80,
+    clientY: rect.top + 40,
+  });
+
+  return { app, dist };
+}
+
+describe('Y3 pointerleave only ends the gesture it belongs to', () => {
+  test('the owning pointer leaving an UNCAPTURED gesture still ends it (precondition)', () => {
+    // Without this, "the other pointer did not end it" is satisfied by a
+    // handler that ends nothing at all, in a fixture where the branch is
+    // unreachable.
+    const { app, dist } = uncapturedDragBook();
+    expect(app.getState()).toBe(FlippingState.USER_FOLD);
+
+    dist.dispatchEvent(new PointerEvent('pointerleave', { pointerId: 1, pointerType: 'mouse' }));
+
+    expect(app.getState()).toBe(FlippingState.READ);
+    expect(app.getFlipController()?.getCalculation() ?? null).toBeNull();
+    expect(app.getCurrentPageIndex()).toBe(0);
+  });
+
+  test('a SECOND pointer leaving does not abandon the owner’s in-flight drag', () => {
+    const { app, dist } = uncapturedDragBook();
+    expect(app.getState()).toBe(FlippingState.USER_FOLD);
+
+    const progress = app.getFlipController()?.getCalculation()?.getFlippingProgress();
+    // The fold is genuinely open and part-way: "unchanged" has to mean
+    // something, and 0 or 100 would be reached by a dropped fold too.
+    expect(progress).toBeGreaterThan(0);
+    expect(progress).toBeLessThan(100);
+
+    // A hover mouse on a hybrid device walks off the block while the finger is
+    // still down. Pre-fix this landed in the uncaptured branch and cancelled
+    // the drag.
+    dist.dispatchEvent(new PointerEvent('pointerleave', { pointerId: 2, pointerType: 'mouse' }));
+
+    expect(app.getState()).toBe(FlippingState.USER_FOLD);
+    expect(app.getFlipController()?.getCalculation()?.getFlippingProgress()).toBe(progress);
+
+    // ...and the drag is still live: it keeps tracking its own pointer.
+    const rect = app.getBoundsRect();
+    pointer('pointermove', dist, {
+      pointerId: 1,
+      clientX: rect.left + rect.width - 140,
+      clientY: rect.top + 60,
+    });
+    expect(app.getFlipController()?.getCalculation()?.getFlippingProgress()).toBeGreaterThan(
+      progress!,
+    );
+
+    // And the owner's own leave still ends it.
+    dist.dispatchEvent(new PointerEvent('pointerleave', { pointerId: 1, pointerType: 'mouse' }));
+    expect(app.getState()).toBe(FlippingState.READ);
+  });
+
+  test('with no gesture in flight ANY pointer’s leave still unfolds a hover corner', () => {
+    // The filter must pass the no-gesture case through. `activePointerId !==
+    // e.pointerId` is the obvious wrong spelling of this fix and it fails here:
+    // `null !== 2` would return early and leave the corner folded up forever.
+    const { book: app } = book({ pageCount: 6, flippingTime: 0, showPageCorners: true });
+    const dist = app.getUI().getDistElement();
+    const rect = app.getBoundsRect();
+
+    hover(dist, rect.left + rect.width - 4, rect.top + rect.height - 4);
+    expect(app.getState()).toBe(FlippingState.FOLD_CORNER);
+
+    dist.dispatchEvent(new PointerEvent('pointerleave', { pointerId: 2, pointerType: 'mouse' }));
+
+    expect(app.getState()).toBe(FlippingState.READ);
+  });
+});

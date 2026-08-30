@@ -163,7 +163,22 @@ export class HTMLPage extends Page {
     const zIndex = this.element.style.zIndex;
     const zIndexStyle = zIndex === '' ? '' : `z-index:${zIndex};`;
 
-    const commonStyle = `display:block;${zIndexStyle}left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;background-color:${foldFill(this.render.getSettings().pageBackground)};${this.isTemporaryCopy ? 'pointer-events:none;' : ''}`;
+    // Y4. `position:absolute` is stated INLINE, exactly as `simpleDraw` does.
+    // It used to be left to `.stf__item{position:absolute}` in the injected
+    // stylesheet, so a drawn leaf's positioning was the only part of its layout
+    // a consumer rule could take away: `#book .page{position:relative}` — an
+    // ordinary rule, and more specific than a single class — un-positioned the
+    // FLIPPING leaf while the static ones, which state it inline, stayed put.
+    // The fold dropped out of the book mid-turn.
+    //
+    // Inline rather than a more specific selector in `styles.ts`: the stylesheet
+    // ships as `@gullabs/flipbook-core/style.css`, so its selectors are public
+    // surface and changing them is a consumer-visible change (§5) — and it would
+    // only move the arms race, since any id selector out-specifies any chain of
+    // classes. An inline declaration beats every author rule short of
+    // `!important`, and `cssText` is not public surface. It also makes the two
+    // draw paths agree, which is what made this asymmetry survivable.
+    const commonStyle = `position:absolute;display:block;${zIndexStyle}left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;background-color:${foldFill(this.render.getSettings().pageBackground)};${this.isTemporaryCopy ? 'pointer-events:none;' : ''}`;
 
     if (density === PageDensity.HARD) {
       this.drawHard(commonStyle);
