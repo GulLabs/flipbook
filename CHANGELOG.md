@@ -18,6 +18,19 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — `updateFromHtml` left engine classes on the consumer's element
+
+- **A page added after the initial load kept `stf__item` and `--soft` / `--hard`
+  forever.** `HTMLUI` records which engine classes a leaf already carried so
+  `destroy()` can hand back a node the consumer authored without stripping a
+  `--hard` they wrote themselves — but `updateFromHtml` constructed the pages
+  (whose constructor stamps those classes) _before_ the UI adopted them, so the
+  snapshot recorded the engine's own classes as pre-existing and release
+  honoured it. Measured: an element added this way still read
+  `class="my-page stf__item --soft"` after `destroy()`, where a leaf present at
+  the initial load cleans to `class=""`. This is the one path the React binding
+  uses for every page a book grows.
+
 ### Fixed — the flagship portrait bug was reachable again through spread construction
 
 - **`showCover: false` no longer makes the last page of an odd-length book a hard

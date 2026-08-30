@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest';
 import { PageFlip } from '@gullabs/flipbook-core';
+import { makePages, sizeElement } from './html-book-fixture';
 
 describe('HTMLUI.updateItems (shipped)', () => {
   test('does not wipe sibling shadow nodes under .stf__block', () => {
@@ -81,6 +82,83 @@ describe('clear() and the framework that owns the leaves', () => {
     expect(portalled.parentElement).toBe(block);
 
     book.destroy();
+    host.remove();
+  });
+});
+
+/**
+ * NF2 — the ONE path the React binding uses for every page it adds.
+ *
+ * `HTMLUI.adopt` snapshots which engine classes a leaf already carried, so
+ * `destroy()` can hand back a node the consumer authored without stripping a
+ * `--hard` they wrote themselves. That snapshot is only honest if it is taken
+ * before the engine stamps its own classes on.
+ */
+describe('NF2 — updateFromHtml adopts a leaf before the engine stamps it', () => {
+  function book(): { engine: PageFlip; host: HTMLElement; initial: HTMLElement[] } {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    sizeElement(host, 400, 300);
+
+    const initial = makePages(2);
+    const engine = new PageFlip(host, { width: 200, height: 300 });
+    engine.loadFromHTML(initial);
+    return { engine, host, initial };
+  }
+
+  test('a page added later is handed back undressed', () => {
+    const { engine, host, initial } = book();
+
+    const added = document.createElement('div');
+    added.className = 'my-page';
+    document.body.appendChild(added);
+
+    engine.updateFromHtml([...initial, added]);
+    expect(added.classList.contains('stf__item')).toBe(true);
+
+    engine.destroy();
+
+    // Reverted fix (`pages.load()` before `ui.updateItems()`): the element still
+    // reads `my-page stf__item --soft`. `adopt` recorded the engine's OWN
+    // classes as pre-existing — they were, by one line — and release honoured
+    // that. Under React this leaks engine classes onto a consumer node for the
+    // life of the document, on every page the book grows.
+    expect(added.className).toBe('my-page');
+
+    host.remove();
+    added.remove();
+  });
+
+  test('a class the CONSUMER wrote is still preserved', () => {
+    const { engine, host, initial } = book();
+
+    const added = document.createElement('div');
+    added.className = 'my-page';
+    // The consumer declares a hard leaf themselves, in the class the engine
+    // also uses. This is the case the snapshot exists for, and the reorder must
+    // not break it — a fix that simply cleaned every engine class on release
+    // would pass the test above and fail this one.
+    added.classList.add('--hard');
+    document.body.appendChild(added);
+
+    engine.updateFromHtml([...initial, added]);
+    engine.destroy();
+
+    expect(added.classList.contains('--hard')).toBe(true);
+    expect(added.classList.contains('stf__item')).toBe(false);
+
+    host.remove();
+    added.remove();
+  });
+
+  test('the leaves present at the initial load are unaffected', () => {
+    const { engine, host, initial } = book();
+
+    // The control: initial-load leaves already cleaned correctly, so a change
+    // that only moved the bug around would show up here.
+    engine.destroy();
+    expect(initial[0]!.className).toBe('');
+
     host.remove();
   });
 });

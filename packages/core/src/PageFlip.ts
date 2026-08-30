@@ -639,8 +639,30 @@ export class PageFlip extends EventObject {
 
     const pages = new HTMLPageCollection(this, render, ui.getDistElement(), items);
     this.pages = pages;
-    pages.load();
+
+    // NF2. ADOPT BEFORE LOADING, and the order is the whole fix.
+    //
+    // `HTMLUI.adopt` snapshots which engine classes a leaf ALREADY carried, so
+    // that `destroy()` hands back a node the consumer authored rather than
+    // stripping a `--hard` they wrote themselves. `pages.load()` constructs the
+    // `HTMLPage`s, and their constructor stamps `stf__item` and `--soft` /
+    // `--hard` onto each element — so running it first meant `adopt` recorded
+    // the engine's OWN classes as pre-existing, and release then refused to
+    // remove them.
+    //
+    // Measured: a fresh element handed to `updateFromHtml` still read
+    // `class="my-page stf__item --soft"` after `destroy()`, where a leaf present
+    // at the initial load cleans to `class=""`. That is U1 again, on the one
+    // path the React binding uses for EVERY page it adds — so a book that grows
+    // a page leaks engine classes onto the consumer's node for the life of the
+    // document.
+    //
+    // Safe to reorder: `load()` reads only `dataset.density` off each element
+    // and stamps classes onto it. It never inspects the node's parent, and the
+    // collection was handed `ui.getDistElement()` at construction above, which
+    // exists either way.
     ui.updateItems(items);
+    pages.load();
     render.reload();
 
     // Same clamp-then-report-resolved contract as `replacePages`. `show()`
