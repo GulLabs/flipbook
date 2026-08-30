@@ -10,6 +10,7 @@ import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { PageOrientation } from '../Page/Page';
 import type { FlipSetting } from '../Settings';
+import { PageFlipError } from '../errors';
 
 /**
  * Class responsible for rendering the Canvas book
@@ -24,7 +25,14 @@ export class CanvasRender extends Render {
     this.canvas = inCanvas;
     const ctx = inCanvas.getContext('2d');
     if (!ctx) {
-      throw new Error('Canvas 2D context is not available');
+      // `PageFlipError`, not a bare `Error` — the same family as X10, and the
+      // same code `HTMLRender` uses when its own construction fails. This is a
+      // real runtime condition, not a can't-happen: a browser refuses a 2D
+      // context once too many live contexts exist, and it surfaces to the
+      // consumer as a rejected `loadFromImages()`. Its neighbour on that path
+      // (a failed canvas-chunk import) already rejects with `CANVAS_LOAD`, so
+      // an untyped throw here was the one hole in an otherwise typed contract.
+      throw new PageFlipError('Canvas 2D context is not available', 'RENDER_SETUP');
     }
     this.ctx = ctx;
   }

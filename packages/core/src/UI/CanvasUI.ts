@@ -5,6 +5,7 @@
 import { UI } from './UI';
 import type { PageFlip } from '../PageFlip';
 import type { FlipSetting } from '../Settings';
+import { PageFlipError } from '../errors';
 
 /**
  * Backing-store scale for a canvas of a given CSS size.
@@ -98,7 +99,11 @@ export class CanvasUI extends UI {
     // harmless because `UI` PREPENDS its wrapper — but the coupling is real.
     const canvas = this.wrapper.querySelector('canvas');
     if (!(canvas instanceof HTMLCanvasElement)) {
-      throw new Error('Canvas element was not created');
+      // Typed, like every other engine failure — a bare `Error` cannot be told
+      // apart from a consumer's own by `err.code`. Reachable without a bug
+      // here: `innerHTML` is what builds this element, so a Trusted Types
+      // policy or a DOM sanitizer that strips `<canvas>` lands exactly here.
+      throw new PageFlipError('Canvas element was not created', 'RENDER_SETUP');
     }
     this.canvas = canvas;
 

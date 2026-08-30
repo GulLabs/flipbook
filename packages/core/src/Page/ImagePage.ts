@@ -42,8 +42,20 @@ export class ImagePage extends Page {
   /** The copy this page animates during a portrait turn. */
   private temporaryCopy: ImagePage | null = null;
 
-  /** True for a page created by `newTemporaryCopy()`, which borrows a bitmap. */
-  private readonly isTemporaryCopy: boolean;
+  /**
+   * The page this one borrows its bitmap from — `null` for a real page.
+   *
+   * A temporary copy owns no resource, so it must own no resource *state*
+   * either. It used to snapshot `share.isLoad` at construction: the origin's
+   * `onload` sets the origin's flag, so a copy made while the bitmap was still
+   * decoding stayed `isLoad === false` for good — and `newTemporaryCopy()`
+   * caches the copy, so that leaf's fold spun a loader for the rest of the
+   * session while the static leaf underneath showed the picture. The same
+   * snapshot in the other direction is worse: after the origin is `dispose()`d
+   * its `src` is removed, which puts the element in the *broken* state, and
+   * `drawImage` on a broken image throws `InvalidStateError` out of the frame.
+   */
+  private readonly origin: ImagePage | null;
 
   constructor(render: Render, href: string, density: PageDensity, share?: ImagePage) {
     super(render, density);
@@ -52,14 +64,27 @@ export class ImagePage extends Page {
       // Share the already-decoded bitmap: a temporary copy must not issue a
       // second request, and has to be drawable on the frame it is created.
       this.image = share.image;
-      this.isLoad = share.isLoad;
-      this.isTemporaryCopy = true;
+      this.origin = share;
       return;
     }
 
-    this.isTemporaryCopy = false;
+    this.origin = null;
     this.image = new Image();
     this.image.src = href;
+  }
+
+  /**
+   * What this leaf has to paint this frame.
+   *
+   * Three states, one place: gone (paper only), still arriving (loader), and
+   * drawable (bitmap). A temporary copy answers with its origin's state — it is
+   * a second `PageState` over one bitmap, not a second resource.
+   */
+  private drawState(): 'paper' | 'loader' | 'image' {
+    if (this.disposed) return 'paper';
+    if (this.origin !== null) return this.origin.drawState();
+
+    return this.isLoad ? 'image' : 'loader';
   }
 
   public draw(_tempDensity?: PageDensity): void {
@@ -69,39 +94,49 @@ export class ImagePage extends Page {
     const pageWidth = this.render.getRect().pageWidth;
     const pageHeight = this.render.getRect().height;
 
+    // `finally`, for the same reason `CanvasRender.drawFrame` has one: a
+    // canvas op in here can throw. `drawImage` is specified to raise
+    // `InvalidStateError` for an image element in the *broken* state, which is
+    // what an element becomes when its `src` is removed. An unbalanced `save()`
+    // does not just lose this leaf: the enclosing frame's `restore()` then pops
+    // THIS save instead of its own, so the frame's base transform and the
+    // portrait clip survive into every later frame — defect G1 again, arrived
+    // at from the other end.
     ctx.save();
-    ctx.translate(pagePos.x, pagePos.y);
-    ctx.beginPath();
+    try {
+      ctx.translate(pagePos.x, pagePos.y);
+      ctx.beginPath();
 
-    for (const p of this.state.area) {
-      if (p !== null) {
-        const globalPoint = this.render.convertPointToGlobal(p);
-        ctx.lineTo(globalPoint.x - pagePos.x, globalPoint.y - pagePos.y);
+      for (const p of this.state.area) {
+        if (p !== null) {
+          const globalPoint = this.render.convertPointToGlobal(p);
+          ctx.lineTo(globalPoint.x - pagePos.x, globalPoint.y - pagePos.y);
+        }
       }
-    }
 
-    ctx.rotate(this.state.angle);
+      ctx.rotate(this.state.angle);
 
-    ctx.clip();
+      ctx.clip();
 
-    // The turning leaf is paper before it is art. Without this the bitmap is
-    // painted straight onto the already-drawn page beneath, so a transparent
-    // PNG reads through the fold — the §4.2 bug `pageBackground` exists to
-    // prevent, which was fixed for HTML and missed here.
-    ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
-    ctx.fillRect(0, 0, pageWidth, pageHeight);
+      // The turning leaf is paper before it is art. Without this the bitmap is
+      // painted straight onto the already-drawn page beneath, so a transparent
+      // PNG reads through the fold — the §4.2 bug `pageBackground` exists to
+      // prevent, which was fixed for HTML and missed here.
+      ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
+      ctx.fillRect(0, 0, pageWidth, pageHeight);
 
-    // A disposed page is paper and nothing else: the bitmap is gone and no
-    // load is pending, so a loader here would spin forever.
-    if (!this.disposed) {
-      if (!this.isLoad) {
+      // A disposed page is paper and nothing else: the bitmap is gone and no
+      // load is pending, so a loader here would spin forever.
+      const state = this.drawState();
+
+      if (state === 'loader') {
         this.drawLoader(ctx, { x: 0, y: 0 }, pageWidth, pageHeight);
-      } else {
+      } else if (state === 'image') {
         ctx.drawImage(this.image, 0, 0, pageWidth, pageHeight);
       }
+    } finally {
+      ctx.restore();
     }
-
-    ctx.restore();
   }
 
   public simpleDraw(orient: PageOrientation): void {
@@ -115,17 +150,27 @@ export class ImagePage extends Page {
 
     const y = rect.top;
 
-    // Static leaves are opaque paper too — same reason as `draw()`.
-    ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
-    ctx.fillRect(x, y, pageWidth, pageHeight);
+    // Bracketed like `draw()`. This path used to write `fillStyle`, and
+    // `drawLoader` `strokeStyle` and `lineWidth`, straight onto the shared
+    // context with nothing to put them back — so a still-loading LEFT leaf left
+    // a 10px grey pen set for whatever drew next, and a throw from `drawImage`
+    // would have escaped with those still in place.
+    ctx.save();
+    try {
+      // Static leaves are opaque paper too — same reason as `draw()`.
+      ctx.fillStyle = foldFill(this.render.getSettings().pageBackground);
+      ctx.fillRect(x, y, pageWidth, pageHeight);
 
-    // Same reason as `draw()` — see the comment there.
-    if (!this.disposed) {
-      if (!this.isLoad) {
+      // Same reason as `draw()` — see the comment there.
+      const state = this.drawState();
+
+      if (state === 'loader') {
         this.drawLoader(ctx, { x, y }, pageWidth, pageHeight);
-      } else {
+      } else if (state === 'image') {
         ctx.drawImage(this.image, x, y, pageWidth, pageHeight);
       }
+    } finally {
+      ctx.restore();
     }
   }
 
@@ -167,6 +212,11 @@ export class ImagePage extends Page {
   }
 
   public load(): void {
+    // A copy has no request of its own, and the image element it borrows
+    // already carries the origin's `onload`. Arming one here would overwrite
+    // that handler and leave the ORIGIN permanently in the loader state.
+    if (this.origin !== null) return;
+
     // Re-arming a disposed page would resurrect the bitmap it just dropped.
     if (this.isLoad || this.disposed) return;
 
@@ -193,7 +243,7 @@ export class ImagePage extends Page {
     // A temporary copy BORROWS its bitmap from the page it was made from.
     // Detaching handlers or dropping `src` here would blank the original, so a
     // copy only marks itself spent.
-    if (this.isTemporaryCopy) {
+    if (this.origin !== null) {
       this.disposed = true;
       return;
     }
