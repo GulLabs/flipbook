@@ -52,28 +52,26 @@ function stubCanvas2d() {
 /**
  * jsdom has no layout, so the computed box is what the engine will read.
  *
- * The spy is installed ONCE over a mutable box: re-spying would capture the
- * previous stub as `real` and recurse until the stack blew.
+ * `ORIGINAL_GET_COMPUTED_STYLE` is captured at MODULE LOAD, before any spy can
+ * exist. An earlier version captured it inside `stubLayout` and guarded
+ * double-install with a module flag, which recursed to a stack overflow when
+ * another test file had already spied on the shared jsdom window — the flag
+ * said "installed" while `real` pointed at someone else's spy. The shared
+ * mutable box also leaked between tests. Both were reproduced.
  */
-const layout = { width: 0, height: 0 };
-let layoutSpyInstalled = false;
+const ORIGINAL_GET_COMPUTED_STYLE = window.getComputedStyle.bind(window);
 
 function stubLayout(cssWidth: number, cssHeight: number) {
-  layout.width = cssWidth;
-  layout.height = cssHeight;
-  if (layoutSpyInstalled) return;
-
-  const real = window.getComputedStyle.bind(window);
   vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
-    const style = real(el, pseudo ?? undefined);
+    const style = ORIGINAL_GET_COMPUTED_STYLE(el, pseudo ?? undefined);
     if (!(el instanceof HTMLCanvasElement)) return style;
 
     return new Proxy(style, {
       get(target, prop) {
         if (prop === 'getPropertyValue') {
           return (name: string): string => {
-            if (name === 'width') return `${String(layout.width)}px`;
-            if (name === 'height') return `${String(layout.height)}px`;
+            if (name === 'width') return `${String(cssWidth)}px`;
+            if (name === 'height') return `${String(cssHeight)}px`;
             return target.getPropertyValue(name);
           };
         }
@@ -81,7 +79,6 @@ function stubLayout(cssWidth: number, cssHeight: number) {
       },
     });
   });
-  layoutSpyInstalled = true;
 }
 
 function backing(host: HTMLElement) {
@@ -103,7 +100,6 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
-    layoutSpyInstalled = false;
     vi.unstubAllGlobals();
     host.remove();
   });
@@ -184,6 +180,63 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     book.getUI().update();
 
     expect(backing(host)).toEqual({ w: 1600, h: 1200 });
+
+    book.destroy();
+  });
+
+  test('the cap holds even where the scale falls below 0.1', async () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    stubLayout(30000, 30000);
+
+    const book = new PageFlip(host, { width: 400, height: 300 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    const { w, h } = backing(host);
+
+    // A 0.1 floor was the SECOND version of this bug: areaCap here is 0.0965,
+    // the floor picked 0.1, and the result was 9.0M against an 8.39M ceiling.
+    // A floor and an absolute cap are contradictory claims; the cap wins.
+    expect(w * h).toBeLessThanOrEqual(MAX_BACKING_PIXELS * 1.01);
+    expect(w).toBeGreaterThan(0);
+
+    book.destroy();
+  });
+
+  test('the DRAWING scale follows the layout box, not the visual box', async () => {
+    vi.stubGlobal('devicePixelRatio', 1);
+    stubLayout(800, 600);
+
+    // A `transform: scale(.5)` ancestor halves the visual box.
+    vi.spyOn(HTMLCanvasElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 400,
+      height: 300,
+      top: 0,
+      left: 0,
+      right: 400,
+      bottom: 300,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    } as DOMRect);
+
+    const ctx = stubCanvas2d();
+    const book = new PageFlip(host, { width: 400, height: 300 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    // Assert what the RENDERER applies, not what the UI reports — an earlier
+    // version of this test read the UI's own method and therefore could not see
+    // the renderer deriving its scale somewhere else entirely.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+    const calls = ctx.setTransform.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+
+    // Deriving the scale from the visual box gives 800/400 = 2, while the
+    // render geometry stays in layout pixels — content drawn at twice the
+    // intended scale and clipped. Fixing the ALLOCATION alone left this live.
+    const [a, , , d] = calls[calls.length - 1] as number[];
+    expect(a).toBeCloseTo(1, 5);
+    expect(d).toBeCloseTo(1, 5);
 
     book.destroy();
   });

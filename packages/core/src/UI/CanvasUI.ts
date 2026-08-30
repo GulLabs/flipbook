@@ -25,20 +25,18 @@ function effectiveDevicePixelRatio(cssWidth: number, cssHeight: number): number 
 
   const areaCap = Math.sqrt(MAX_BACKING_PIXELS / (cssWidth * cssHeight));
 
-  // NOT `Math.max(1, ...)`. Flooring at 1 overrides the area cap in exactly the
-  // case the cap exists for: a canvas whose CSS box alone already exceeds the
-  // limit. A 6000x4000 book was allowed 24M backing pixels against a stated
-  // 8.4M ceiling — and on iOS, exceeding the limit does not degrade, the canvas
-  // comes back BLANK. Below 1 is a real and correct answer: render the book at
-  // less than one backing pixel per CSS pixel rather than not at all.
+  // NO LOWER BOUND. Flooring at 1 overrode the cap in exactly the case it
+  // exists for (a 6000x4000 book got 24M backing pixels against a stated 8.4M
+  // ceiling), and flooring at 0.1 did the same thing further out: a 30000x30000
+  // canvas has an areaCap of 0.0965, the floor picked 0.1, and the result was
+  // 9.0M — still over. A floor and an absolute cap are contradictory claims;
+  // the cap wins.
   //
-  // The lower bound only keeps the scale positive and finite so the transform
-  // and the division in `backingScale()` stay well defined.
-  return Math.min(raw, MAX_DEVICE_PIXEL_RATIO, Math.max(areaCap, MIN_DEVICE_PIXEL_RATIO));
+  // No floor is needed for safety either: for finite positive dimensions
+  // `areaCap` is itself finite and positive, so the scale stays well defined.
+  // Callers guard the zero-size case before reaching here.
+  return Math.min(raw, MAX_DEVICE_PIXEL_RATIO, areaCap);
 }
-
-/** Enough to keep a transform invertible; a book this large is unusable anyway. */
-const MIN_DEVICE_PIXEL_RATIO = 0.1;
 
 /** ~2896 squared. Conservative against the smallest documented canvas limits. */
 const MAX_BACKING_PIXELS = 8_388_608;
@@ -73,14 +71,27 @@ export class CanvasUI extends UI {
   }
 
   /**
-   * CSS pixels per backing pixel, per axis. `1` until the first measurement.
+   * Backing pixels per CSS pixel, per axis. `1` until the first measurement.
    *
-   * Read by `CanvasRender` to set the base transform every frame. Two axes
-   * rather than one ratio because each dimension is rounded up independently,
-   * so they can differ by a fraction of a percent on a fractional box.
+   * Two axes rather than one ratio because each dimension is rounded up
+   * independently, so they can differ by a fraction of a percent.
    */
-  public scaleX = 1;
-  public scaleY = 1;
+  private scaleX = 1;
+  private scaleY = 1;
+
+  /**
+   * The scale `CanvasRender` must apply as its base transform.
+   *
+   * Computed from the LAYOUT box at resize time, never re-derived from the
+   * canvas's visual box: `getBoundingClientRect()` is transform-aware, so
+   * inside a `transform: scale(.5)` ancestor an 800px layout canvas with an
+   * 800px backing store would report a scale of 2 while the render geometry
+   * stayed in layout pixels — content drawn at the wrong scale and clipped.
+   * Reading it from here also removes a forced style flush from every frame.
+   */
+  public getBackingScale(): { x: number; y: number } {
+    return { x: this.scaleX, y: this.scaleY };
+  }
 
   private resizeCanvas(): void {
     // The original bug here was `parseInt`, which TRUNCATED a fractional layout

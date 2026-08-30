@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Orientation, Render, type Shadow } from './Render';
+import { CanvasUI } from '../UI/CanvasUI';
 import { shouldDrawBottomPage } from './bottomPage';
 import { foldFill } from './pageBackground';
 import type { PageFlip } from '../PageFlip';
@@ -253,23 +254,18 @@ export class CanvasRender extends Render {
   }
 
   /**
-   * Backing pixels per CSS pixel, measured from the canvas itself.
+   * Backing pixels per CSS pixel, asked of the UI that owns the canvas.
    *
-   * This used to read `scaleX`/`scaleY` off the UI through a structural cast.
-   * That was a lying type: if `CanvasUI` ever renamed or stopped exposing them
-   * the cast still compiled, silently fell back to 1:1, and the whole book
-   * rendered at the wrong resolution with no error anywhere. The canvas knows
-   * its own backing size and its own CSS box, so ask it.
-   *
-   * Falls back to 1:1 for a zero-sized box — a hidden book still has to be able
-   * to run a frame without dividing by zero.
+   * Two earlier versions were wrong in different ways. A structural cast
+   * (`ui as { scaleX?: number }`) was a lying type: a rename would still
+   * compile and silently fall back to 1:1. Measuring the canvas here with
+   * `getBoundingClientRect()` was transform-AWARE, so a `scale(.5)` ancestor
+   * made this report 2 while the render geometry stayed in layout pixels — and
+   * it forced a style flush on every frame.
    */
   private backingScale(): { x: number; y: number } {
-    const box = this.canvas.getBoundingClientRect();
+    const ui = this.app.getUI();
 
-    return {
-      x: box.width > 0 ? this.canvas.width / box.width : 1,
-      y: box.height > 0 ? this.canvas.height / box.height : 1,
-    };
+    return ui instanceof CanvasUI ? ui.getBackingScale() : { x: 1, y: 1 };
   }
 }
