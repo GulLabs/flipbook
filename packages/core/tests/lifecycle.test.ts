@@ -418,13 +418,17 @@ describe('updateFromHtml abandons an in-flight turn (P2 / I9)', () => {
 
     book.updateFromHtml(makePages(6));
 
-    // Exactly ONE page announcement: the one the rebuilt collection settled on.
-    // This is the assertion that separates `cancelAnimation()` from the
-    // plausible-looking `finishAnimation()` — the latter runs `onAnimateEnd`
-    // first, committing a phantom turn to page 1 on the collection that is
-    // about to be destroyed, and every other symptom of that is then masked by
-    // the clamp-and-show below it.
-    expect(flips).toEqual([0]);
+    // NO page announcement at all: the book was on page 0 and the rebuilt
+    // collection settles on page 0, so nothing changed and nothing is claimed.
+    // (Was `[0]` before ADR 0003, when `flip` fired on every repaint.)
+    //
+    // This still separates `cancelAnimation()` from the plausible-looking
+    // `finishAnimation()`, and it separates it HARDER: the latter runs
+    // `onAnimateEnd` first, committing a phantom turn to page 1 on the
+    // collection that is about to be destroyed. That is a real index move, so
+    // it announces — the array comes back non-empty — where every other symptom
+    // of it is masked by the clamp-and-show below.
+    expect(flips).toEqual([]);
 
     // `cancelAnimation()` drops the animation; `finishAnimation()` would have
     // run `onAnimateEnd` and committed the turn onto the destroyed collection.
@@ -1944,9 +1948,15 @@ describe('round 9 — two engines on one host', () => {
  *
  * Seven reentrancy defects had been fixed on the turn and teardown paths. These
  * two are the load path: `Render.start()` calls `update()`, which on a fresh
- * render always reports an orientation change, and `updateOrientation` emits
- * `flip` before `changeOrientation`. Consumer code therefore runs while
- * `start()` is halfway through installing the loop.
+ * render always reports an orientation change, so `updateOrientation` dispatches
+ * while `start()` is halfway through installing the loop.
+ *
+ * These hooked `flip` until ADR 0003, which stopped it firing for a book that
+ * loads at page 0 — nothing changed, so nothing is announced. `changeOrientation`
+ * is dispatched from the same `updateOrientation` call and lands in the same
+ * reentrancy window, so it replaces it. Each test now asserts that its listener
+ * actually RAN: a re-anchored hook that silently never fires turns a reentrancy
+ * test into a test that passes because nothing happened.
  */
 describe('RE-1 — a listener during the first paint cannot leave a zombie loop', () => {
   test('destroy() from the first `flip` leaves nothing scheduled', () => {
@@ -1962,7 +1972,9 @@ describe('RE-1 — a listener during the first paint cannot leave a zombie loop'
 
     const book = new PageFlip(host(), { width: 200, height: 300 });
 
-    book.on('flip', () => {
+    let reentered = false;
+    book.on('changeOrientation', () => {
+      reentered = true;
       book.destroy();
     });
 
@@ -1975,6 +1987,8 @@ describe('RE-1 — a listener during the first paint cannot leave a zombie loop'
       book.loadFromHTML(makePages(6));
     }).not.toThrow();
 
+    // The hook fired, so the reentrancy below was actually exercised.
+    expect(reentered).toBe(true);
     expect(book.isDestroyed()).toBe(true);
 
     // Run whatever was queued. THIS is the assertion: the zombie frame called
@@ -1998,13 +2012,15 @@ describe('RE-1 — a listener during the first paint cannot leave a zombie loop'
     const book = new PageFlip(host(), { width: 200, height: 300 });
 
     let swapped = false;
-    book.on('flip', () => {
+    book.on('changeOrientation', () => {
       if (swapped) return;
       swapped = true;
       book.loadFromHTML(makePages(6));
     });
 
     book.loadFromHTML(makePages(4));
+
+    expect(swapped).toBe(true);
 
     // Reverted fix: the nested load installed a new UI, render and collection,
     // and then the OUTER `start()` revived the old, detached render. Its

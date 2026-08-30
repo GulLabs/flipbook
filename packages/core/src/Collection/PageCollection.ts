@@ -459,7 +459,34 @@ export abstract class PageCollection {
     // so `getCurrentPageIndex`, `turnToPage` and the React controlled `page`
     // prop keep their meaning. Index order is reading order; the spatial side
     // is derived from it, never the other way round.
+    // ADR 0003. The ASSIGNMENT is unconditional — `currentPageIndex` must
+    // always describe what is on screen. Only the ANNOUNCEMENT is guarded.
+    //
+    // Inherited verbatim from upstream, both lines fired on every repaint, so
+    // `flip` meant "`showSpread` ran" while its name, its own JSDoc and every
+    // consumer binding read it as "the page changed". Mounting a book emitted
+    // it twice before any turn; `updateSettings({ drawShadow })` emitted it;
+    // `turnToPage(currentIndex)` emitted it; and abandoning an in-flight fold
+    // emitted a `flip` for a turn that never committed — enough to drive
+    // controlled state, analytics, or an `onFlip` auto-advance.
+    //
+    // Guarding on the index is safe because within one spread table, spread
+    // index and head index are in BIJECTION: portrait pushes `[i]` for every
+    // `i`, landscape pushes disjoint ascending groups, so no two spreads share
+    // a `spread[0]`. In a fixed orientation "the spread changed" and "the index
+    // changed" are therefore the same predicate, and this cannot suppress a
+    // real turn — only a repaint announcement.
+    //
+    // A re-spread across an orientation change is the one case outside that
+    // bijection, and it still emits whenever the head actually moves. It must:
+    // the payload IS `getCurrentPageIndex()`, so a silent change desyncs every
+    // consumer caching it.
+    const changed = this.currentPageIndex !== headIdx;
+
     this.currentPageIndex = headIdx;
-    this.app.updatePageIndex(this.currentPageIndex);
+
+    if (changed) {
+      this.app.updatePageIndex(this.currentPageIndex);
+    }
   }
 }

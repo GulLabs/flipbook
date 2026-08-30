@@ -301,6 +301,43 @@ There is no public `offAll()`. `off(name)` still removes every listener for one
 event (and `off(name, callback)` removes just one), while complete unbinding
 across all events is what `destroy()` now does.
 
+### `flip` fires only when the page actually changes (ADR 0003)
+
+**Read this one even if you skim the rest.** It is the highest-risk change here:
+it compiles, it type-checks, and it surfaces later in analytics or in an
+auto-advance loop rather than at the call site.
+
+`flip` — and therefore React's `onFlip` and `onPageChange` — used to fire every
+time the spread was repainted. That was inherited from upstream, where the same
+two lines ran unconditionally, and it was never intentional. It now fires only
+when `getCurrentPageIndex()` changes.
+
+What stops firing:
+
+- **Mounting.** A book that opens at page 0 emits no `flip` at all — previously
+  two. **If you seeded initial page state from the first `flip` / `onPageChange`,
+  use `init` / `onInit` instead**; it carries the resolved index, and it always
+  did. This is the only path where the change is observable as a loss.
+- `updateSettings({ … })` on anything that cannot move the page.
+- `turnToPage(n)` when `n` is already on screen — including the other page of
+  the same landscape spread, since both report the spread head.
+- An orientation change that leaves the head where it was (landscape `[2,3]` →
+  portrait `[2]` both report `2`). `changeOrientation` carries that news.
+- Abandoning an in-flight fold. It previously announced a turn that never
+  committed.
+
+What still fires, unchanged: every real turn, exactly once — including an
+orientation change that genuinely moves the head (portrait page `3` → landscape
+spread `[2,3]`, head `2`). And `clear()` still does not emit `flip`, which it
+never did.
+
+If you were using `flip` as a "the book repainted" signal, use `update` — that
+is what it means, and you lose nothing.
+
+The React binding needs no change: `HTMLFlipBook` and `usePageFlip` already
+re-derive the index and page count from the engine on `collectionRebuild`
+rather than trusting the flip stream.
+
 ### `clear()` now emits events
 
 `clear()` emits `update` and `collectionRebuild` with `page: 0` and

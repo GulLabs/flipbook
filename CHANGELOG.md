@@ -4,6 +4,36 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Changed — `flip` announces a page change, not a repaint (ADR 0003)
+
+`flip` (React: `onFlip` / `onPageChange`) fired on every spread repaint,
+inherited verbatim from upstream `page-flip@2.0.7`. It now fires only when
+`getCurrentPageIndex()` changes.
+
+- **No longer emitted:** mounting a book that opens at page 0 (previously
+  twice), `updateSettings` on a setting that cannot move the page,
+  `turnToPage(n)` for a page already on screen, an orientation change that
+  preserves the spread head, and abandoning an in-flight fold — which announced
+  a turn that never committed.
+- **Still emitted, exactly once:** every real turn, and an orientation change
+  that genuinely moves the head.
+- **Seeding initial state from the first `flip` no longer works** — use `init` /
+  `onInit`, which carries the resolved index. See `MIGRATION.md`.
+- Safe by construction: within one spread table, spread index and head index are
+  in bijection, so "the spread changed" and "the index changed" are the same
+  predicate. The guard cannot suppress a real turn.
+- No React binding change was needed — it already re-derives from the engine on
+  `collectionRebuild`.
+
+### Fixed — a mid-turn `direction` change no longer splits the book
+
+`PageCollection.showSpread` re-mirrors the static spread immediately, but the
+fold is stamped once at turn start (`Render.direction`, `FlipCalculation`), so
+toggling `direction` mid-turn left the resting pages in one reading and the
+curl, underside, shadows and z-order in the other until the animation snapped.
+`updateSettings` now settles the fold — `cancelAnimation()` + `abandon()`, the
+same pair every other state-invalidating path uses.
+
 ### Removed — canvas mode (ADR 0002)
 
 Owner decision: canvas mode is gone. HTML mode stays; renderer abstractions stay

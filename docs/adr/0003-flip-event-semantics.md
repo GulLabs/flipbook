@@ -1,0 +1,165 @@
+# ADR 0003 — `flip` means the page changed, not the spread repainted
+
+**Status:** Accepted, 2026-08-30. Decided by an agent under [`AGENTS.md`](../../AGENTS.md) §5:
+pre-publish, an API decision is a normal design decision made with a Codex
+signoff, a domain expert, and this record of the rejected alternatives. Owner
+may veto — see "What only the owner can answer".
+
+**Related:** [ADR 0002](./0002-remove-canvas-mode.md).
+
+## Decision
+
+`flip` fires **only when `getCurrentPageIndex()` actually changes.**
+
+`PageCollection.showSpread` guards the dispatch, not the assignment —
+`currentPageIndex = headIdx` stays unconditional. That is the whole change.
+
+`clear()` continues to emit no `flip`, unchanged and deliberately.
+
+## The defect
+
+`showSpread` ended with two unconditional lines, inherited verbatim from
+upstream `page-flip@2.0.7` (verified: `git show
+upstream-page-flip-2.0.7:packages/core/src/Collection/PageCollection.ts` is
+byte-identical here). `updatePageIndex` is a bare `dispatch('flip', …)`. So
+`flip` meant **"`showSpread` ran"** — the render's left/right page references
+were re-stamped — while its name, its own JSDoc ("a page number change event"),
+and every consumer binding treat it as "the page changed".
+
+Upstream never documented that. It was an accident of implementation.
+
+Measured consequences, each traced to a public entry point:
+
+- Mounting a `<HTMLFlipBook>` fired `onPageChange` twice, before any turn.
+- `updateSettings({ drawShadow: false })` fired `flip`.
+- `turnToPage(currentIndex)` fired `flip`.
+- An orientation change that _preserved_ the head (landscape `[2,3]` → portrait
+  `[2]`) fired `flip(2)` at a reader already on page 2.
+- And the one that surfaced it: abandoning an in-flight fold on a mid-turn
+  `direction` change repaints the unchanged spread, so consumers received
+  `changeState: READ` then `flip: 0` for a turn that **never committed** —
+  enough to drive controlled state, analytics, or an `onFlip` auto-advance.
+
+Not a symptom, and worth recording because it was asserted in the first draft of
+this ADR and is false: a **same-orientation resize does not emit `flip`**.
+`Render.update` calls `app.updateOrientation()` only inside
+`if (this.orientation !== orientation)`, and never calls `pages.show()` itself.
+
+## Why this change cannot break a real turn
+
+Within one spread table, **spread index ↔ head index is a bijection**. Portrait
+pushes `[i]` for every `i`; landscape pushes disjoint, strictly ascending
+groups. Two distinct spreads never share a `spread[0]`.
+
+So in a fixed orientation, "the spread changed" and "`currentPageIndex` changed"
+are the same predicate. Every real turn — `showNext`, `showPrev`, `turnToPage`
+to a different spread, an animated turn's `onAnimateEnd` — necessarily moves the
+index. The new rule is provably conservative: it can suppress a repaint
+announcement and nothing else. That is what makes it the right change this close
+to a first publish rather than a risky one.
+
+The bijection holds only _within_ one table, which is why orientation gets its
+own answer below.
+
+## Two consequences that are correct but must be stated
+
+**A book opening at page 0 now emits no `flip` on load at all** —
+`currentPageIndex` is initialised to `0`, so nothing changes. The mount noise
+disappears entirely rather than halving. `init` is the load announcement and
+carries the resolved index; a consumer seeding initial state from the first
+`flip` must use `init` instead. Adding a first-emit exception was rejected: it
+would re-create precisely the mount noise being removed.
+
+**An orientation change that MOVES the head still emits**, and should.
+`flip`'s payload _is_ `getCurrentPageIndex()`; if that value changes and no
+event says so, every consumer caching it is silently stale — the desync class
+this repo has already paid for twice. Suppressing it would instead oblige every
+consumer to know that `changeOrientation` implies a possible index move.
+
+Known ordering quirk, pre-existing and unchanged: `updateOrientation` calls
+`update()` — and therefore emits `flip` — **before** dispatching
+`changeOrientation`, so the `flip` arrives while the consumer still believes the
+old orientation. Recorded here so it is found rather than rediscovered.
+
+## Why `clear()` stays silent
+
+It moves the index 4 → 0 and emits `update` + `collectionRebuild`, no `flip`.
+Three reasons it must stay that way:
+
+1. **"The index changed" is not well-defined there.** The collection's internal
+   `currentPageIndex` is still 4, while `getCurrentPageIndex()` already reports
+   0 for an empty book via `resolvedPageIndex`. A rule implemented in
+   `showSpread` sees 4; the consumer sees 0. `flip(0)` would report a transition
+   the collection never made.
+2. **`flip: 0` on an empty book names a page that does not exist** —
+   `getPage(0)` throws `INVALID_PAGE`.
+3. **The existing L3 comment in `clear()` already reasons this out** — "`update`
+   because what is rendered changed, `collectionRebuild` because the collection
+   did, not `flip` (no turn happened)". That is the same principle this ADR
+   generalises. Adding `flip` to `clear` would contradict the change while
+   claiming to implement it.
+
+## Alternatives rejected
+
+**(b) Keep `flip` as-is; add a new event for real turns.** Ships the bug
+permanently and names the workaround: the correct event becomes the obscure one
+while `flip` — the one every consumer binds, the one `onFlip`/`onPageChange` map
+to — stays wrong forever. It also forces `HTMLFlipBook` to either remap
+`onPageChange` (the same behaviour change with more surface) or ship a knowingly
+noisy one. The only argument for it is compatibility, and there are no consumers
+yet.
+
+**(c) Fix only the abandon path so it does not repaint.** Treats the symptom
+that happened to be noticed; the mount double-fire, `turnToPage(sameIndex)`, the
+settings push and the head-preserving re-spread all survive. It also pushes the
+fix into several places that must each remember not to repaint, which is the
+"every caller must remember" shape this codebase has repeatedly refactored away
+from. And it is wrong on its own terms: after an abandoned fold the spread
+genuinely **must** be repainted. What must not happen is the announcement.
+
+**(d) Filter duplicates in the React binding.** The worst option. It leaves the
+published, standalone engine lying to every non-React consumer, including this
+repo's own vanilla example; it duplicates state in the file CLAUDE.md flags as
+load-bearing and easy to break; and it cannot filter honestly — the binding
+cannot tell `flip(2)` from an orientation re-spread (must pass) from `flip(2)`
+after a no-op `turnToPage(2)` (must not) without re-deriving the engine's state.
+Fixing a truth problem in the layer that consumes the truth.
+
+**(e) Fire on _spread_ change rather than index change.** The closest rival. It
+differs in exactly one case: landscape `[2,3]` → portrait `[2]`, where the
+spread index moves but the head does not. Emitting there tells a consumer "you
+flipped to page 2" when they were already on page 2 — a false positive in the
+one place `changeOrientation` already covers. Rejected because the payload is
+the page index, so the payload is what the predicate should be about.
+
+**(f) Keep the unconditional emit, widen the payload to
+`{ page, previous, reason }`.** A breaking change to `FlipbookEventMap['flip']`
+and to `onFlip`'s public type that makes every consumer write the filter the
+engine should write once. Recorded because "add context instead of suppressing"
+is a plausible instinct.
+
+**(g) Thread a `reason`/origin through `showSpread` and emit only for
+turn-originated shows.** Strictly more machinery — an argument threaded through
+four call chains — for a worse answer at the one place it differs: an
+orientation re-spread is not turn-originated, so it would be suppressed, which
+the section above argues against.
+
+## Consequences
+
+- `MIGRATION.md` gets a loud entry. Silently altering an inherited event's
+  firing conditions is the highest-risk fork divergence there is: it compiles,
+  it type-checks, every test that does not count events passes, and it surfaces
+  in a consumer's analytics weeks later.
+- Anyone who used `flip` as a "the book repainted" signal should use `update`,
+  which legitimately means exactly that. Nobody loses a capability.
+- **No change is needed in `HTMLFlipBook.tsx` or `usePageFlip.ts`.** That is a
+  finding, not an omission: both already re-derive index and count from the
+  engine on `collectionRebuild` rather than trusting the flip stream, which is
+  why they survive untouched.
+
+## What only the owner can answer
+
+**Does the downstream GulLabs consumer seed its initial page state from the
+first `onPageChange` rather than from `onInit`?** That is the one path where
+this change is observable as a loss. If it does, the migration note should name
+`onInit` as the fix in its first line rather than in a bullet.
