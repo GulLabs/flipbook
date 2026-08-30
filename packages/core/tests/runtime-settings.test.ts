@@ -101,16 +101,21 @@ describe('runtime-updatable settings reach their collaborator', () => {
 });
 
 /**
- * W2 — `Render` reads settings from its own reference, not through the app.
+ * `Render` and `PageFlip` share ONE settings object.
  *
- * `calculateRect` used `this.app.getSettings().usePortrait` while every value
- * beside it came from `this.setting`. The two are the same object today, so
- * that was inert; this pins the invariant that makes both correct, because the
- * moment anyone clones settings on the way in, only one of the two readers
- * keeps seeing updates — Y5's exact bug class, and `swipeDistance` already
- * shipped that way once.
+ * Renamed from "W2" and re-scoped, because as a W2 test it was worthless and
+ * Codex was right to say so: `this.setting` and `app.getSettings()` are the
+ * same mutated object, so reverting the reader W2 changed leaves this passing.
+ * It never could have discriminated — there is no observable difference between
+ * two names for one object, which is exactly WHY W2 was recorded as a
+ * consistency fix and not a defect.
+ *
+ * What it does prove is the invariant that makes both readers correct: settings
+ * reach `Render` live. Revert THAT — clone the object in `Render`'s constructor
+ * — and this fails. That is the failure W2 was insurance against, and it is the
+ * one worth a test.
  */
-describe('W2 — Render and PageFlip share one settings object', () => {
+describe('settings reach Render live, not by value', () => {
   test('updateSettings({ usePortrait }) reaches the render geometry', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);

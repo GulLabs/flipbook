@@ -1336,3 +1336,147 @@ describe('AN4 — a turn started from `changeState` cannot be overrun either', (
     expect(app.getCurrentPageIndex()).toBe(1);
   });
 });
+
+/**
+ * Codex round 8 — ownership across an interruption.
+ *
+ * AN4 stopped a nested turn being OVERRUN. These are the other half: what the
+ * interrupted turn leaves behind, and the two remaining places turn setup hands
+ * control to consumer code. All four were reproduced against the built engine
+ * before being fixed.
+ */
+describe('AN6 — an interrupted turn takes its destination with it', () => {
+  test('a drag that grabs a `flip(page)` makes its OWN one-step turn', () => {
+    const { book: app } = book({ pageCount: 8, width: 200, height: 300, flippingTime: 400 });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+    const leafLeft = rect.left + rect.width - rect.pageWidth;
+
+    app.flip(5);
+    expect(app.getRender().isAnimating()).toBe(true);
+
+    // The reader catches the moving leaf and carries it across the spine.
+    app.startUserTouch({ x: leafLeft + rect.pageWidth - 20, y: rect.top + 5 });
+    app.userMove({ x: leafLeft + rect.pageWidth - 60, y: rect.top + 8 }, false);
+    app.userMove({ x: leafLeft - rect.pageWidth, y: rect.top + 10 }, false);
+    app.userStop({ x: leafLeft - rect.pageWidth, y: rect.top + 10 });
+    app.getRender().finishAnimation();
+
+    // Reverted fix: 5. V1 cancels the `flip(5)` and resets the calculation, but
+    // `pendingTarget` survived `reset()` — so the reader's own one-step turn
+    // consumed a destination it never asked for. Their drag, someone else's
+    // page.
+    expect(app.getCurrentPageIndex()).toBe(1);
+    expect(flip.getCalculation()).toBeNull();
+  });
+
+  test('an instant nested turn cannot leave the two spread getters disagreeing', () => {
+    const { book: app } = book({ pageCount: 8, width: 200, height: 300, flippingTime: 0 });
+
+    let chained = false;
+    app.on('changeState', (e) => {
+      if ((e.data as string) !== 'flipping' || chained) return;
+      chained = true;
+      app.flipNext();
+    });
+
+    expect(() => {
+      app.flip(5);
+    }).not.toThrow();
+
+    // Reverted fix: `getCurrentPageIndex() === 5` with
+    // `getCurrentSpreadIndex() === 0`. The phantom spread was still installed
+    // when `setState(FLIPPING)` dispatched, so the nested turn chose its pages
+    // from a spread the book was not on and — being instant — committed off it,
+    // after which the outer arm restored only the index. Two public getters
+    // contradicting each other is not a state any consumer can reason about.
+    const index = app.getCurrentPageIndex();
+    const spread = app.getPageCollection().getCurrentSpreadIndex();
+    expect(index).toBe(1);
+    expect(spread).toBe(1);
+    expect(app.getPageCollection().getSpreadIndexByPage(index)).toBe(spread);
+  });
+
+  test('the phantom spread is never observable from a `changeState` listener', () => {
+    const { book: app } = book({ pageCount: 8, width: 200, height: 300, flippingTime: 400 });
+
+    const seen: number[] = [];
+    app.on('changeState', () => {
+      // The `isDestroyed()` guard is not defensive padding — it is L8, found by
+      // this very test. `destroy()` calls `abandon()`, which announces READ,
+      // and Y2 deliberately clears listeners LAST so teardown's own events
+      // still land. By then `pages` is null, so a listener that reads engine
+      // state throws `DESTROYED` — and since E2 rethrows the first listener
+      // error synchronously, that throw comes out of `book.destroy()` itself.
+      if (app.isDestroyed()) return;
+      seen.push(app.getPageCollection().getCurrentSpreadIndex());
+    });
+
+    app.flip(5);
+
+    // The phantom (spread 4) exists only so `start()` picks the DESTINATION
+    // leaves. A listener that sees it is a listener that can act on it — which
+    // is exactly how the contradiction above arose.
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen).not.toContain(4);
+    expect(seen.every((s) => s === 0)).toBe(true);
+  });
+});
+
+describe('AN5 — the last two places turn setup calls out to consumer code', () => {
+  test('a `user_fold` listener’s turn is not dragged by the finger that woke it', () => {
+    const { book: app } = book({ pageCount: 8, width: 200, height: 300, flippingTime: 400 });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+    const leafLeft = rect.left + rect.width - rect.pageWidth;
+
+    let chained = false;
+    let nestedPos: string | null = null;
+
+    app.on('changeState', (e) => {
+      if ((e.data as string) !== 'user_fold' || chained) return;
+      chained = true;
+      app.flipNext();
+      nestedPos = JSON.stringify(flip.getCalculation()?.getPosition());
+    });
+
+    app.startUserTouch({ x: leafLeft + rect.pageWidth - 5, y: rect.top + 5 });
+    app.userMove({ x: leafLeft + rect.pageWidth - 45, y: rect.top + 8 }, false);
+
+    // Reverted fix: {x:170,y:30} became {x:155,y:8} — the outer `do()` dragged
+    // the NESTED turn's calculation, because `this.calc` is what it points at,
+    // before that turn had rendered a single frame of its own.
+    expect(nestedPos).not.toBeNull();
+    expect(JSON.stringify(flip.getCalculation()?.getPosition())).toBe(nestedPos);
+  });
+
+  test('a `fold_corner` listener’s turn is not force-finished by the hover', () => {
+    const { book: app } = book({
+      pageCount: 8,
+      startPage: 2,
+      width: 200,
+      height: 300,
+      flippingTime: 400,
+    });
+    const rect = app.getBoundsRect();
+    const leafLeft = rect.left + rect.width - rect.pageWidth;
+
+    let chained = false;
+    app.on('changeState', (e) => {
+      if ((e.data as string) !== 'fold_corner' || chained) return;
+      chained = true;
+      app.flipNext();
+    });
+
+    app.userMove({ x: leafLeft + rect.pageWidth - 5, y: rect.top + 5 }, false);
+
+    // Reverted fix: the hover resumed, and `animateFlippingTo` opens by
+    // finishing whatever is running — so the listener's turn was FORCE-FINISHED
+    // and committed page 2 to 3, leaving `state: read`, `calc: null` and a ghost
+    // animation scheduled against nothing. A hover is an affordance; it must
+    // never be the thing that commits a page, least of all someone else's.
+    expect(app.getCurrentPageIndex()).toBe(2);
+    expect(app.getState()).toBe(FlippingState.FLIPPING);
+    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+  });
+});

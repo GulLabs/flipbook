@@ -128,7 +128,22 @@ export class Flip {
     // called `preventDefault()` and mobile scrolling over the book stopped.
     if (this.calc === null && !this.start(globalPos)) return;
 
+    const generation = this.turnGeneration;
+
     this.setState(FlippingState.USER_FOLD);
+
+    // AN5, confirmed against the built engine. `setState` dispatches
+    // synchronously, and a `changeState('user_fold')` listener that starts a
+    // turn installs its own calculation — which the `do()` below then DRAGS,
+    // because it is the calculation `this.calc` now points at. Measured: the
+    // nested turn's position moved from {x:170,y:30} to {x:155,y:8} before its
+    // own animation had run a single frame.
+    //
+    // This is the AN4 rule at the third and last place turn setup hands control
+    // to consumer code. A fold cannot supersede anything of its own, so there is
+    // nothing to refuse here — the nested turn simply owns the calculation now,
+    // and the reader's finger does not get to move it.
+    if (this.turnGeneration !== generation) return;
 
     this.do(this.render.convertToPage(globalPos));
   }
@@ -165,12 +180,37 @@ export class Flip {
       return false;
     }
 
-    this.pendingTarget = target;
+    // THE PHANTOM SPREAD IS INSTALLED FOR `start()` AND FOR NOTHING ELSE.
+    //
+    // It exists so `getFlippingPage` / `getBottomPage` pick the DESTINATION
+    // leaves rather than the neighbouring ones, which is a fact only `start()`
+    // needs. It used to be installed by `flipToPage` around this whole call,
+    // which meant it was still installed when `setState(FLIPPING)` below
+    // dispatched to consumer code — so a turn started from that listener chose
+    // its own flipping and bottom pages from a spread the book was not on, and
+    // with `flippingTime: 0` committed off it. Measured: `flip(5)` whose
+    // `changeState` listener called `flipNext()` left
+    // `getCurrentPageIndex() === 5` and `getCurrentSpreadIndex() === 0` — two
+    // public getters contradicting each other.
+    //
+    // `finally`, so a throw out of `start()` cannot strand it either.
+    const collection = this.app.getPageCollection();
+    const restoreSpread = target === null ? null : collection.getCurrentSpreadIndex();
 
-    // A refusal deliberately leaves `pendingTarget` alone: `flipToPage` uses it
-    // to tell "the turn never started, the phantom index is still mine to put
-    // back" apart from "an instant turn already landed".
-    if (!this.start(globalPos, direction)) return false;
+    let started: boolean;
+    try {
+      if (target !== null) collection.setCurrentSpreadIndex(target);
+      started = this.start(globalPos, direction);
+    } finally {
+      if (restoreSpread !== null) collection.setCurrentSpreadIndex(restoreSpread);
+    }
+
+    if (!started) return false;
+
+    // AFTER `start()`, because `start()` opens with `reset()` and `reset()` now
+    // drops the target. Setting it first — as this did — meant the turn's own
+    // setup wiped it on the way past.
+    this.pendingTarget = target;
 
     const calc = this.calc;
     if (calc === null) return false;
@@ -502,6 +542,13 @@ export class Flip {
     const dir = next > current ? FlipDirection.FORWARD : FlipDirection.BACK;
     const phantom = dir === FlipDirection.FORWARD ? next - 1 : next + 1;
 
+    // The phantom's whole lifetime is inside `runFlip` now — installed across
+    // `start()`, restored before anything can observe it, re-installed for the
+    // instant of the commit. This method used to install it here and unpick the
+    // restore afterwards by inspecting `pendingTarget`, which could not tell
+    // "the turn never started" from "an instant turn already landed" once a
+    // nested turn was in the mix, and left the two spread getters disagreeing.
+
     // The collection's spread index is borrowed for the duration of `start()`
     // only: `getFlippingPage` / `getBottomPage` read it, and pointing it one
     // spread short of the target is what makes the *destination* pages animate
@@ -510,14 +557,11 @@ export class Flip {
     // caller ever observes the phantom — that is what made
     // `getCurrentPageIndex()` and `getCurrentSpreadIndex()` disagree mid-turn,
     // and what made the *next* `flipToPage` compute its direction from it.
-    collection.setCurrentSpreadIndex(phantom);
-
     let started = false;
     try {
       started = this.runFlip(this.cornerPoint(corner), dir, phantom);
     } catch (err: unknown) {
       this.pendingTarget = null;
-      collection.setCurrentSpreadIndex(current);
       throw err;
     }
 
@@ -525,33 +569,20 @@ export class Flip {
     // `PageFlip.requestTurn` — `PageFlip.flip` calls this method directly. A
     // `superseded` left standing would attach itself to some unrelated later
     // refusal and report "a newer turn is running" for a book at its boundary.
+    // Read-and-clear HERE, because this path does not go through
+    // `PageFlip.requestTurn` — `PageFlip.flip` calls this method directly. A
+    // `superseded` left standing would attach itself to some unrelated later
+    // refusal and report "a newer turn is running" for a book at its boundary.
     const refusal = this.takeRefusal();
 
-    if (refusal === 'superseded') {
-      // AN4 again, on the absolute path. A turn started from this call's own
-      // `changeState('flipping')` now owns the book, and `pendingTarget` with
-      // it — so the only thing still ours to put back is the phantom spread
-      // index, and it must go back unconditionally: the test below
-      // (`pendingTarget !== null`) is asking whether OUR target survived, and
-      // here it did not because somebody else overwrote it.
-      //
-      // Returning rather than throwing, for the same reason as the guard at the
-      // top: `PageFlip.flip` is called straight from the React binding's
-      // controlled `page` prop, and nothing about the request was invalid.
-      collection.setCurrentSpreadIndex(current);
-      return;
-    }
-
-    // Instant turns (`flippingTime: 0` / reduced motion) run the animation
-    // callback synchronously inside `runFlip`: they have already consumed the
-    // target and landed. Restoring `current` then would undo a real turn — an
-    // unconsumed target is what says the phantom is still ours to put back.
-    if (this.pendingTarget !== null) {
-      collection.setCurrentSpreadIndex(current);
-      if (!started) this.pendingTarget = null;
-    }
-
     if (!started) {
+      // A turn started from this call's own `changeState('flipping')` now owns
+      // the book. Returning rather than throwing, for the same reason as the
+      // guard at the top: `PageFlip.flip` is driven straight from the React
+      // binding's controlled `page` prop, and nothing about the request was
+      // invalid — the book is moving, just not where this call asked.
+      if (refusal === 'superseded') return;
+
       throw new PageFlipError(`Flip setup failed for page ${page}`, 'FLIP_SETUP');
     }
   }
@@ -640,7 +671,22 @@ export class Flip {
         const calc = this.calc as FlipCalculation | null;
         if (calc === null) return;
 
+        const generation = this.turnGeneration;
+
         this.setState(FlippingState.FOLD_CORNER);
+
+        // The same window, and the most destructive of the three: everything
+        // below seeds a calculation and starts an animation, and
+        // `animateFlippingTo` opens by finishing whatever is running. A
+        // `changeState('fold_corner')` listener that starts a turn therefore had
+        // its turn FORCE-FINISHED by the resumed hover — measured on a book at
+        // page 2: it committed to page 3, and the engine came to rest with
+        // `state: read` and `calc: null` while a ghost animation was still
+        // scheduled against nothing.
+        //
+        // A hover is an affordance. It must never be the thing that commits a
+        // page, and it certainly must not commit someone else's turn.
+        if (this.turnGeneration !== generation) return;
 
         // Z1. The peel is bounded by the leaf it peels.
         //
@@ -935,6 +981,14 @@ export class Flip {
     this.calc = null;
     this.flippingPage = null;
     this.bottomPage = null;
+
+    // The absolute destination belongs to the TURN, so anything that destroys
+    // the turn destroys it too. It used to survive: `fold()`'s V1 cancellation
+    // reset the calculation and left `pendingTarget` behind, so the reader who
+    // grabbed a `flip(5)` mid-flight and dragged the leaf across the spine had
+    // their own one-step turn consume the stale target and land on page 5.
+    // Their drag, someone else's destination.
+    this.pendingTarget = null;
 
     // Put back every drawing density this turn overrode. `getDensity()` is the
     // density the page was created with, so this restores rather than freezes.

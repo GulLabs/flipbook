@@ -18,6 +18,28 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — an interrupted turn no longer leaves its destination behind
+
+- **A drag that grabs a `flip(page)` mid-flight landed on that page instead of
+  making its own turn.** Cancelling the programmatic turn reset the calculation
+  but left the absolute destination behind, so the reader's one-step turn
+  consumed a destination they never asked for: catching the leaf of a `flip(5)`
+  and carrying it across the spine landed on page 5, not page 1.
+- **The phantom spread index was observable from `changeState`.** It exists only
+  so the engine picks the destination leaves, and it was installed across the
+  whole turn setup — including the synchronous `changeState('flipping')`
+  dispatch. A turn started from that listener therefore chose its own pages from
+  a spread the book was not on, and under `flippingTime: 0` committed off it,
+  leaving `getCurrentPageIndex()` and `getCurrentSpreadIndex()` contradicting
+  each other. Its lifetime is now the one call that needs it.
+- **A `changeState('user_fold')` listener's turn was dragged by the finger that
+  woke it.** The fold's own `do()` moved the nested turn's calculation before it
+  had rendered a frame.
+- **A `changeState('fold_corner')` listener's turn was force-finished by the
+  hover.** The resumed hover committed the listener's turn — a page turned by an
+  affordance that must never commit anything — and left a ghost animation
+  scheduled against a null calculation.
+
 ### Fixed — the render loop no longer runs forever on an untouched book
 
 - **`drawFrame()` ran on every animation frame for the life of the page**,

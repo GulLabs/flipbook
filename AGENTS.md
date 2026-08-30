@@ -160,13 +160,41 @@ is a defect no matter how well-reasoned the change is.
   yes, then implement — and if you find licensing changes you did not make,
   ask before touching them.
 - **Versioning and release timing**, publishing to npm, deprecating a version.
-- **The public API surface.** Adding a prop or an event is a product decision;
-  propose it, don't ship it.
 - **Anything that changes what a consumer is legally or contractually
   obliged to do.**
 
 If you believe one of these should change, say so and stop. A paragraph of
 justification in a commit message is not authorisation.
+
+### The public API is not on that list, and the reason matters
+
+This section used to read "**The public API surface.** Adding a prop or an event
+is a product decision; propose it, don't ship it." That was too broad, and it
+stalled the whole Phase 2 gate while agents shipped public API changes anyway
+under a different justification — `PageFlipError.code` became a union and three
+error codes were split (25fc897) on the argument that it costs nothing before
+the first publish. That argument is sound. It cannot be sound for one public
+change and not another.
+
+The line is **irreversibility**, not surface. Until the first npm publish there
+is no consumer and no compatibility debt, so an API decision is a normal design
+decision: make it with the same rigour as any other — Codex signoff, a domain
+expert, an ADR recording the rejected alternatives — and implement it. **After**
+the first publish the same decision is one-way, and it moves back under the list
+above.
+
+Two things this does not license:
+
+- Deciding a question whose answer depends on facts only the owner has, e.g. how
+  the downstream consumer actually uses the library. Go and read that repo
+  first; ask only what reading cannot answer.
+- Skipping the write-up. An API decided by an agent must land with its rationale
+  and its rejected alternatives in `docs/`, because the next agent needs to know
+  what was considered and why — that is what makes it reversible in practice and
+  not just in principle.
+
+A pure taste call with no technically better answer is still worth surfacing —
+as a recommendation the owner can veto, not as a question that blocks the work.
 
 ## 6. Toolchain and releases
 
