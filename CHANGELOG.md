@@ -4,6 +4,20 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Fixed — pointer coordinates under a transformed ancestor
+
+- **The fold followed the finger at the wrong ratio inside any `transform:
+scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
+  a presentation page. `getMousePos` produced a VISUAL-pixel offset (a
+  `PointerEvent` is measured through every ancestor transform) and handed it to
+  geometry measured in LAYOUT pixels by `offsetWidth`. The drift is proportional
+  to distance from the origin, so it is worst at the outer edge — exactly where
+  folds start. Pointer offsets are now divided by the element's own
+  visual-per-layout ratio, per axis, landing in the same space `Render` uses.
+- `z-index:;` — an invalid declaration — is no longer written into every leaf's
+  `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
+  was emitted sixty times a second.
+
 ### Fixed — engine lifecycle
 
 - `clear()` now announces the emptied book. It emits `update` (`page: 0`) and

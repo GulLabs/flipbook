@@ -30,7 +30,6 @@ export abstract class UI {
   private touchPoint: SwipeData | null = null;
   private readonly swipeTimeout = 250;
   private resizeObserver: ResizeObserver | null = null;
-  private handlersBound = false;
   /** Active pointer id, so `pointerleave` after `pointerup` is ignored. */
   private activePointerId: number | null = null;
   /**
@@ -256,7 +255,6 @@ export abstract class UI {
     this.distElement.removeEventListener('pointerleave', this.onPointerLeave);
     this.distElement.removeEventListener('lostpointercapture', this.onLostPointerCapture);
     this.distElement.removeEventListener('dragstart', this.onDragStart);
-    this.handlersBound = false;
   }
 
   protected setHandlers(): void {
@@ -280,7 +278,6 @@ export abstract class UI {
     // the events stop coming here, so the gesture is in the same position as
     // one that never captured at all — see `pointerCaptured`.
     this.distElement.addEventListener('lostpointercapture', this.onLostPointerCapture);
-    this.handlersBound = true;
   }
 
   private observeResize(): void {
@@ -314,13 +311,63 @@ export abstract class UI {
    * follow the finger. Reading direction is applied to the *turn direction*
    * only — `Flip.getDirectionByPoint` for drag/click, `swipeDirection` below
    * for swipes.
+   *
+   * U3 / I14 — the third instance of one bug class, and the only one that needs
+   * a CONVERSION rather than a change of ruler.
+   *
+   * Three coordinate spaces meet here:
+   *
+   *  - the pointer arrives in **client (visual) pixels** — that is all a
+   *    `PointerEvent` has, and it is measured through every ancestor transform;
+   *  - `getBoundingClientRect()` is likewise **transform-aware**, so it is the
+   *    right thing to locate the block's origin *in that same space*;
+   *  - but `Render` measures the book with `offsetWidth` / `offsetHeight`
+   *    ({@link Render.getBlockWidth}), which is **transform-blind** — pure
+   *    layout pixels. Every rect, page width and fold vertex downstream is in
+   *    layout pixels.
+   *
+   * Subtracting `rect.left` alone therefore produced a *visual*-pixel offset
+   * and handed it to layout-pixel geometry. At scale 1 the two spaces coincide,
+   * which is exactly why this survived; inside any `transform: scale()`
+   * ancestor — a zoom-to-fit shell, a responsive wrapper, a slide deck — the
+   * fold tracked the finger at the wrong ratio, and the error grows with the
+   * distance from the block's origin, so it is worst at the outer edge where
+   * folds actually start.
+   *
+   * The two canvas fixes for the same mismatch (`CanvasUI.resizeCanvas`,
+   * `CanvasRender.backingScale`) could simply stop measuring the visual box and
+   * measure the layout box instead, because both were measuring *the element*.
+   * That option does not exist here: the input genuinely is a visual-pixel
+   * point, so the choice is not which box to measure but which space to end up
+   * in — and it must be `Render`'s. Hence: locate the origin with the
+   * transform-aware rect (same space as the pointer), then divide by the
+   * visual-per-layout ratio of the very same element. **Output is layout
+   * pixels, relative to `distElement`** — the space `Render.convertToBook`
+   * expects.
+   *
+   * `offsetWidth`, not `getComputedStyle().width`, is the denominator on
+   * purpose: the aim is not the truest layout box but *the one `Render` uses*.
+   * Where the two differ (offset* is rounded to an integer) matching `Render`
+   * is what keeps the block's far edge in pointer space equal to the block's
+   * far edge in geometry space.
+   *
+   * Both axes are derived independently — a non-uniform `scale(sx, sy)` is
+   * legal CSS — and a zero or missing measurement (a hidden book, jsdom's
+   * unlaid-out DOM) falls back to 1:1 rather than dividing by zero.
    */
   private getMousePos(x: number, y: number): Point {
-    const rect = this.distElement.getBoundingClientRect();
+    const el = this.distElement;
+    const rect = el.getBoundingClientRect();
+
+    const layoutWidth = el.offsetWidth;
+    const layoutHeight = el.offsetHeight;
+
+    const scaleX = layoutWidth > 0 && rect.width > 0 ? rect.width / layoutWidth : 1;
+    const scaleY = layoutHeight > 0 && rect.height > 0 ? rect.height / layoutHeight : 1;
 
     return {
-      x: x - rect.left,
-      y: y - rect.top,
+      x: (x - rect.left) / scaleX,
+      y: (y - rect.top) / scaleY,
     };
   }
 
@@ -611,8 +658,4 @@ export abstract class UI {
 
     this.cancelGesture();
   };
-
-  protected get handlersAreBound(): boolean {
-    return this.handlersBound;
-  }
 }

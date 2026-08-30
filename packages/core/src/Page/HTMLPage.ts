@@ -151,7 +151,19 @@ export class HTMLPage extends Page {
     // clone time (for the gap before the first frame) and re-emitted here,
     // because `draw()` replaces `cssText` wholesale on every frame — setting it
     // only at clone time would last exactly one frame.
-    const commonStyle = `display:block;z-index:${this.element.style.zIndex};left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;background-color:${foldFill(this.render.getSettings().pageBackground)};${this.isTemporaryCopy ? 'pointer-events:none;' : ''}`;
+    // X8. `draw()` replaces `cssText` wholesale, so the z-index `HTMLRender`
+    // stamped on this element moments ago has to be re-emitted or the wipe
+    // would drop it. But a leaf that has NO inline z-index reads back `''`, and
+    // interpolating that produced the literal declaration `z-index:;` — invalid
+    // CSS, written on every frame of every draw. The CSSOM discards exactly
+    // that declaration and keeps the rest, so it costs nothing today; it is
+    // still a malformed token emitted 60×/second, and "the parser throws it
+    // away for us" is not a property worth depending on. Omit the declaration
+    // when there is no value, rather than emitting an empty one.
+    const zIndex = this.element.style.zIndex;
+    const zIndexStyle = zIndex === '' ? '' : `z-index:${zIndex};`;
+
+    const commonStyle = `display:block;${zIndexStyle}left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;background-color:${foldFill(this.render.getSettings().pageBackground)};${this.isTemporaryCopy ? 'pointer-events:none;' : ''}`;
 
     if (density === PageDensity.HARD) {
       this.drawHard(commonStyle);
