@@ -1,4 +1,23 @@
-# Canvas as a first-class renderer
+# Canvas as a first-class renderer — SUPERSEDED
+
+> **This plan is dead. Canvas mode is being REMOVED.**
+>
+> Owner decision, 2026-08-29 (later the same day as the decision below):
+> see [ADR 0002](./adr/0002-remove-canvas-mode.md). Phases 3–8 will not be
+> built. This document is retained as the record of what was inventoried and
+> why the direction was reversed — not as a plan to follow.
+>
+> Short version: HTML mode delegates to the browser; canvas mode reimplements
+> it. Restricting canvas to images made it possible, not simple. The deciding
+> evidence was that canvas kept re-introducing defects HTML mode had already
+> fixed.
+>
+> The §4.1 portrait back-flip fix — the reason this fork exists — is NOT part
+> of canvas mode and is unaffected.
+
+---
+
+## Original framing (superseded, kept for the record)
 
 Owner decision, 2026-08-29: canvas mode stops being an inherited half-feature
 and becomes a supported renderer with the same bar as HTML mode — same fixes,

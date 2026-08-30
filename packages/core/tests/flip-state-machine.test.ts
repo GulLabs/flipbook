@@ -1480,3 +1480,113 @@ describe('AN5 — the last two places turn setup calls out to consumer code', ()
     expect(app.getFlipController()!.getCalculation()).not.toBeNull();
   });
 });
+
+/**
+ * `Flip.checkState` — the guard `showCorner` opens with.
+ *
+ * A ~530-mutant sweep replaced its whole body with `{ void states; return
+ * true; }` and the entire suite stayed green, this 1,482-line file included.
+ * Its only call site is `showCorner`, whose own docblock calls the window it
+ * protects "the most destructive of the three", and nothing asserted that a
+ * hover arriving mid-turn is a no-op.
+ *
+ * A hover is an affordance. It must never commit a page, and it must never
+ * yank a fold someone else's gesture is driving.
+ *
+ * `flippingTime` is real throughout: an instant turn is over before a hover can
+ * land on it, so a `flippingTime: 0` fixture would pass against either code.
+ */
+describe('checkState — a hover arriving mid-turn is a no-op', () => {
+  /** A hover: pointer up, no buttons, so `UI` routes it to `showCorner`. */
+  function hover(app: ReturnType<typeof book>['book'], x: number, y: number): void {
+    app
+      .getUI()
+      .getDistElement()
+      .dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          pointerType: 'mouse',
+          buttons: 0,
+          clientX: x,
+          clientY: y,
+        }),
+      );
+  }
+
+  test('a hover away from the corners during FLIPPING does not finish the turn', () => {
+    const { book: app } = book({ pageCount: 6, startPage: 0, flippingTime: 400 });
+    const rect = app.getBoundsRect();
+
+    expect(app.flipNext()).toBe(true);
+    expect(app.getState()).toBe(FlippingState.FLIPPING);
+    expect(app.getCurrentPageIndex()).toBe(0);
+
+    // Mid-height, mid-leaf: `isPointOnCorners` is false here, so an unguarded
+    // `showCorner` takes its else-branch — `render.finishAnimation()` followed
+    // by `stopMove()`. `finishAnimation` runs the in-flight turn's
+    // `onAnimateEnd`, which COMMITS the page. A mouse drifting across the book
+    // would land the turn early and leave the state machine in READ.
+    hover(app, rect.left + rect.width - rect.pageWidth / 2, rect.top + rect.height / 2);
+
+    expect(app.getCurrentPageIndex()).toBe(0);
+    expect(app.getState()).toBe(FlippingState.FLIPPING);
+    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+  });
+
+  test('a hover ON a corner during FLIPPING does not drag the in-flight fold', () => {
+    const { book: app } = book({ pageCount: 6, startPage: 0, flippingTime: 400 });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+
+    expect(app.flipNext()).toBe(true);
+    const before = { ...flip.getCalculation()!.getPosition() };
+
+    // On the corner and `calc !== null`, so an unguarded `showCorner` reaches
+    // `this.do(convertToPage(globalPos))` — recomputing the running turn's
+    // geometry from the POINTER. The fold jumps to wherever the mouse is.
+    hover(app, rect.left + rect.width - 4, rect.top + 4);
+
+    expect(flip.getCalculation()!.getPosition()).toEqual(before);
+    expect(app.getState()).toBe(FlippingState.FLIPPING);
+  });
+
+  test('a hover during USER_FOLD does not steal the drag', () => {
+    const { book: app } = book({ pageCount: 6, startPage: 0, flippingTime: 400 });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+
+    // A real drag: down on the forward corner, then past the 5 px threshold.
+    const startX = rect.left + rect.width - 8;
+    const y = rect.top + 8;
+    app.startUserTouch({ x: startX, y });
+    app.userMove({ x: startX - 40, y: y + 4 }, false);
+    expect(app.getState()).toBe(FlippingState.USER_FOLD);
+
+    const before = { ...flip.getCalculation()!.getPosition() };
+
+    // Delivered through the controller rather than a pointermove, because the
+    // UI cannot produce this: while a pointer is captured every move is a
+    // `fold`. It IS reachable through the public `userMove` surface (a custom
+    // input layer, a synthetic gesture) and through any consumer holding the
+    // controller, and `showCorner` is the guard that has to hold either way.
+    flip.showCorner({ x: rect.left + rect.width - 4, y: rect.top + 4 });
+
+    expect(flip.getCalculation()!.getPosition()).toEqual(before);
+    expect(app.getState()).toBe(FlippingState.USER_FOLD);
+  });
+
+  test('…and the guard still lets a hover through from READ', () => {
+    // The control. A guard that returned `false` unconditionally would satisfy
+    // every assertion above and break the corner affordance entirely.
+    const { book: app } = book({ pageCount: 6, startPage: 0, flippingTime: 400 });
+    const rect = app.getBoundsRect();
+
+    expect(app.getState()).toBe(FlippingState.READ);
+    hover(app, rect.left + rect.width - 4, rect.top + 4);
+
+    expect(app.getState()).toBe(FlippingState.FOLD_CORNER);
+    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+  });
+});

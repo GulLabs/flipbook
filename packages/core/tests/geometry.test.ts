@@ -19,7 +19,23 @@ const RECT = {
   pageWidth: PAGE_WIDTH,
 };
 
-describe('portrait curl geometry (shipped engine)', () => {
+/**
+ * PURE-FUNCTION TESTS ONLY. These do NOT prove the engine's curl invariant.
+ *
+ * `portraitBackCurl` / `portraitForwardCurl` are one-line aliases of
+ * `portraitCurlLocal` that take no direction argument and have no caller in the
+ * engine, so `expect(back).toEqual(forward)` is a tautology — it can fail only
+ * if someone edits the aliases themselves. A mutation sweep proved it: the exact
+ * slide-in regression `CLAUDE.md` warns about, injected at `Flip.ts`'s real curl
+ * decision, left this whole file green.
+ *
+ * The invariant is asserted where the engine decides it, in
+ * `engine-curl-direction.test.ts`. What is left here is worth keeping on its own
+ * terms — `portraitCurlLocal`'s aspect-ratio bound and the `convertPageToGlobal`
+ * mirror are genuine pure-function behaviour — but read this describe block as
+ * "the exported helpers agree with each other", not as "the book curls right".
+ */
+describe('portrait curl geometry (exported helpers, NOT the engine path)', () => {
   test('portrait back and forward share the same local curl (vendor FlipCalculation space)', () => {
     const back = portraitBackCurl(PAGE_WIDTH, HEIGHT, 'top');
     const forward = portraitForwardCurl(PAGE_WIDTH, HEIGHT, 'top');

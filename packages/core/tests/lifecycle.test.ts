@@ -2632,4 +2632,86 @@ describe('RE-3 — updateSettings survives a listener destroying mid-call', () =
 
     expect(book.isDestroyed()).toBe(true);
   });
+
+  test('a listener that REPLACES the UI leaves the new one sized, not the old one', () => {
+    installPointerCaptureShims();
+    const { host: hostEl, book } = makeHtmlBook({
+      pageCount: 6,
+      usePortrait: false,
+      showCover: false,
+      flippingTime: 400,
+      hostWidth: 400,
+      hostHeight: 300,
+    });
+    const dist = book.getUI().getDistElement();
+    const rect = book.getBoundsRect();
+
+    const pointer = (type: string, x: number, y: number): void => {
+      dist.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          button: 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+          pointerType: 'mouse',
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    };
+
+    // Same real captured pointer as above, for the same reason: without it
+    // `refreshHandlers()` announces nothing and the re-entrant listener never
+    // runs, so the whole test passes vacuously.
+    pointer('pointerdown', rect.left + rect.width - 5, rect.top + 5);
+    pointer('pointermove', rect.left + rect.width - 45, rect.top + 8);
+    expect((book as unknown as { isUserTouch: boolean }).isUserTouch).toBe(true);
+
+    // REPLACES rather than destroys — a reload from a listener is legal, and it
+    // builds a whole new UI. This is the case the destroyed-check conflated.
+    let reloaded = false;
+    book.on('changeState', () => {
+      if (reloaded) return;
+      reloaded = true;
+      const pages = Array.from({ length: 4 }, () => {
+        const el = document.createElement('div');
+        hostEl.appendChild(el);
+        return el;
+      });
+      book.loadFromHTML(pages);
+    });
+
+    expect(() => {
+      book.updateSettings({ useMouseEvents: false, width: 320, height: 480 });
+    }).not.toThrow();
+
+    expect(reloaded).toBe(true);
+    expect(book.isDestroyed()).toBe(false);
+
+    // Reverted fix: `if (this.ui !== ui || this.destroyed) return` treated
+    // REPLACED as DESTROYED and bailed, so the new UI never got sized — and the
+    // old UI's `destroy()` had already restored its host-style snapshot on top
+    // of it. The book was left at the pre-engine sizing with no way back short
+    // of another `updateSettings`. Measured: `minWidth`/`minHeight` empty.
+    expect(hostEl.style.minWidth).not.toBe('');
+    expect(hostEl.style.minHeight).not.toBe('');
+
+    // …and sized by the CURRENT owner from the settings just applied, not by
+    // the stale 400x300 snapshot the old UI restored. This is the assertion
+    // that fails for a fix which merely re-stamps the captured `ui`.
+    //
+    // `640px`, not `320px`: this book is landscape (`usePortrait: false`), so
+    // the host has to hold TWO pages. The first draft asserted `320px` and
+    // failed — the engine was right and the expectation was wrong, which is
+    // worth recording, because "fix the assertion" is also how a real defect
+    // gets talked away.
+    expect(hostEl.style.minWidth).toBe('640px');
+    expect(hostEl.style.minHeight).toBe('480px');
+
+    // The host is still the engine's — a replacement is not a handback.
+    expect(hostEl.classList.contains('stf__parent')).toBe(true);
+
+    book.destroy();
+  });
 });

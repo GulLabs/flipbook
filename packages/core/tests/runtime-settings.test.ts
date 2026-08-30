@@ -7,9 +7,14 @@
  * shipped that way — set to 90, still gesturing on 30.
  */
 // @vitest-environment jsdom
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { Orientation, PageFlip, SizeType } from '@gullabs/flipbook-core';
-import { makePages, sizeElement } from './html-book-fixture';
+import {
+  installPointerCaptureShims,
+  makeHtmlBook,
+  makePages,
+  sizeElement,
+} from './html-book-fixture';
 
 function book(overrides: Record<string, unknown> = {}) {
   const host = document.createElement('div');
@@ -30,18 +35,85 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+/**
+ * Drive one horizontal drag of `dx` pixels through the real pointer path.
+ *
+ * A pointermove is part of it on purpose: without one, `isUserMove` stays false
+ * and `PageFlip.userStop` falls through to the CLICK-turn path, which turns the
+ * page whatever the swipe threshold says — a "did not swipe" assertion would
+ * then be measuring the wrong mechanism.
+ */
+function drag(app: PageFlip, dx: number): void {
+  const dist = app.getUI().getDistElement();
+  const rect = app.getBoundsRect();
+  // Mid-height: clear of both corner bands, so nothing here is a corner fold.
+  const y = rect.top + rect.height / 2;
+  const startX = rect.left + rect.width - 10;
+
+  for (const [type, x] of [
+    ['pointerdown', startX],
+    ['pointermove', startX + dx],
+    ['pointerup', startX + dx],
+  ] as const) {
+    dist.dispatchEvent(
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        button: 0,
+        buttons: type === 'pointerup' ? 0 : 1,
+        pointerType: 'mouse',
+        clientX: x,
+        clientY: y,
+      }),
+    );
+  }
+}
+
+beforeEach(() => {
+  installPointerCaptureShims();
+});
+
 describe('runtime-updatable settings reach their collaborator', () => {
+  /**
+   * BEHAVIOURAL, because the previous version was not.
+   *
+   * It asserted `ui['swipeDistance'] === undefined` — a claim about a PRIVATE
+   * FIELD NAME, evaluated before any swipe happened. Two separate mutations
+   * that re-cached the setting survived it, including one caching under that
+   * exact name (the cache is filled on first USE, and the old test never
+   * swiped). It also pinned an implementation detail, so an honest rename would
+   * have reddened it.
+   *
+   * The only thing worth asserting is the gesture: the SAME drag must turn the
+   * page under a threshold below it and must not under one above it, with the
+   * only difference being a runtime `updateSettings` call.
+   */
   test('swipeDistance is read live, not cached at construction', () => {
-    const { engine } = book({ swipeDistance: 30 });
+    const { book: app } = makeHtmlBook({
+      pageCount: 6,
+      flippingTime: 0,
+      swipeDistance: 30,
+    });
 
-    engine.updateSettings({ swipeDistance: 90 });
+    // 50 px > 30: a swipe. (`distY` is 0, well inside `swipeDistance * 2`.)
+    drag(app, -50);
+    expect(app.getCurrentPageIndex()).toBe(1);
 
-    // Not just the echo: the UI must agree with what `getSettings()` reports.
-    expect(engine.getSettings().swipeDistance).toBe(90);
-    const ui = engine.getUI() as unknown as Record<string, unknown>;
-    expect(ui['swipeDistance']).toBeUndefined();
+    app.updateSettings({ swipeDistance: 90 });
+    expect(app.getSettings().swipeDistance).toBe(90);
 
-    engine.destroy();
+    // The IDENTICAL drag, now under the threshold. A `UI` that cached 30 at
+    // construction — or on first use — still turns the page here.
+    drag(app, -50);
+    expect(app.getCurrentPageIndex()).toBe(1);
+
+    // …and the setting is live in both directions, not a one-way latch.
+    app.updateSettings({ swipeDistance: 30 });
+    drag(app, -50);
+    expect(app.getCurrentPageIndex()).toBe(2);
+
+    app.destroy();
   });
 
   test('width / height restyle the host instead of needing a rebuild', () => {

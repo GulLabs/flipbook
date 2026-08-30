@@ -888,11 +888,27 @@ export class PageFlip extends EventObject {
       // original styles restored. Calling `applyHostSize` afterwards stamps the
       // engine's sizing straight back onto a host the engine no longer owns —
       // trading a `TypeError` for a silent ownership violation, which is worse.
-      if (this.ui !== ui || this.destroyed) return this.setting;
+      // Destroyed is the end of the line: there is no host left to own.
+      if (this.destroyed) return this.setting;
+
+      // REPLACED is not the same as destroyed, and conflating them left the new
+      // UI unsized. A listener may re-enter and LOAD, which builds a fresh UI;
+      // the old UI's `destroy()` then restores its host-style snapshot — over
+      // the new UI's sizing, because it runs second. Returning here left the
+      // book with the pre-engine `minWidth`/`minHeight` and no way back short
+      // of another `updateSettings`.
+      //
+      // So stamp the CURRENT owner rather than the one captured on entry. The
+      // captured `ui` must not be touched (that is the ownership violation
+      // above), but the engine's live UI both wants this sizing and is the only
+      // thing entitled to write it.
+      const owner = this.ui;
+      if (owner === null) return this.setting;
+
       // Size-shaped settings are stamped onto the host element, so a changed
       // `width` / `height` / `size` has to be restamped here. Otherwise the
       // only way to resize a book is to rebuild the engine.
-      ui.applyHostSize(this.setting);
+      owner.applyHostSize(this.setting);
     }
 
     if (this.render) {
