@@ -68,7 +68,27 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Destructor. Remove a root HTML element and all event handlers
+   * Destructor. Remove a root HTML element and all event handlers.
+   *
+   * After this returns the engine holds **no** state, and that is observable:
+   *
+   * - Anything that reads engine state — `getRender`, `getUI`,
+   *   `getPageCollection`, `getPage`, `getPageCount`, `getCurrentPageIndex`,
+   *   `getOrientation`, `getBoundsRect`, `turnToPage`, `turnToNextPage`,
+   *   `turnToPrevPage`, `flip`, `clear` — throws
+   *   `PageFlipError` with code `'DESTROYED'`. Returning a disposed collection
+   *   or a stopped render instead is how a "working" call silently does
+   *   nothing.
+   * - `flipNext` / `flipPrev` keep their "refusal is a boolean" contract:
+   *   `false` plus `turnRejected` with `code: 'DESTROYED'`.
+   * - Mutating lifecycle calls are safe no-ops: `destroy` itself (a consumer's
+   *   cleanup legitimately runs twice), `update`, `updateSettings`,
+   *   `replacePages`, `updateFromHtml`, `updateFromImages`.
+   * - Always safe: `getSettings`, `getState` (`READ`), `getFlipController`
+   *   (`null`), `getBlock`, `isDestroyed`.
+   *
+   * A destroyed engine is not reusable — `loadFromHTML` / `loadFromImages`
+   * after `destroy()` do not revive it. Construct a new `PageFlip`.
    */
   public destroy(): void {
     this.destroyed = true;
@@ -86,6 +106,18 @@ export class PageFlip extends EventObject {
     this.render?.releasePages();
     this.pages?.destroy();
     this.flipController?.abandon();
+
+    // P3: dropping the references is the *contract*, not just hygiene. Left
+    // non-null, every accessor kept working against a dead engine —
+    // `getPageCollection()` handed back a disposed collection and `flipNext()`
+    // still reached the flip controller against a stopped render, so a
+    // post-destroy call looked like it had succeeded. Nulling them routes
+    // every guarded accessor through `requireLoaded`, which reports
+    // `'DESTROYED'`. It also releases the engine's own retention of the book.
+    this.pages = null;
+    this.render = null;
+    this.ui = null;
+    this.flipController = null;
     // The host owns `block` (React/SSR). Do not remove it from the DOM.
   }
 
@@ -113,6 +145,17 @@ export class PageFlip extends EventObject {
 
   /** Loaded engine state, or a typed error naming what the caller must do first. */
   private requireLoaded<T>(value: T | null, what: string): T {
+    // Destroyed and not-yet-loaded are both "no engine state", but they are not
+    // the same instruction to the caller: one says "load first", the other says
+    // "this instance is gone, build a new one". Reporting `NOT_LOADED` after
+    // `destroy()` would invite exactly the retry that cannot work, because
+    // `attachMode` refuses to attach to a destroyed engine.
+    if (this.destroyed) {
+      throw new PageFlipError(
+        `${what} not available: this PageFlip instance was destroyed`,
+        'DESTROYED',
+      );
+    }
     if (value === null) {
       throw new PageFlipError(
         `${what} not available (loadFromHTML/loadFromImages first)`,
@@ -163,7 +206,14 @@ export class PageFlip extends EventObject {
     const pageCount = pages.getPageCount();
     const target = pageCount === 0 ? 0 : Math.min(Math.max(current, 0), pageCount - 1);
 
-    this.pages.show(target);
+    if (pageCount === 0) {
+      // Same hole as `updateFromHtml`: `show()` returns early for any index on
+      // an empty collection, so the renderer would keep its references into the
+      // collection just destroyed.
+      render.releasePages();
+    } else {
+      this.pages.show(target);
+    }
 
     const resolved = pageCount === 0 ? 0 : this.pages.getCurrentPageIndex();
 
@@ -207,15 +257,29 @@ export class PageFlip extends EventObject {
     this.pages = pages;
     pages.load();
     render.start();
-    pages.show(this.setting.startPage);
+
+    // I13: same clamp-then-report-resolved contract as `replacePages` /
+    // `updateFromHtml`. `show()` silently returns for an out-of-range index, so
+    // `startPage: 99` on a 4-page book left the book on page 0 while `init`
+    // announced page 99 — a consumer seeding its state from `init` starts
+    // desynced. Clamping also keeps `Render` from being left with no pages set
+    // at all, which is what "silently returns" costs on the render side.
+    const pageCount = pages.getPageCount();
+    pages.show(pageCount === 0 ? 0 : Math.min(Math.max(this.setting.startPage, 0), pageCount - 1));
 
     if (this.initTimer !== null) clearTimeout(this.initTimer);
     this.initTimer = setTimeout(() => {
       this.initTimer = null;
       if (this.destroyed) return;
       ui.update();
+      // Read the resolved index HERE, not at `show()` time. The resolved index
+      // is not the clamped request either — in landscape `show(1)` settles on
+      // spread [0, 1], whose canonical index is 0 — and `ui.update()` above can
+      // still change the orientation (the host is often measured only after the
+      // load), which re-resolves the spread. Reporting what the book actually
+      // shows when the event fires is the only version a consumer can trust.
       this.trigger('init', this, {
-        page: this.setting.startPage,
+        page: this.pages?.getCurrentPageIndex() ?? 0,
         mode: render.getOrientation(),
       });
     }, 1);
@@ -291,6 +355,13 @@ export class PageFlip extends EventObject {
    * @param {(NodeListOf<HTMLElement>|HTMLElement[])} items - List of pages as HTML Element
    */
   public updateFromHtml(items: NodeListOf<HTMLElement> | HTMLElement[]): void {
+    // P1: `replacePages` opens with this guard; this path — the one the React
+    // binding actually uses — never got it. A late effect or an async consumer
+    // calling it after `destroy()` rebuilt the collection, and `updateItems`
+    // ends in `setHandlers()`, so a destroyed engine re-attached its own
+    // pointer listeners and retained a fresh book.
+    if (this.destroyed) return;
+
     const ui = this.uiOrThrow;
 
     // Cross-mode updates are not supported and used to fail deep in: this cast
@@ -307,6 +378,16 @@ export class PageFlip extends EventObject {
     const render = this.renderOrThrow;
     const previous = this.pagesOrThrow;
     const current = previous.getCurrentPageIndex();
+
+    // P2 / I9: an in-flight turn belongs to the OLD collection, and
+    // `finishAnimation()` would COMMIT it — running `onAnimateEnd` against
+    // pages about to be destroyed. `replacePages` has cancelled it since G10;
+    // this path did not, so a drag interrupted by an update left the state at
+    // `USER_FOLD` with a calc still holding `flippingPage` / `bottomPage` from
+    // the destroyed collection, and the next pointer move went on folding pages
+    // that were no longer in the book.
+    render.cancelAnimation();
+    this.flipController?.abandon();
 
     previous.destroy();
 
@@ -326,7 +407,15 @@ export class PageFlip extends EventObject {
     const pageCount = pages.getPageCount();
     const target = pageCount === 0 ? 0 : Math.min(Math.max(current, 0), pageCount - 1);
 
-    pages.show(target);
+    if (pageCount === 0) {
+      // `show()` returns early for ANY index on an empty collection, so
+      // nothing re-seeds the renderer and it keeps painting left/right pages
+      // belonging to the collection just destroyed. `reload()` does not help —
+      // it only recreates the shadow elements.
+      render.releasePages();
+    } else {
+      pages.show(target);
+    }
 
     const resolved = pageCount === 0 ? 0 : pages.getCurrentPageIndex();
 
@@ -473,7 +562,12 @@ export class PageFlip extends EventObject {
     const flip = this.flipController;
 
     if (flip === null) {
-      this.trigger('turnRejected', this, { reason: 'setup', code: 'NOT_LOADED' });
+      // Same distinction `requireLoaded` draws: "not loaded yet" is a retry,
+      // "destroyed" never will be.
+      this.trigger('turnRejected', this, {
+        reason: 'setup',
+        code: this.destroyed ? 'DESTROYED' : 'NOT_LOADED',
+      });
       return false;
     }
 
