@@ -151,10 +151,12 @@ describe('soft fold — OUTER shadow gradient direction', () => {
   // ternary left the suite green — and the two shadows then point the same way,
   // which on screen is a page lit from two contradictory directions at once.
   //
-  // The relation is asserted rather than only the literals: 'the outer is the
-  // opposite of the inner' is the invariant, and it fails for a mutant that
-  // swaps BOTH ternaries together, which matching literals alone would not
-  // catch.
+  // DO NOT simplify these into a relation such as `outer !== inner`. An earlier
+  // version of this comment claimed a relation was the stronger assertion; it is
+  // the weaker one, and measured: swapping BOTH ternaries together keeps the two
+  // opposite, so the relation is invariant under exactly the mutant it was
+  // supposed to catch, while the literals below kill it. Recorded because the
+  // refactor is the obvious-looking one and the comment previously invited it.
   test('FORWARD: outer goes to right — the opposite of the inner', () => {
     const book = softBook();
     foldFrom(book, 'right');
@@ -170,6 +172,62 @@ describe('soft fold — OUTER shadow gradient direction', () => {
 
     expect(shadowCss(book, '.stf__outerShadow')).toContain('to left');
     expect(shadowCss(book, '.stf__innerShadow')).toContain('to right');
+  });
+
+  // ABSOLUTE PINS, and the reason is measured rather than assumed.
+  //
+  // `drawOuterShadow` has four direction-dependent expressions; the token tests
+  // above cover one. Two of the others — inverting the `shadowTranslate`
+  // ternary, and dropping the BACK x-mirror — survived the whole 731-test suite.
+  // Every relational assertion tried against them survived too:
+  //
+  //   * "the two directions produce different polygons" — they still do, just
+  //     both wrong;
+  //   * "the clip spans are equal" — the span is preserved by both mutants;
+  //   * "back x is a reflection of forward x about a constant" — preserved as
+  //     well, because inverting the pivot shifts both sides by the same amount
+  //     in opposite directions, leaving the sum fixed.
+  //
+  // So the geometry is pinned outright. Rounded to two decimals because the
+  // full float tails differ in the last places across platforms; that is enough
+  // to catch a 36px pivot shift and a sign flip, which are the failures here.
+  //
+  // TO REGENERATE after an intentional geometry change: log
+  // `style.cssText.match(/polygon\(([^)]*)\)/)` for each fold below and paste
+  // the rounded pairs. Do not "fix" a failure by widening the tolerance — the
+  // whole value of these is that they are exact.
+  function clipPoints(book: PageFlip): Array<[number, number]> {
+    const m = /polygon\(([^)]*)\)/.exec(shadowCss(book, '.stf__outerShadow'));
+    expect(m, 'no clip polygon on the outer shadow').not.toBeNull();
+    return [...m![1]!.matchAll(/(-?[\d.]+)px\s+(-?[\d.]+)px/g)].map((g) => [
+      Math.round(Number(g[1]) * 100) / 100,
+      Math.round(Number(g[2]) * 100) / 100,
+    ]);
+  }
+
+  test('FORWARD: the outer shadow clip is pinned exactly', () => {
+    const book = softBook();
+    foldFrom(book, 'right', 90);
+
+    expect(clipPoints(book)).toEqual([
+      [-271.12, 161.76],
+      [-161.73, -5.67],
+      [89.42, 158.42],
+      [-19.98, 325.85],
+    ]);
+  });
+
+  test('BACK: and so is the mirrored one', () => {
+    const book = softBook();
+    book.turnToPage(2);
+    foldFrom(book, 'left', 90);
+
+    expect(clipPoints(book)).toEqual([
+      [307.12, 161.76],
+      [197.73, -5.67],
+      [-53.42, 158.42],
+      [55.98, 325.85],
+    ]);
   });
 
   test('and the two directions actually differ between FORWARD and BACK', () => {

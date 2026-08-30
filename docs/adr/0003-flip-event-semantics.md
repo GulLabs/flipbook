@@ -117,21 +117,35 @@ without noticing it needs a baseline.
 Everything else reaches the head through `show()`, and every one of those
 callers needs a deliberate answer to "what is the baseline here":
 
-| Caller                             | Baseline                                    | Emits                                                                    |
-| ---------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------ |
-| `PageFlip.update()`                | unchanged — same collection                 | only when an orientation change re-canonicalises the head, which it must |
-| `UI.cancelGesture()`               | unchanged — repaint after an abandoned fold | no                                                                       |
-| `PageFlip.turnToPage(page)`        | unchanged — a real navigation               | yes                                                                      |
-| `PageFlip.replacePages`            | `INHERIT_PAGE_INDEX(outgoing)`              | only if the head really moved                                            |
-| `PageFlip.updateFromHtml`          | `INHERIT_PAGE_INDEX(current)`               | only if the head really moved                                            |
-| `PageFlip.attachMode` — reload     | `INHERIT_PAGE_INDEX(outgoing)`              | only if the head really moved                                            |
-| `PageFlip.attachMode` — first load | `SEED_OPENING_INDEX(start)`                 | no — opening is not turning                                              |
+| Caller                             | Baseline                                    | Emits                                                                                                                                                                                                         |
+| ---------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PageFlip.update()`                | unchanged — same collection                 | only when an orientation change re-canonicalises the head, which it must                                                                                                                                      |
+| `UI.cancelGesture()`               | unchanged — repaint after an abandoned fold | no                                                                                                                                                                                                            |
+| `PageFlip.turnToPage(page)`        | unchanged — a real navigation               | **only if the head moves** — `turnToPage(currentIndex)` emits nothing, which is the defect this ADR opens with, and in landscape `turnToPage(1)` from spread `[0, 1]` is silent too, the head already being 0 |
+| `PageFlip.replacePages`            | `INHERIT_PAGE_INDEX(outgoing)`              | only if the head really moved                                                                                                                                                                                 |
+| `PageFlip.updateFromHtml`          | `INHERIT_PAGE_INDEX(current)`               | only if the head really moved                                                                                                                                                                                 |
+| `PageFlip.attachMode` — reload     | `INHERIT_PAGE_INDEX(outgoing)`              | only if the head really moved                                                                                                                                                                                 |
+| `PageFlip.attachMode` — first load | `SEED_OPENING_INDEX(start)`                 | no — opening is not turning                                                                                                                                                                                   |
 
 The last row is C2, and the distinction between the last two rows is the whole
 of it: a reload carries the outgoing index because the reader was somewhere,
 while a first load has nowhere to have come from and must be seeded with the
 head it is about to show. An **emptied** outgoing collection counts as a first
 load — `clear()` does not null `PageFlip.pages`, so `=== null` alone missed it.
+
+### One writer that does not go through `show()`
+
+`PageCollection[SET_SPREAD_INDEX]` — `Flip`'s seam — writes `currentSpreadIndex`
+**without** calling `showSpread()`, so it moves neither the head nor the
+announcement. It is listed here because it is the one way the two indices can
+legitimately disagree, and because "moves the head by one spread" above is not
+true of `showNext`/`showPrev` when `Flip` has re-based first: `Flip` installs
+the destination spread before committing, so the commit moves by one from
+THERE, not from where the reader was.
+
+That is also why it is symbol-keyed. From outside it produced a book displaying
+one spread while believing it was on another, whose next forward turn was a
+silent refusal.
 
 The rule a new caller should apply: if a reader could have been looking at a
 different page a moment ago, seed the outgoing index and let the guard decide.

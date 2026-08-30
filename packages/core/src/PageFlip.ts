@@ -9,6 +9,7 @@ import {
   EMIT_STATE,
   INHERIT_PAGE_INDEX,
   SEED_OPENING_INDEX,
+  SET_ORIENTATION_STYLE,
 } from './internal';
 import type { PageCollection } from './Collection/PageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
@@ -1187,7 +1188,7 @@ export class PageFlip extends EventObject {
    * @param {Orientation} newOrientation - New page orientation (portrait, landscape)
    */
   public [ADOPT_ORIENTATION](newOrientation: Orientation): void {
-    this.uiOrThrow.setOrientationStyle(newOrientation);
+    this.uiOrThrow[SET_ORIENTATION_STYLE](newOrientation);
     this.update();
     this.dispatch('changeOrientation', newOrientation);
   }

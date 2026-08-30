@@ -9,7 +9,7 @@ import { FlipCorner, FlippingState } from '../Flip/Flip';
 import { Orientation } from '../Render/Render';
 import { ensureFlipbookStyles } from '../styles';
 import { FLIPBOOK_INTERACTIVE_SELECTOR } from '../interactive';
-import { DROP_POINTER_GESTURE } from '../internal';
+import { DROP_POINTER_GESTURE, SET_ORIENTATION_STYLE } from '../internal';
 
 type SwipeData = {
   point: Point;
@@ -312,7 +312,7 @@ export abstract class UI {
     return this.wrapper;
   }
 
-  public setOrientationStyle(orientation: Orientation): void {
+  public [SET_ORIENTATION_STYLE](orientation: Orientation): void {
     this.wrapper.classList.remove('--portrait', '--landscape');
     this.wrapper.classList.add(orientation === Orientation.PORTRAIT ? '--portrait' : '--landscape');
 

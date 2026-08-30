@@ -410,16 +410,27 @@ would be a breaking change the moment it is.
   module and never reached the published `.d.ts`, so a consumer writing a helper
   that takes "an event name" had no type to give the parameter.
 
-### Changed — internal wiring seams are marked as such
+### Removed — the engine-to-engine wiring seams are no longer public
 
-- **`updateState`, `updatePageIndex` and `updateOrientation` are `@internal`.**
-  All three are public only because their callers (`Flip`, `PageCollection`,
-  `Render`) are separate classes, and each is harmful from outside: they
-  announce state the engine is not in, fabricate a `flip` event for a page the
-  reader is not on, or restyle the UI for an orientation the renderer has not
-  adopted. No runtime change — the surrounding methods (`attachMode`,
-  `replacePages`, `getBlock`, `applyHostSize`) already carried the marker and
-  these three had been missed.
+- **`PageFlip.updatePageIndex`, `PageFlip.updateState`,
+  `PageFlip.updateOrientation`, `UI.setOrientationStyle` and
+  `PageCollection.setCurrentSpreadIndex` are gone from the public surface.**
+  Each existed only because its caller (`Flip`, `Render`, `PageCollection`) is
+  a separate class, and each is harmful from outside — they announce a state
+  the engine is not in, fabricate a `flip` for a page nobody turned to, restyle
+  the book for an orientation the renderer has not adopted, or leave the
+  collection displaying one spread while believing it is on another. They are
+  now keyed by module-private symbols and cannot be named.
+
+  An earlier entry here said these were merely marked `@internal`, with "no
+  runtime change". That was true when written and is no longer: `@internal`
+  survives into the emitted `.d.ts`, so it documented the hazard without
+  closing it. See `MIGRATION.md` for each method's replacement.
+
+  `Render`'s public mutators are deliberately NOT included. Calling
+  `releasePages()` from outside blanks the book, which is destructive but
+  honest: every getter still reports the truth and no event is invented. The
+  rule for this boundary is in `packages/core/src/internal.ts`.
 
 ### Fixed — settings and error surface
 

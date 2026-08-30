@@ -232,10 +232,13 @@ describe('the host sizing invariant U10 now depends on', () => {
     // `minWidth = width` and `minHeight = height` for EVERY non-stretch size,
     // so it rewrote the two lines above it with identical values.
     //
-    // Deleting it makes host sizing depend on that `Settings` assignment, which
-    // nothing stated and nothing tested. This pins the coupling: change the
-    // non-stretch branch of `Settings.getSettings` and it fails here, instead
-    // of silently un-sizing the host of every fixed book.
+    // Deleting it makes host sizing depend on that `Settings` assignment. That
+    // coupling was already covered — `settings.test.ts` and
+    // `pointer-transform.test.ts:603-623` pin it, the latter for both k=1 and
+    // k=2 — so this is a landscape-only restatement, kept because it is the
+    // case the deleted branch was ostensibly there for and it names the reason.
+    // Corrected from an earlier version claiming nothing tested the coupling;
+    // that was false, and a false claim in a comment outlives the test.
     const host = document.createElement('div');
     document.body.appendChild(host);
     const pages = makePages(4);

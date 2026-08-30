@@ -355,6 +355,23 @@ keyed by a module-private symbol and cannot be named from outside the engine.
 To move the book, use `turnToPage(n)` or `flipToPage(n)`, which is what the
 method's own documentation already told you to do.
 
+### `updateState()`, `updateOrientation()`, `setOrientationStyle()` and `setCurrentSpreadIndex()` are gone too
+
+Same reason, same fix: each is a call between two engine objects that a
+consumer could reach through `getUI()` / `getPageCollection()`, and each can
+leave the book in a state its own getters disagree about.
+
+| Removed                                   | What it did from outside                                                                                                                                                                                                                                                                               | Use instead                                                           |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------- |
+| `PageFlip.updateState(s)`                 | Announced a flipping state the engine was not in. `UI.onPointerMove` reads that state to decide whether to `preventDefault()`, so a spurious `READ` turned page scrolling back on mid-turn.                                                                                                            | Nothing — read `getState()`; the engine owns transitions.             |
+| `PageFlip.updateOrientation(o)`           | Rebuilt the spreads and restyled the UI for an orientation `Render` had not adopted, leaving the three collaborators disagreeing about how many leaves are on screen.                                                                                                                                  | `updateSettings({ usePortrait })`, or let the `ResizeObserver` do it. |
+| `UI.setOrientationStyle(o)`               | The restyle half of the same thing: a landscape book kept `getOrientation() === 'landscape'` while its wrapper carried `--portrait` and had been re-laid at the portrait ratio, with no `changeOrientation` emitted.                                                                                   | As above.                                                             |
+| `PageCollection.setCurrentSpreadIndex(i)` | Wrote the spread index without showing it, so the book displayed one spread and believed it was on another. Measured: from spread 0, `setCurrentSpreadIndex(2)` then made `turnToNextPage()` a **silent** refusal, because the bounds check reads the forged index. An un-turnable book with no error. | `turnToPage(n)` / `flipToPage(n)`.                                    |
+
+If you were calling any of these to work around a missing feature, that is a
+bug report worth filing — none of them was ever a supported way to drive the
+book.
+
 ### `clear()` now emits events
 
 `clear()` emits `update` and `collectionRebuild` with `page: 0` and

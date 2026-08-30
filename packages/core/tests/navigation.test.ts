@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { EMIT_STATE } from '../src/internal';
+import { EMIT_STATE, SET_SPREAD_INDEX } from '../src/internal';
 import {
   Flip,
   FlipCorner,
@@ -15,7 +15,7 @@ type CollectionStub = {
   getCurrentSpreadIndex: () => number;
   getSpreadCount: () => number;
   getSpreadIndexByPage: (page: number) => number | null;
-  setCurrentSpreadIndex: (index: number) => void;
+  [SET_SPREAD_INDEX]: (index: number) => void;
   getFlippingPage: () => { id: string };
   getBottomPage: () => { id: string };
 };
@@ -35,7 +35,7 @@ function makeFlip(options?: { pageCount?: number; currentPage?: number }) {
       if (page < 0) return null;
       return page;
     },
-    setCurrentSpreadIndex(index: number) {
+    [SET_SPREAD_INDEX](index: number) {
       if (index < 0 || index > 10) {
         throw new Error('Invalid page');
       }

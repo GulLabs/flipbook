@@ -7,7 +7,12 @@ import type { Render } from '../Render/Render';
 import { Orientation } from '../Render/Render';
 import type { Page } from '../Page/Page';
 import { PageDensity } from '../Page/Page';
-import { EMIT_PAGE_INDEX, INHERIT_PAGE_INDEX, SEED_OPENING_INDEX } from '../internal';
+import {
+  EMIT_PAGE_INDEX,
+  INHERIT_PAGE_INDEX,
+  SEED_OPENING_INDEX,
+  SET_SPREAD_INDEX,
+} from '../internal';
 import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { getPortraitFlippingPage } from './flippingPage';
@@ -393,7 +398,7 @@ export abstract class PageCollection {
    *
    * @param {number} newIndex - new spread index
    */
-  public setCurrentSpreadIndex(newIndex: number): void {
+  public [SET_SPREAD_INDEX](newIndex: number): void {
     if (newIndex >= 0 && newIndex < this.getSpread().length) {
       this.currentSpreadIndex = newIndex;
     } else {

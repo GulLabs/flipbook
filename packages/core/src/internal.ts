@@ -5,35 +5,44 @@
 /**
  * Capability keys for seams that exist between engine objects and nowhere else.
  *
- * `PageFlip`, `PageCollection` and `Render` have to call into one another, and
- * TypeScript has no way to say "public to my siblings, closed to the outside".
- * `public` with an `@internal` tag is documentation, not a fence: it survives
- * into the emitted `.d.ts` and a consumer can call it. Two of those turned out
- * to hand a consumer the power to break the very invariant they implement:
+ * `PageFlip`, `Render`, `UI` and `PageCollection` have to call into one
+ * another, and TypeScript has no way to say "public to my siblings, closed to
+ * the outside". `public` with an `@internal` tag is documentation, not a fence:
+ * it survives into the emitted `.d.ts`, and a consumer reaching the object
+ * through `getUI()` / `getRender()` / `getPageCollection()` can call it.
  *
- *  - the page-index inheritance seam let a consumer pre-load the ADR 0003
- *    baseline and then SUPPRESS a real `flip` — set 4 while on page 2, call
- *    `update()`, and the guard sees 4 === 4 and stays silent through a visible
- *    2 -> 4 change;
- *  - `updatePageIndex` only EMITS, so a consumer could FABRICATE a `flip(4)`
- *    for a book sitting on page 0 — and a controlled React binding acts on it,
- *    navigating itself to a page nothing ever turned to.
+ * THE STOPPING RULE. This module grew twice by finding "one more" seam of the
+ * same shape, because nothing said where it ends. A member is symbol-keyed when
+ * BOTH hold:
  *
- * Symbol keys close both. Neither symbol is re-exported from `src/index.ts`,
- * and the `exports` map blocks deep imports, so a consumer cannot name them.
+ *   1. every caller is a sibling engine object — no consumer has a legitimate
+ *      reason to call it; and
+ *   2. an outside call can make a public getter LIE, or fabricate or suppress
+ *      an event.
+ *
+ * Condition 2 is what distinguishes these from ordinary internals. `Render` has
+ * thirteen untagged public mutators; calling `releasePages()` from outside
+ * blanks the book, which is destructive but HONEST — every getter still reports
+ * the truth, and no event is invented. Those stay public. The eight below can
+ * each produce a book whose own getters contradict each other, which is the
+ * failure a consumer cannot debug because the engine is lying to them.
  *
  * They are not a security boundary and this file does not claim otherwise:
- * walking the prototype chain with `Object.getOwnPropertySymbols` still finds
- * them. That is deliberate reflection against an engine's internals, in the
- * same class as writing to a field TypeScript's `protected` erased. The point
- * is that no ordinary use — and no honest mistake — can reach them.
+ * `Object.getOwnPropertySymbols` still finds them. That is deliberate
+ * reflection against an engine's internals, in the same class as writing to a
+ * field TypeScript's `protected` erased. The point is that no ordinary use —
+ * and no honest mistake — can reach them.
  *
- * They live in their own module because the alternative is a cycle:
- * `PageFlip` already imports from `Collection/PageCollection`, so a value
- * import back the other way would close the loop at runtime.
+ * They live in their own module because the alternative is a cycle: `PageFlip`
+ * already imports from `Collection/PageCollection`, so a value import back the
+ * other way would close the loop at runtime.
  *
  * @internal
  */
+
+// ---------------------------------------------------------------------------
+// PageFlip — called by Flip, Render and PageCollection
+// ---------------------------------------------------------------------------
 
 /** Seeds a replacement collection with the index the outgoing one reported. */
 export const INHERIT_PAGE_INDEX = Symbol('flipbook.inheritPageIndex');
@@ -60,6 +69,10 @@ export const EMIT_STATE = Symbol('flipbook.emitState');
  */
 export const ADOPT_ORIENTATION = Symbol('flipbook.adoptOrientation');
 
+// ---------------------------------------------------------------------------
+// PageCollection — called by PageFlip and Flip
+// ---------------------------------------------------------------------------
+
 /**
  * Seeds a FIRST load's baseline with the head of the spread the book is about
  * to open on.
@@ -76,6 +89,37 @@ export const ADOPT_ORIENTATION = Symbol('flipbook.adoptOrientation');
  * spurious `flip(1)` for a spurious `flip(0)`.
  */
 export const SEED_OPENING_INDEX = Symbol('flipbook.seedOpeningIndex');
+
+/**
+ * Re-bases the collection on another spread WITHOUT showing it. `Flip`'s seam,
+ * used to select the two leaves of a turn and to re-base before a commit.
+ *
+ * Public, it wrote `currentSpreadIndex` while leaving `currentPageIndex`
+ * behind, so the book displayed one spread and believed it was on another —
+ * measured on a 6-page landscape book, `setCurrentSpreadIndex(2)` from spread 0
+ * left `getCurrentPageIndex()` at 0 and then made `turnToNextPage()` a SILENT
+ * refusal, because the bounds check reads the forged index. An un-turnable book
+ * with no error. `Flip` itself documents that same two-getters-contradicting
+ * failure as one it already had to fix once.
+ */
+export const SET_SPREAD_INDEX = Symbol('flipbook.setSpreadIndex');
+
+// ---------------------------------------------------------------------------
+// UI — called by PageFlip
+// ---------------------------------------------------------------------------
+
+/**
+ * Restyles the wrapper for an orientation `Render` has already adopted.
+ *
+ * The other half of {@link ADOPT_ORIENTATION}, and it was left named one method
+ * along — which is why the first attempt at this module claimed to have closed
+ * "the last two" seams and had not. Public, it restyled the book for an
+ * orientation the renderer has not adopted: measured, a landscape book given
+ * `setOrientationStyle('portrait')` reports `getOrientation() === 'landscape'`
+ * while its wrapper carries `--portrait` and has been re-laid at the portrait
+ * ratio, with no `changeOrientation` emitted.
+ */
+export const SET_ORIENTATION_STYLE = Symbol('flipbook.setOrientationStyle');
 
 /**
  * Drops the pointer half of an in-flight gesture: the swipe anchor and the

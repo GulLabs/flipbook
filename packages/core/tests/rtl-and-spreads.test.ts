@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { EMIT_STATE } from '../src/internal';
+import { EMIT_STATE, SET_SPREAD_INDEX } from '../src/internal';
 import { Flip, FlipCorner, FlipDirection } from '@gullabs/flipbook-core';
 import type { Render } from '@gullabs/flipbook-core';
 
@@ -28,7 +28,7 @@ function makeFlip(options?: Options) {
     getSpreadIndexByPage(page: number) {
       return page < 0 ? null : page;
     },
-    setCurrentSpreadIndex(index: number) {
+    [SET_SPREAD_INDEX](index: number) {
       this.spread = index;
     },
     getFlippingPage() {

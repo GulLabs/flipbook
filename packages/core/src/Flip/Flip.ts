@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Render } from '../Render/Render';
-import { EMIT_STATE } from '../internal';
+import { EMIT_STATE, SET_SPREAD_INDEX } from '../internal';
 import { foldSide, Orientation } from '../Render/Render';
 import type { PageFlip } from '../PageFlip';
 import { pointsBetween } from '../Helper';
@@ -200,10 +200,10 @@ export class Flip {
 
     let started: boolean;
     try {
-      if (target !== null) collection.setCurrentSpreadIndex(target);
+      if (target !== null) collection[SET_SPREAD_INDEX](target);
       started = this.start(globalPos, direction);
     } finally {
-      if (restoreSpread !== null) collection.setCurrentSpreadIndex(restoreSpread);
+      if (restoreSpread !== null) collection[SET_SPREAD_INDEX](restoreSpread);
     }
 
     if (!started) return false;
@@ -801,7 +801,7 @@ export class Flip {
         // instant, so the one-step commit below steps off it and lands on the
         // requested spread. Between `start()` and here the collection reported
         // the truth.
-        if (target !== null) this.app.getPageCollection().setCurrentSpreadIndex(target);
+        if (target !== null) this.app.getPageCollection()[SET_SPREAD_INDEX](target);
 
         // The SEMANTIC direction, not `calc.getDirection()` — that one is the
         // geometric side and is inverted under `direction: 'rtl'`.

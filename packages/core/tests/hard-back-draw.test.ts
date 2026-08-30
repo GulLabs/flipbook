@@ -56,7 +56,11 @@ function hardBook(): PageFlip {
 type Internals = {
   leftPage: { getElement: () => HTMLElement } | null;
   bottomPage: { getElement: () => HTMLElement } | null;
-  flippingPage: { getHardAngle: () => number; getDrawingDensity: () => string } | null;
+  flippingPage: {
+    getHardAngle: () => number;
+    getDrawingDensity: () => string;
+    getElement: () => HTMLElement;
+  } | null;
   drawFrame: () => void;
 };
 
@@ -143,6 +147,44 @@ describe('hard fold angle sign', () => {
   });
 });
 
+describe('a HARD back fold: the stamp comes from setFlippingPage, not setBottomPage', () => {
+  // C6's open question, answered — and then measured, which changed the answer's
+  // SHAPE if not its value.
+  //
+  // Codex said `--right` is correct because on a hard BACK fold the flipping
+  // page and the bottom page are the same leaf, and RIGHT selects `drawHard`'s
+  // right-leaf base, whose origin is the spine. That is right. But the first
+  // version of this test asserted it through `bottomPage` under a describe
+  // block about "the leaf under a BACK fold", which made it look like a
+  // `setBottomPage` test. It is not, and the mutation sweep proved it:
+  //
+  //   * make `setBottomPage` stamp nothing at all — this test still PASSES;
+  //   * invert `setFlippingPage`'s ternary — this is the ONLY test in the suite
+  //     that fails.
+  //
+  // Probed directly: `bottomPage === flippingPage`, and it is neither static
+  // leaf. `setBottomPage` stamps LEFT, `setFlippingPage` immediately overwrites
+  // it with RIGHT, and `drawBottomPage` never runs — `shouldDrawBottomPage`
+  // returns false exactly when the two are the same object. So
+  // `setBottomPage`'s hard-BACK stamp is written, overwritten, and never read.
+  //
+  // That dead stamp is recorded rather than deleted: removing it is a behaviour
+  // change to a shared method, and this batch is about making the test say what
+  // it tests.
+  test('the mover is stamped RIGHT, so drawHard rotates it about the spine', () => {
+    // Regressing this to LEFT rotates a closing cover about its OUTER edge — it
+    // swings away from the book instead of shutting.
+    const book = hardBackFold(60);
+
+    expect(inner(book).flippingPage?.getDrawingDensity()).toBe('hard');
+    expect(inner(book).flippingPage).toBe(inner(book).bottomPage);
+
+    const el = inner(book).flippingPage!.getElement();
+    expect(el.className).toContain('--right');
+    expect(el.className).not.toContain('--left');
+  });
+});
+
 describe('the leaf under a BACK fold', () => {
   // `setBottomPage` picks the orientation from the fold direction, and that
   // stamp drives the `--left` / `--right` classes — declared public surface in
@@ -198,20 +240,6 @@ describe('the leaf under a BACK fold', () => {
 
     expect(el.className).toContain('--left');
     expect(el.className).not.toContain('--right');
-  });
-
-  test('is stamped RIGHT under a HARD back fold — the answered question', () => {
-    // Not the same rule as the soft case, and that is the point: here the
-    // flipping leaf and the leaf under it are the SAME page, so the stamp has
-    // to serve `drawHard`, which needs the spine-side base. Regressing this to
-    // `--left` for symmetry with the soft case rotates a closing cover about
-    // its outer edge — it swings out from the book instead of shutting.
-    const book = hardBackFold(60);
-    const el = inner(book).bottomPage!.getElement();
-
-    expect(inner(book).flippingPage?.getDrawingDensity()).toBe('hard');
-    expect(el.className).toContain('--right');
-    expect(el.className).not.toContain('--left');
   });
 
   test('and RIGHT under a soft FORWARD fold — the control', () => {

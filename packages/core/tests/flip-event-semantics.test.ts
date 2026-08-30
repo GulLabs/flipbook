@@ -9,6 +9,8 @@ import {
   EMIT_STATE,
   INHERIT_PAGE_INDEX,
   SEED_OPENING_INDEX,
+  SET_ORIENTATION_STYLE,
+  SET_SPREAD_INDEX,
 } from '../src/internal';
 
 /**
@@ -361,15 +363,16 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     // Every engine-to-engine seam that used to be a named `public` member.
     // `@internal` on one of those is documentation, not a fence: it survives
     // into the emitted `.d.ts` and a consumer can call it.
-    for (const name of [
-      'updatePageIndex',
-      'updateState',
-      'updateOrientation',
-      'adoptCurrentPageIndex',
-    ]) {
+    // The named seams are gone. Kept as a direct check because these four are
+    // the ones that actually shipped public, but the real guard is the frozen
+    // surface in `public-surface.test.ts` — see the note there.
+    const ui = book.book.getUI() as unknown as Record<string, unknown>;
+    for (const name of ['updatePageIndex', 'updateState', 'updateOrientation']) {
       expect(typeof api[name], `PageFlip.${name} is reachable by name`).toBe('undefined');
-      expect(typeof collection[name], `collection.${name} is reachable by name`).toBe('undefined');
     }
+    expect(typeof ui['setOrientationStyle']).toBe('undefined');
+    expect(typeof collection['setCurrentSpreadIndex']).toBe('undefined');
+    expect(typeof collection['adoptCurrentPageIndex']).toBe('undefined');
 
     // …and they MOVED rather than vanished. Without this the block above is
     // satisfied by deleting the seams outright, which would take the engine
@@ -381,12 +384,14 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     expect(typeof seamed[ADOPT_ORIENTATION]).toBe('function');
     expect(typeof seamed[DROP_POINTER_GESTURE]).toBe('undefined'); // that one lives on UI
 
-    const ui = book.book.getUI() as unknown as Record<symbol, unknown>;
-    expect(typeof ui[DROP_POINTER_GESTURE]).toBe('function');
-
     const coll = book.book.getPageCollection() as unknown as Record<symbol, unknown>;
     expect(typeof coll[INHERIT_PAGE_INDEX]).toBe('function');
     expect(typeof coll[SEED_OPENING_INDEX]).toBe('function');
+    expect(typeof coll[SET_SPREAD_INDEX]).toBe('function');
+
+    const uiSeams = book.book.getUI() as unknown as Record<symbol, unknown>;
+    expect(typeof uiSeams[SET_ORIENTATION_STYLE]).toBe('function');
+    expect(typeof uiSeams[DROP_POINTER_GESTURE]).toBe('function');
 
     book.destroy();
   });
