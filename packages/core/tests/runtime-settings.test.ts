@@ -223,3 +223,37 @@ describe('settings reach Render live, not by value', () => {
     host.remove();
   });
 });
+
+describe('the host sizing invariant U10 now depends on', () => {
+  test('a fixed-size book stamps the host from width/height, via minWidth/minHeight', () => {
+    // `applyHostSize` used to re-stamp `width * k` / `height` inside a
+    // `size === FIXED` branch, immediately after stamping `minWidth * k` /
+    // `minHeight`. That branch was provably inert: `Settings` assigns
+    // `minWidth = width` and `minHeight = height` for EVERY non-stretch size,
+    // so it rewrote the two lines above it with identical values.
+    //
+    // Deleting it makes host sizing depend on that `Settings` assignment, which
+    // nothing stated and nothing tested. This pins the coupling: change the
+    // non-stretch branch of `Settings.getSettings` and it fails here, instead
+    // of silently un-sizing the host of every fixed book.
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const pages = makePages(4);
+    for (const p of pages) host.appendChild(p);
+
+    const b = new PageFlip(host, {
+      width: 200,
+      height: 300,
+      size: 'fixed',
+      usePortrait: false,
+    });
+    b.loadFromHTML(pages);
+
+    // Landscape: k = 2, so the host reserves room for two leaves.
+    expect(host.style.minWidth).toBe('400px');
+    expect(host.style.minHeight).toBe('300px');
+
+    b.destroy();
+    host.remove();
+  });
+});

@@ -5,7 +5,6 @@
 import type { PageFlip } from '../PageFlip';
 import type { Point } from '../BasicTypes';
 import type { FlipSetting } from '../Settings';
-import { SizeType } from '../Settings';
 import { FlipCorner, FlippingState } from '../Flip/Flip';
 import { Orientation } from '../Render/Render';
 import { ensureFlipbookStyles } from '../styles';
@@ -165,11 +164,6 @@ export abstract class UI {
 
     host.style.minWidth = `${setting.minWidth * k}px`;
     host.style.minHeight = `${setting.minHeight}px`;
-
-    if (setting.size === SizeType.FIXED) {
-      host.style.minWidth = `${setting.width * k}px`;
-      host.style.minHeight = `${setting.height}px`;
-    }
 
     if (setting.autoSize) {
       host.style.width = '100%';
