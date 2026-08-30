@@ -7,6 +7,7 @@ import type { Render } from '../Render/Render';
 import { Orientation } from '../Render/Render';
 import type { Page } from '../Page/Page';
 import { PageDensity } from '../Page/Page';
+import { EMIT_PAGE_INDEX, INHERIT_PAGE_INDEX } from '../internal';
 import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { getPortraitFlippingPage } from './flippingPage';
@@ -17,17 +18,6 @@ type NumberArray = number[];
 /**
  * Сlass representing a collection of pages
  */
-/**
- * Capability key for {@link PageCollection[INHERIT_PAGE_INDEX]}.
- *
- * Deliberately NOT re-exported from `src/index.ts`: a consumer cannot obtain
- * this symbol, so the seam is reachable from inside the engine and nowhere
- * else. See the method's own comment for what a public setter cost.
- *
- * @internal
- */
-export const INHERIT_PAGE_INDEX = Symbol('flipbook.inheritPageIndex');
-
 export abstract class PageCollection {
   protected readonly app: PageFlip;
   protected readonly render: Render;
@@ -68,14 +58,18 @@ export abstract class PageCollection {
    * and the index clamps, the comparison is against the real outgoing index and
    * the change IS announced.
    *
-   * **Keyed by a module-private symbol, and that is the point.** The first
+   * **Keyed by a module-private symbol (see `internal.ts`).** The first
    * shape of this fix was a public `adoptCurrentPageIndex(n)`, which was worse
    * than the bug: `PageCollection` is exported and handed out by
    * `getPageCollection()`, so a consumer could pre-load the baseline and then
    * SUPPRESS a real `flip` — set 4 while on page 2, call `update()`, and the
    * guard sees 4 === 4 and stays silent through a visible 2 -> 4 change. The
-   * symbol is not re-exported from the package index, so a consumer cannot name
-   * it and cannot reach this.
+   * symbol is not re-exported from the package index and the `exports` map
+   * blocks deep imports, so no ordinary use can name it. Not a security
+   * boundary: walking the prototype chain with `Object.getOwnPropertySymbols`
+   * still finds it, the same way `protected` can be written through once
+   * TypeScript has erased it. The claim is that no honest mistake reaches
+   * here, not that nothing can.
    *
    * @internal
    */
@@ -527,7 +521,7 @@ export abstract class PageCollection {
     this.currentPageIndex = headIdx;
 
     if (changed) {
-      this.app.updatePageIndex(this.currentPageIndex);
+      this.app[EMIT_PAGE_INDEX](this.currentPageIndex);
     }
   }
 }

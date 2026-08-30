@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { INHERIT_PAGE_INDEX } from './Collection/PageCollection';
+import { EMIT_PAGE_INDEX, INHERIT_PAGE_INDEX } from './internal';
 import type { PageCollection } from './Collection/PageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
 import type { PageRect, Point } from './BasicTypes';
@@ -468,6 +468,11 @@ export class PageFlip extends EventObject {
     this.flipController?.abandon();
     this.resetUserGesture();
 
+    // What the consumer last observed, read BEFORE the outgoing collection is
+    // torn down. `resolvedPageIndex` because an emptied collection keeps its
+    // stale index while the public getter already reports 0.
+    const outgoing = this.resolvedPageIndex(this.pages);
+
     this.pagesOrThrow.destroy();
     this.pages = pages;
     this.pages.load();
@@ -479,9 +484,12 @@ export class PageFlip extends EventObject {
     const pageCount = pages.getPageCount();
     const target = pageCount === 0 ? 0 : Math.min(Math.max(current, 0), pageCount - 1);
 
-    // ADR 0003: the new collection starts at 0, so it has to inherit where the
-    // book already was or `show(target)` announces a turn that never happened.
-    this.pages[INHERIT_PAGE_INDEX](current);
+    // ADR 0003: inherit where the book already WAS — `outgoing`, captured above
+    // before the swap — not `current`, which is where the caller is asking it
+    // to GO. Seeding the destination makes the guard compare 4 against 4 and
+    // stay silent through a real 2 -> 4 move: the fix would have suppressed the
+    // very event it exists to keep honest.
+    this.pages[INHERIT_PAGE_INDEX](outgoing);
 
     if (pageCount === 0) {
       // Same hole as `updateFromHtml`: `show()` returns early for any index on
@@ -517,6 +525,17 @@ export class PageFlip extends EventObject {
     // Replace any previous mode wholesale so a second load cannot leave the
     // old UI listening on the host element. The collection goes too: it was
     // simply overwritten below, so a second load leaked every page it held.
+    // ADR 0003, read BEFORE the outgoing collection is destroyed. A RELOAD is
+    // still a collection replacement as far as the consumer is concerned: the
+    // book was on page 4 and the fresh collection starts at 0, so without this
+    // a reload to `startPage: 0` moved the visible index 4 -> 0 with no `flip`,
+    // while a reload to `startPage: 4` announced `flip(4)` for a book that had
+    // not moved at all. Both directions wrong, from the same missing baseline.
+    //
+    // `this.pages` is null on the very first load, which is the case that
+    // SHOULD start at 0 — a book with no previous index has not moved.
+    const outgoing = this.pages === null ? 0 : this.resolvedPageIndex(this.pages);
+
     this.ui?.destroy();
     this.render?.stop();
     this.pages?.destroy();
@@ -557,6 +576,7 @@ export class PageFlip extends EventObject {
     this.ui = ui;
     this.render = render;
     this.flipController = new Flip(render, this);
+    pages[INHERIT_PAGE_INDEX](outgoing);
     this.pages = pages;
     pages.load();
     render.start();
@@ -1118,7 +1138,7 @@ export class PageFlip extends EventObject {
    *
    * @param {number} newPage - New page Number
    */
-  public updatePageIndex(newPage: number): void {
+  public [EMIT_PAGE_INDEX](newPage: number): void {
     this.dispatch('flip', newPage);
   }
 

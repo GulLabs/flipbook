@@ -178,6 +178,37 @@ describe('hard fold — shadow face selection', () => {
     return book;
   }
 
+  test('the faces are pinned ABSOLUTELY, not just relative to each other', () => {
+    // Every other assertion in this describe is a RELATION — this differs from
+    // that, this is the negation of that. Swapping BOTH ternary outputs puts
+    // every hard shadow on the wrong face while preserving every relation, so
+    // all of them still pass. Codex found exactly that hole.
+    //
+    // These are golden values: they pin the observed behaviour of code believed
+    // correct, and unlike the relations above they encode no reasoning. If one
+    // ever fails, the question to ask is which of the two is wrong — not to
+    // update the constant.
+    //
+    // They follow from the source condition
+    // `(FORWARD && progress > 100) || (BACK && progress <= 100)`: a shallow
+    // FORWARD fold has progress <= 100, so the condition is false, so the INNER
+    // shadow takes the flipped face and the OUTER — whose ternary outputs are
+    // inverted — takes the plain one. Deep FORWARD reverses both. Written down
+    // this way rather than guessed: the first draft of this test asserted the
+    // opposite and was wrong.
+    const shallow = hardBook();
+    foldFrom(shallow, 'right', 40);
+
+    expect(shadowCss(shallow, '.stf__hardInnerShadow')).toContain(FACE);
+    expect(shadowCss(shallow, '.stf__hardShadow')).not.toContain(FACE);
+
+    const deep = hardBook();
+    foldFrom(deep, 'right', 360);
+
+    expect(shadowCss(deep, '.stf__hardInnerShadow')).not.toContain(FACE);
+    expect(shadowCss(deep, '.stf__hardShadow')).toContain(FACE);
+  });
+
   test('the inner shadow swaps face as a hard fold passes halfway', () => {
     const shallow = hardBook();
     foldFrom(shallow, 'right', 40);

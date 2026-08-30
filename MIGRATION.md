@@ -338,6 +338,18 @@ The React binding needs no change: `HTMLFlipBook` and `usePageFlip` already
 re-derive the index and page count from the engine on `collectionRebuild`
 rather than trusting the flip stream.
 
+### `updatePageIndex()` is gone from the public surface
+
+It only ever EMITTED — it dispatched `flip` without moving the book — so
+calling it fabricated a page change: `book.updatePageIndex(4)` on a book sitting
+on page 0 announced `flip(4)`, and a controlled React binding acts on that by
+navigating itself to a page nothing had turned to. Under ADR 0003 that is
+precisely the thing `flip` is supposed to make impossible, so the seam is now
+keyed by a module-private symbol and cannot be named from outside the engine.
+
+To move the book, use `turnToPage(n)` or `flipToPage(n)`, which is what the
+method's own documentation already told you to do.
+
 ### `clear()` now emits events
 
 `clear()` emits `update` and `collectionRebuild` with `page: 0` and

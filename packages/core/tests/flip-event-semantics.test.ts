@@ -190,6 +190,133 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     book.destroy();
   });
 
+  test('a consumer cannot fabricate or suppress a flip through the public surface', () => {
+    // The two seams that implement ADR 0003 both used to be public methods,
+    // and each handed a consumer the power to break the invariant it exists to
+    // enforce: `updatePageIndex(4)` FABRICATED a flip for a book on page 0
+    // (which a controlled React binding then acts on, navigating itself to a
+    // page nothing turned to), and `adoptCurrentPageIndex(4)` SUPPRESSED a real
+    // one by pre-loading the baseline. Both are now symbol-keyed in
+    // `internal.ts` and unreachable by name.
+    const book = makeHtmlBook(landscape);
+
+    const api = book.book as unknown as Record<string, unknown>;
+    expect(typeof api['updatePageIndex']).toBe('undefined');
+
+    const collection = book.book.getPageCollection() as unknown as Record<string, unknown>;
+    expect(typeof collection['adoptCurrentPageIndex']).toBe('undefined');
+
+    book.destroy();
+  });
+
+  test('DIRECT navigation announces too, not just animated flipNext/flipPrev', () => {
+    // Every emission test so far went through `flipNext` / `flipPrev`. An
+    // implementation that announced only from an animation's commit passed all
+    // twelve of them while `turnToPage` moved the book silently — and
+    // `turnToPage` is what a controlled React `page` prop drives.
+    const book = makeHtmlBook({ ...landscape, flippingTime: 0 });
+    const seen = watch(book.book);
+
+    book.book.turnToPage(4);
+    book.book.turnToPage(0);
+
+    expect(seen).toEqual([4, 0]);
+
+    book.destroy();
+  });
+
+  test('turnToNextPage / turnToPrevPage announce as well', () => {
+    // The commit seams the animation calls into. Reached directly here so that
+    // an announcement wired only to the animation path cannot hide.
+    const book = makeHtmlBook({ ...landscape, flippingTime: 0 });
+    const seen = watch(book.book);
+
+    book.book.turnToNextPage();
+    book.book.turnToPrevPage();
+
+    expect(seen).toEqual([2, 0]);
+
+    book.destroy();
+  });
+
+  test('replacing with a LONGER book that keeps the index stays silent', () => {
+    // The third replacement shape. Equal-size and shrinking were covered;
+    // growing was not, so an implementation that announced `flip(current)` only
+    // when the collection GREW passed every other test while firing an event
+    // for an index that did not move.
+    const book = makeHtmlBook({ ...landscape, flippingTime: 0 });
+    book.book.turnToPage(2);
+
+    const seen = watch(book.book);
+
+    const replacement = makePages(10);
+    for (const p of replacement) book.host.appendChild(p);
+    book.book.updateFromHtml(replacement);
+
+    expect(book.book.getCurrentPageIndex()).toBe(2);
+    expect(seen).toEqual([]);
+
+    book.destroy();
+  });
+
+  test('replacePages to a DIFFERENT page announces', () => {
+    // The negative control for seeding `replacePages` from the OUTGOING index
+    // rather than the caller's destination. Seeding the destination makes the
+    // guard compare 4 against 4 and stay silent through a real 2 -> 4 move.
+    const book = makeHtmlBook({ ...landscape, flippingTime: 0 });
+    book.book.turnToPage(2);
+
+    const seen = watch(book.book);
+
+    const replacement = makePages(6);
+    for (const p of replacement) book.host.appendChild(p);
+    book.book.replacePages(
+      new HTMLPageCollection(
+        book.book,
+        book.book.getRender(),
+        book.book.getUI().getDistElement(),
+        replacement,
+      ),
+      4,
+    );
+
+    expect(book.book.getCurrentPageIndex()).toBe(4);
+    expect(seen).toEqual([4]);
+
+    book.destroy();
+  });
+
+  test('a RELOAD that moves the page announces, and one that does not stays silent', () => {
+    // A reload is a collection replacement as far as the consumer is concerned.
+    // Without a baseline it was wrong in both directions: reloading a page-4
+    // book to `startPage: 0` moved the visible index with no event, and
+    // reloading it to `startPage: 4` announced a turn for a book that had not
+    // moved.
+    const moved = makeHtmlBook({ ...landscape, flippingTime: 0 });
+    moved.book.turnToPage(4);
+    const movedSeen = watch(moved.book);
+
+    const freshA = makePages(6);
+    for (const p of freshA) moved.host.appendChild(p);
+    moved.book.loadFromHTML(freshA);
+
+    expect(moved.book.getCurrentPageIndex()).toBe(0);
+    expect(movedSeen).toEqual([0]);
+    moved.destroy();
+
+    const stayed = makeHtmlBook({ ...landscape, flippingTime: 0, startPage: 4 });
+    stayed.book.turnToPage(4);
+    const stayedSeen = watch(stayed.book);
+
+    const freshB = makePages(6);
+    for (const p of freshB) stayed.host.appendChild(p);
+    stayed.book.loadFromHTML(freshB);
+
+    expect(stayed.book.getCurrentPageIndex()).toBe(4);
+    expect(stayedSeen).toEqual([]);
+    stayed.destroy();
+  });
+
   test('a sequence of real turns emits one flip each, in order', () => {
     // Kills a guard that latches — announcing the first change and then going
     // quiet — which the single-turn test above cannot see.
