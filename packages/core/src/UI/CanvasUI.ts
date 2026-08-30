@@ -23,7 +23,20 @@ function effectiveDevicePixelRatio(cssWidth: number, cssHeight: number): number 
       ? devicePixelRatio
       : 1;
 
-  const areaCap = Math.sqrt(MAX_BACKING_PIXELS / (cssWidth * cssHeight));
+  // Solve for the largest scale whose CEILED dimensions still fit the budget.
+  //
+  // `sqrt(MAX / area)` is the answer only if the backing size could be
+  // fractional. It cannot — each axis is rounded UP independently — so that
+  // scale overshoots by up to one pixel per axis, and the product lands over
+  // the cap: 6000x4000 gave 3548x2365 = 8,391,020 against a stated 8,388,608.
+  // Small, but this is the third revision of this cap, and "nearly" is what
+  // made the previous two wrong.
+  //
+  // Requiring `(w*s + 1) * (h*s + 1) <= MAX` absorbs the rounding, which is a
+  // quadratic in `s`:  (w*h)s^2 + (w+h)s + (1 - MAX) = 0.
+  const a = cssWidth * cssHeight;
+  const b = cssWidth + cssHeight;
+  const areaCap = (-b + Math.sqrt(b * b - 4 * a * (1 - MAX_BACKING_PIXELS))) / (2 * a);
 
   // NO LOWER BOUND. Flooring at 1 overrode the cap in exactly the case it
   // exists for (a 6000x4000 book got 24M backing pixels against a stated 8.4M

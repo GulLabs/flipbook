@@ -293,3 +293,41 @@ describe('I18 — angleBetweenSegments is total', () => {
     expect(angleBetweenSegments(horizontal, horizontal)).toBeCloseTo(0, 10);
   });
 });
+
+describe('validation gaps Codex round 3 found', () => {
+  test('a fractional startZIndex is rejected — z-index takes an integer', () => {
+    // `z-index:5.5` is discarded by the browser exactly as quietly as
+    // `z-index:NaN`, so finiteness alone was not enough.
+    expect(() => new Settings().getSettings({ width: 100, height: 100, startZIndex: 5.5 })).toThrow(
+      PageFlipError,
+    );
+    expect(() =>
+      new Settings().getSettings({ width: 100, height: 100, startZIndex: -3 }),
+    ).not.toThrow();
+  });
+
+  test('startPage is NOT validated here — the load path reports it better', () => {
+    // Codex asked for this to throw. Declined: the load path already reports a
+    // fractional or NaN startPage as `INVALID_PAGE`, and the React binding
+    // surfaces it through `onNavigationError` with both the requested and the
+    // actual page — a live book plus a precise diagnostic, rather than a
+    // constructor throw and a dead component. A test in the React suite pins it.
+    expect(() =>
+      new Settings().getSettings({ width: 100, height: 100, startPage: 0.5 }),
+    ).not.toThrow();
+    expect(() =>
+      new Settings().getSettings({ width: 100, height: 100, startPage: -4 }),
+    ).not.toThrow();
+  });
+
+  test('a non-finite maxShadowOpacity is rejected', () => {
+    // It feeds `opacity` and the canvas gradient alpha. A dropped declaration
+    // reads as a shadow at FULL opacity rather than as an error.
+    expect(() =>
+      new Settings().getSettings({ width: 100, height: 100, maxShadowOpacity: NaN }),
+    ).toThrow(PageFlipError);
+    expect(() =>
+      new Settings().getSettings({ width: 100, height: 100, maxShadowOpacity: -0.5 }),
+    ).toThrow(PageFlipError);
+  });
+});

@@ -116,7 +116,7 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     // `Math.max(1, ...)` used to floor the scale here, allowing 24M backing
     // pixels against a stated 8.4M ceiling. On iOS, exceeding the limit does
     // not degrade — the canvas comes back blank.
-    expect(w * h).toBeLessThanOrEqual(MAX_BACKING_PIXELS * 1.01);
+    expect(w * h).toBeLessThanOrEqual(MAX_BACKING_PIXELS);
     expect(w).toBeLessThan(6000);
     expect(w).toBeGreaterThan(0);
 
@@ -140,14 +140,27 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     book.destroy();
   });
 
-  test('an ordinary 2x desktop book is sized for the display', async () => {
+  test('an ordinary 2x desktop book is sized AND DRAWN for the display', async () => {
     vi.stubGlobal('devicePixelRatio', 2);
     stubLayout(800, 600);
 
+    const ctx = stubCanvas2d();
     const book = new PageFlip(host, { width: 400, height: 300 });
     await book.loadFromImages(['a.png', 'b.png']);
 
     expect(backing(host)).toEqual({ w: 1600, h: 1200 });
+
+    // The transform matters as much as the allocation, and only asserting
+    // allocation left the whole suite passing against a `getBackingScale()`
+    // hardcoded to 1:1 — a book allocated at 2x but drawn at 1x paints into the
+    // top-left quarter of its own canvas.
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+
+    const calls = ctx.setTransform.mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    const [a, , , d] = calls[calls.length - 1] as number[];
+    expect(a).toBeCloseTo(2, 5);
+    expect(d).toBeCloseTo(2, 5);
 
     book.destroy();
   });
@@ -196,7 +209,7 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     // A 0.1 floor was the SECOND version of this bug: areaCap here is 0.0965,
     // the floor picked 0.1, and the result was 9.0M against an 8.39M ceiling.
     // A floor and an absolute cap are contradictory claims; the cap wins.
-    expect(w * h).toBeLessThanOrEqual(MAX_BACKING_PIXELS * 1.01);
+    expect(w * h).toBeLessThanOrEqual(MAX_BACKING_PIXELS);
     expect(w).toBeGreaterThan(0);
 
     book.destroy();

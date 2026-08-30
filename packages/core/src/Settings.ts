@@ -181,10 +181,28 @@ export class Settings {
     }
 
     // Interpolated straight into `z-index:${startZIndex + n}`. A negative base
-    // is valid CSS and is left alone; `NaN`/`Infinity` produce a declaration
-    // the browser drops, silently losing the whole z-order.
-    if (!Number.isFinite(result.startZIndex)) {
-      throw new PageFlipError('Invalid start z-index', 'INVALID_Z_INDEX');
+    // is valid CSS and is left alone. `NaN`/`Infinity` produce a declaration
+    // the browser drops, silently losing the whole z-order — and so does a
+    // FRACTION: `z-index` takes an integer, so `z-index:5.5` is discarded just
+    // as quietly. Finiteness alone was not enough.
+    if (!Number.isInteger(result.startZIndex)) {
+      throw new PageFlipError('Invalid start z-index (must be an integer)', 'INVALID_Z_INDEX');
+    }
+
+    // NOT validated here, deliberately. Codex flagged that a fractional or NaN
+    // `startPage` reaches `PageCollection.show()`, which silently declines it —
+    // but the load path ALREADY reports that as `INVALID_PAGE`, and the React
+    // binding surfaces it through `onNavigationError` with the requested and
+    // actual page. A test pins that behaviour, and it is better than throwing:
+    // the book still renders, and the consumer is told precisely what happened.
+    // Throwing from the constructor would replace a good diagnostic with a
+    // dead component.
+
+    // Feeds `opacity` on the shadow elements and the alpha of the canvas
+    // gradients. A non-finite value produces a declaration the browser drops,
+    // which reads as a shadow at FULL opacity rather than as an error.
+    if (!Number.isFinite(result.maxShadowOpacity) || result.maxShadowOpacity < 0) {
+      throw new PageFlipError('Invalid max shadow opacity', 'INVALID_SHADOW_OPACITY');
     }
 
     const direction = result.direction as string;
