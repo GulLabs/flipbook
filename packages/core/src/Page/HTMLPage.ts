@@ -8,6 +8,24 @@ import { rotatePoint } from '../Helper';
 import { FlipDirection } from '../Flip/Flip';
 import type { Point } from '../BasicTypes';
 import { foldFill } from '../Render/pageBackground';
+import { PageFlipError } from '../errors';
+
+/**
+ * Every class this renderer puts on a consumer's leaf element.
+ *
+ * Kept here, next to the code that adds them (`constructor`, `simpleDraw`,
+ * `setOrientation`, `setDrawingDensity`), because the list only stays correct
+ * if it lives beside the additions. `HTMLUI.clear()` reads it to hand the
+ * nodes back undressed — see U1 there.
+ */
+export const ENGINE_LEAF_CLASSES = [
+  'stf__item',
+  '--soft',
+  '--hard',
+  '--left',
+  '--right',
+  '--simple',
+] as const;
 
 /**
  * Class representing a book page as a HTML Element
@@ -43,6 +61,25 @@ export class HTMLPage extends Page {
     }
 
     if (this.temporaryCopy === null) {
+      // U8. This was `this.element.parentElement?.appendChild(...)` below. A
+      // detached leaf (a React unmount racing a turn, a consumer removing a
+      // page node) made the optional chain a silent no-op — and the copy was
+      // still built, still returned, and still animated, so the turn ran to
+      // completion against a node that is not in the document: no fold, no
+      // error, and a `hideTemporaryCopy()` that "cleans up" something that was
+      // never there. The optional chain turned a broken state into an invisible
+      // one. There is no correct rendering for a detached leaf, so say so — and
+      // say it before anything is cloned or assigned, so a caller that catches
+      // this is not left with a half-built copy hanging off the page.
+      const parent = this.element.parentElement;
+
+      if (parent === null) {
+        throw new PageFlipError(
+          'Cannot flip a page whose element is not in the document',
+          'DETACHED_PAGE',
+        );
+      }
+
       this.copiedElement = this.element.cloneNode(true) as HTMLElement;
       this.copiedElement.style.backgroundColor = foldFill(this.render.getSettings().pageBackground);
 
@@ -73,7 +110,7 @@ export class HTMLPage extends Page {
       this.copiedElement.setAttribute('inert', '');
       this.copiedElement.setAttribute('data-stf-clone', '');
 
-      this.element.parentElement?.appendChild(this.copiedElement);
+      parent.appendChild(this.copiedElement);
 
       const copy = new HTMLPage(this.render, this.copiedElement, this.nowDrawingDensity);
       copy.isTemporaryCopy = true;
@@ -170,7 +207,8 @@ export class HTMLPage extends Page {
   }
 
   private drawSoft(position: Point, commonStyle = ''): void {
-    let polygon = 'polygon( ';
+    const vertices: string[] = [];
+
     for (const p of this.state.area) {
       if (p !== null) {
         let g =
@@ -185,11 +223,28 @@ export class HTMLPage extends Page {
               };
 
         g = rotatePoint(g, { x: 0, y: 0 }, this.state.angle);
-        polygon += `${g.x}px ${g.y}px, `;
+        vertices.push(`${g.x}px ${g.y}px`);
       }
     }
-    polygon = polygon.slice(0, -2);
-    polygon += ')';
+
+    // U7. The polygon used to be built by appending `"x y, "` and then
+    // `slice(0, -2)`. With no non-null points in `state.area` that leaves the
+    // literal string `polygon)` — invalid CSS, which the browser DROPS. A
+    // dropped `clip-path` is not "no fold": it is NO CLIP, so the flipping leaf
+    // paints as a full opaque rectangle across the spread for that frame. That
+    // is the worst available outcome, and it is the one with no guard.
+    //
+    // Fewer than three vertices cannot enclose any area, so the correct
+    // rendering of such a frame is nothing at all. The two alternatives were
+    // rejected: falling back to the page rect is the bug restated, and keeping
+    // the previous frame's clip leaves a fold hanging in a shape the state no
+    // longer describes (and needs per-page history to do it). A valid,
+    // zero-area polygon says exactly what is true — this leaf covers nothing
+    // this frame — with no state and no chance of the browser dropping it.
+    const polygon =
+      vertices.length >= 3
+        ? `polygon( ${vertices.join(', ')})`
+        : 'polygon(0px 0px, 0px 0px, 0px 0px)';
 
     // Safari drops the clip-path on a 3d-transformed element at angle 0.
     // https://bugs.webkit.org/show_bug.cgi?id=126207

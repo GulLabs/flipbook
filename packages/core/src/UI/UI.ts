@@ -234,7 +234,7 @@ export abstract class UI {
     this.distElement.removeEventListener('pointerdown', this.onPointerDown);
     this.distElement.removeEventListener('pointermove', this.onPointerMove);
     this.distElement.removeEventListener('pointerup', this.onPointerUp);
-    this.distElement.removeEventListener('pointercancel', this.onPointerUp);
+    this.distElement.removeEventListener('pointercancel', this.onPointerCancel);
     this.distElement.removeEventListener('pointerleave', this.onPointerLeave);
     this.distElement.removeEventListener('dragstart', this.onDragStart);
     this.handlersBound = false;
@@ -246,7 +246,7 @@ export abstract class UI {
     this.distElement.addEventListener('pointerdown', this.onPointerDown);
     this.distElement.addEventListener('pointermove', this.onPointerMove);
     this.distElement.addEventListener('pointerup', this.onPointerUp);
-    this.distElement.addEventListener('pointercancel', this.onPointerUp);
+    this.distElement.addEventListener('pointercancel', this.onPointerCancel);
     this.distElement.addEventListener('pointerleave', this.onPointerLeave);
     this.distElement.addEventListener('dragstart', this.onDragStart);
     this.handlersBound = true;
@@ -505,6 +505,36 @@ export abstract class UI {
     }
 
     this.app.userStop(pos, isSwipe);
+  };
+
+  /**
+   * U2. The OS took the pointer away — a system back-swipe, a browser gesture
+   * takeover, palm rejection, the pointer's device being removed.
+   *
+   * This was bound to `onPointerUp`, which runs the swipe branch: a fast
+   * cancelled drag met the distance / time thresholds and COMMITTED the turn
+   * the user's gesture had just been aborted out of. A cancellation is the
+   * platform telling us the gesture never happened; it must abandon, never
+   * commit.
+   *
+   * It reuses `cancelGesture()` rather than growing a second cancel path: the
+   * semantics wanted here are exactly the ones that path already implements —
+   * release the capture, unwind `PageFlip.isUserTouch` without committing a
+   * click-turn or a snap-back, drop the fold, repaint the spread. The only
+   * things that differ are entry conditions, and those belong at the handler:
+   * a cancel from a pointer that never owned the gesture must not end it, and a
+   * cancelled *hover* has no gesture to abandon but may have left a corner
+   * folded up.
+   */
+  private onPointerCancel = (e: PointerEvent): void => {
+    if (!this.isActivePointer(e)) return;
+
+    if (this.activePointerId === null && this.touchPoint === null) {
+      this.unfoldHoverCorner();
+      return;
+    }
+
+    this.cancelGesture();
   };
 
   protected get handlersAreBound(): boolean {
