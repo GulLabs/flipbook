@@ -282,6 +282,21 @@ export class Flip {
           progress,
           calc.getDirection(),
         );
+      } else {
+        // FL4, the same family as X3: a shadow the fold can no longer compute
+        // has to leave the screen. The start point is the intersection of the
+        // folded leaf with the book's border, and a pose exists where there is
+        // none — drag a BOTTOM corner up past the top edge of a wide, short
+        // book and `getShadowStartPoint()` goes from a point to `null` between
+        // one pointer move and the next.
+        //
+        // A bare `if` left the LAST computed shadow in `Render.shadow`, and
+        // neither renderer re-derives it: `HTMLRender.drawFrame` repaints
+        // whatever the field holds and `CanvasRender` does the same, so the
+        // shadow froze in mid-air over a leaf that had moved on, until the turn
+        // ended and `animateFlippingTo` cleared it. "No shadow for this pose"
+        // is a result, not an absence of one.
+        this.render.clearShadow();
       }
     }
   }
@@ -439,13 +454,20 @@ export class Flip {
 
         this.setState(FlippingState.FOLD_CORNER);
 
-        calc.calc({ x: pageWidth - 1, y: 1 });
-
         const fixedCornerSize = 50;
         const yStart = calc.getCorner() === FlipCorner.BOTTOM ? rect.height - 1 : 1;
 
         const yDest =
           calc.getCorner() === FlipCorner.BOTTOM ? rect.height - fixedCornerSize : fixedCornerSize;
+
+        // FL3. The seed has to be the same point the animation starts from.
+        // It used to be hard-coded to `y: 1` — the TOP corner — while `yStart`
+        // below correctly picked `rect.height - 1` for a BOTTOM hover, so the
+        // first geometry the renderer was handed for a bottom-corner peel was
+        // the pose of a *top*-corner peel. The book drew one frame with the
+        // fold at the wrong end of the leaf and then jumped to the bottom on
+        // the next, which is the visible flicker at the start of the hover.
+        calc.calc({ x: pageWidth - 1, y: yStart });
 
         this.animateFlippingTo(
           { x: pageWidth - 1, y: yStart },
@@ -566,7 +588,32 @@ export class Flip {
     let direction: FlipDirection = FlipDirection.FORWARD;
 
     if (this.render.getOrientation() === Orientation.PORTRAIT) {
-      if (touchPos.x - rect.pageWidth <= rect.width / 5) {
+      // FL2. Measured from the visible leaf's own left edge, and bounded at
+      // BOTH ends. The upper bound is upstream's; the lower one is new.
+      //
+      // `touchPos` is in book coordinates, and in portrait the book's rect is
+      // twice the leaf: its left half is phantom (`computeBounds` puts `left`
+      // at `middle.x - 1.5 * pageWidth`), and the host shows blank margin
+      // there. A bare `<=` therefore accepted every point to the LEFT of the
+      // leaf as well, so a click in that margin started a back turn — one the
+      // reader never aimed at, on a part of the page that is not the book.
+      // Outside the leaf there is no meaningful direction, so those points
+      // fall through to FORWARD exactly as the margin on the *right* already
+      // did.
+      //
+      // The zone stays 2/5 of the leaf rather than the 1/2 landscape uses.
+      // `rect.width / 5` is the same number (portrait `width` is exactly
+      // `2 * pageWidth`), written against the phantom width by accident;
+      // re-expressing it against `pageWidth` changes nothing a consumer can
+      // observe and removes the coupling. Widening it to half the leaf would
+      // be a behaviour change with no defect behind it, and it would remove a
+      // property worth keeping — forward is the overwhelmingly common turn, so
+      // biasing the split towards it is the friendlier target, and landscape's
+      // even split is a consequence of the left page BEING the previous page,
+      // not a rule portrait has to match.
+      const leafPos = touchPos.x - rect.pageWidth;
+
+      if (leafPos >= 0 && leafPos <= (rect.pageWidth * 2) / 5) {
         direction = FlipDirection.BACK;
       }
     } else if (touchPos.x < rect.width / 2) {
@@ -663,12 +710,34 @@ export class Flip {
 
     const bookPos = this.render.convertToBook(globalPos);
 
+    // FL1. The corner bands belong to the leaves the reader can SEE, so they
+    // are measured against the visible span, not against the bounds rect.
+    //
+    // In landscape the two are the same thing and nothing here changes. In
+    // portrait the bounds rect is twice the single leaf and its left half is
+    // phantom: `computeBounds` sets `left = middle.x - 1.5 * pageWidth`, so
+    // `bookPos.x < operatingDistance` picked out a band that sits off the host
+    // entirely — measured on a 200×300 portrait book, `left = -110` and
+    // `operatingDistance = 72.1`, putting the whole "left corner" band at
+    // negative page coordinates. The reader could hover-peel the FORWARD
+    // corner and never the BACK one: the affordance for turning back simply
+    // did not exist in portrait, and `disableFlipByClick` inherited the same
+    // hole through `PageFlip.requestUserTurn`.
+    //
+    // Solved from here rather than from `Render.getFoldRect`: that rect
+    // re-anchors on the leaf a *given fold direction* pivots about, and this
+    // test runs before any direction is chosen — it is the thing that decides
+    // whether a fold starts at all. What it needs is the leaf's extent, which
+    // `getRect()` and `getOrientation()` already state.
+    const visibleLeft =
+      this.render.getOrientation() === Orientation.PORTRAIT ? rect.width - pageWidth : 0;
+
     return (
-      bookPos.x > 0 &&
+      bookPos.x > visibleLeft &&
       bookPos.y > 0 &&
       bookPos.x < rect.width &&
       bookPos.y < rect.height &&
-      (bookPos.x < operatingDistance || bookPos.x > rect.width - operatingDistance) &&
+      (bookPos.x < visibleLeft + operatingDistance || bookPos.x > rect.width - operatingDistance) &&
       (bookPos.y < operatingDistance || bookPos.y > rect.height - operatingDistance)
     );
   }

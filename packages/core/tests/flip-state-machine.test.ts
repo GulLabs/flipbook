@@ -126,8 +126,15 @@ describe('I1 — a refused fold must not strand the state machine', () => {
     expect(flip.getCalculation()).not.toBeNull();
 
     // Refused: BACK from page 0. `start()` reset `calc` on the way in.
+    //
+    // The point must be on the LEFT part of the visible leaf, which in
+    // portrait starts one `pageWidth` into the bounds rect — the rect's left
+    // half is phantom. This used to read `rect.left + 2`, a point in that
+    // phantom half that `getDirectionByPoint` called BACK only because its
+    // portrait test had no lower bound (FL2); the assertion below was right
+    // for the wrong reason.
     app.turnToPage(0);
-    expect(flip.start({ x: rect.left + 2, y: rect.top + 10 })).toBe(false);
+    expect(flip.start({ x: rect.left + rect.pageWidth + 2, y: rect.top + 10 })).toBe(false);
     expect(flip.getCalculation()).toBeNull();
 
     flip.stopMove();
