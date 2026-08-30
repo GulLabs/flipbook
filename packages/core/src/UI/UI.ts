@@ -8,6 +8,7 @@ import type { FlipSetting } from '../Settings';
 import { FlipCorner, FlippingState } from '../Flip/Flip';
 import { Orientation } from '../Render/Render';
 import { ensureFlipbookStyles } from '../styles';
+import { ALL_POINTERS } from '../Settings';
 import { FLIPBOOK_INTERACTIVE_SELECTOR } from '../interactive';
 import { DROP_POINTER_GESTURE, SET_ORIENTATION_STYLE } from '../internal';
 
@@ -346,8 +347,14 @@ export abstract class UI {
     // Bound before the return, removed unconditionally in `removeHandlers`.
     this.distElement.addEventListener('dragstart', this.onDragStart);
 
-    // D2. A LIST, not a boolean. The old flag gated the one pointer path, so
-    // `useMouseEvents: false` silently disabled touch and pen too.
+    // D2. `pointerInput` is filtered PER POINTER at the entry points below, not
+    // by refusing to register at all. Gating registration on the array being
+    // non-empty is what the old boolean did, and it is the same defect wearing
+    // the new name: `pointerInput: ['touch']` would register the one path and
+    // then let mouse and pen turn the book exactly as before.
+    //
+    // The empty case still short-circuits, because "no pointer may turn this
+    // book" needs no listeners at all.
     if (this.app.getSettings().pointerInput.length === 0) return;
 
     this.distElement.addEventListener('pointerdown', this.onPointerDown);
@@ -627,9 +634,28 @@ export abstract class UI {
     return this.activePointerId === null || this.activePointerId === e.pointerId;
   }
 
+  /**
+   * Does `pointerInput` admit this device?
+   *
+   * `PointerEvent.pointerType` is `'mouse' | 'pen' | 'touch'` in practice, but
+   * the spec allows a UA-specific string, and an unrecognised device must not
+   * be silently dropped — a book that cannot be turned by hardware nobody
+   * anticipated is a worse failure than one extra accepted pointer. So an
+   * unknown type is admitted whenever the consumer has not narrowed the list.
+   */
+  private acceptsPointer(e: PointerEvent): boolean {
+    const allowed = this.app.getSettings().pointerInput;
+    const kind = e.pointerType;
+
+    if (kind === 'mouse' || kind === 'touch' || kind === 'pen') return allowed.includes(kind);
+
+    return allowed.length === ALL_POINTERS.length;
+  }
+
   private onPointerDown = (e: PointerEvent): void => {
     // A gesture is already in progress and belongs to another pointer.
     if (this.activePointerId !== null) return;
+    if (!this.acceptsPointer(e)) return;
     if (e.button !== 0 && e.pointerType === 'mouse') return;
     if (!this.checkTarget(e.target)) return;
 
@@ -673,6 +699,10 @@ export abstract class UI {
 
   private onPointerMove = (e: PointerEvent): void => {
     if (!this.isActivePointer(e)) return;
+    // Also the HOVER peel: without this a disallowed mouse could not start a
+    // turn but could still fold a corner up, which reads as a book that half
+    // responds to it.
+    if (!this.acceptsPointer(e)) return;
 
     // The `clickEventForward` guard ran on `pointerdown` only, so the click
     // was forwarded correctly while the *hover* still folded the corner up

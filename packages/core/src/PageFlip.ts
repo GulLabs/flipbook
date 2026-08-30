@@ -694,6 +694,12 @@ export class PageFlip extends EventObject {
     this.flipController?.abandon();
     this.resetUserGesture();
 
+    // CAPTURED BEFORE `destroy()`, which empties the collection in place — the
+    // same property C2 turned on. Asking afterwards returns 0 for EVERY
+    // replacement, so a live content refresh jumped back to `initialPage` and
+    // the seed suppressed the `flip` for that real, visible move.
+    const wasEmpty = previous.getPageCount() === 0;
+
     previous.destroy();
 
     const pages = new HTMLPageCollection(this, render, ui.getDistElement(), items);
@@ -744,7 +750,7 @@ export class PageFlip extends EventObject {
     // `attachMode` already treats as a first load, so it gets the same
     // treatment: honour `initialPage`, and seed the baseline so the guard stays
     // silent.
-    const openingFresh = previous.getPageCount() === 0 && pageCount > 0;
+    const openingFresh = wasEmpty && pageCount > 0;
     const requested = openingFresh
       ? resolveStartPage(pages, pageCount, this.setting.initialPage)
       : current;
@@ -1056,7 +1062,18 @@ export class PageFlip extends EventObject {
   private requestUserTurn(pos: Point): void {
     const flip = this.flipController;
 
-    if (flip !== null && this.setting.flipOnClick === 'corners' && !flip.isPointOnCorners(pos)) {
+    // All three states, and `'never'` was the point of the rename: the old
+    // `disableFlipByClick` could not express "drag and swipe only" because its
+    // `true` still flipped on a corner. Advertising the state and then falling
+    // through to the turn would have been the same defect with a better name.
+    const policy = this.setting.flipOnClick;
+
+    if (policy === 'never') {
+      this.dispatch('turnRejected', { reason: 'disabled', direction: null, targetPage: null });
+      return;
+    }
+
+    if (flip !== null && policy === 'corners' && !flip.isPointOnCorners(pos)) {
       this.dispatch('turnRejected', { reason: 'disabled', direction: null, targetPage: null });
       return;
     }
