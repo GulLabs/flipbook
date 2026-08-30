@@ -42,6 +42,23 @@ export const INHERIT_PAGE_INDEX = Symbol('flipbook.inheritPageIndex');
 export const EMIT_PAGE_INDEX = Symbol('flipbook.emitPageIndex');
 
 /**
+ * Seeds a FIRST load's baseline with the head of the spread the book is about
+ * to open on.
+ *
+ * Distinct from {@link INHERIT_PAGE_INDEX}, which carries an outgoing
+ * collection's index across a replacement verbatim — and must, because when an
+ * orientation change re-canonicalises that index the head really has moved and
+ * the guard is right to announce it. Canonicalising there would suppress a real
+ * change; not canonicalising here fabricates one.
+ *
+ * The resolution has to happen inside the collection: the requested page is not
+ * the head it lands on. In landscape, opening at page 1 shows spread `[0, 1]`,
+ * whose head is 0 — so seeding the request rather than the head would trade a
+ * spurious `flip(1)` for a spurious `flip(0)`.
+ */
+export const SEED_OPENING_INDEX = Symbol('flipbook.seedOpeningIndex');
+
+/**
  * Drops the pointer half of an in-flight gesture: the swipe anchor and the
  * captured pointer, and nothing else.
  *

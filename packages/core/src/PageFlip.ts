@@ -2,7 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { DROP_POINTER_GESTURE, EMIT_PAGE_INDEX, INHERIT_PAGE_INDEX } from './internal';
+import {
+  DROP_POINTER_GESTURE,
+  EMIT_PAGE_INDEX,
+  INHERIT_PAGE_INDEX,
+  SEED_OPENING_INDEX,
+} from './internal';
 import type { PageCollection } from './Collection/PageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
 import type { PageRect, Point } from './BasicTypes';
@@ -534,6 +539,7 @@ export class PageFlip extends EventObject {
     //
     // `this.pages` is null on the very first load, which is the case that
     // SHOULD start at 0 — a book with no previous index has not moved.
+    const isFirstLoad = this.pages === null;
     const outgoing = this.pages === null ? 0 : this.resolvedPageIndex(this.pages);
 
     this.ui?.destroy();
@@ -588,7 +594,23 @@ export class PageFlip extends EventObject {
     // desynced. Clamping also keeps `Render` from being left with no pages set
     // at all, which is what "silently returns" costs on the render side.
     const pageCount = pages.getPageCount();
-    pages.show(resolveStartPage(pages, pageCount, this.setting.startPage));
+    const start = resolveStartPage(pages, pageCount, this.setting.startPage);
+
+    // C2. `outgoing` is 0 for a first load, on the reasoning that a book with
+    // no previous index has not moved. True — but the book does not OPEN at 0,
+    // it opens at `start`, so the guard compared 0 against the head of the
+    // opening spread and announced `flip(4)` for a mount nobody had touched.
+    //
+    // And it announced it BEFORE `init`, which is dispatched from the timer
+    // below. ADR 0003 makes `init` the seeding event, so a consumer's `init`
+    // handler ran after the `flip` it was supposed to be the baseline for —
+    // the desync is silent, and a controlled React binding acts on the `flip`.
+    //
+    // Only the first load. A RELOAD keeps `outgoing`: there the index really
+    // can move, and the guard is right to say so.
+    if (isFirstLoad) pages[SEED_OPENING_INDEX](start);
+
+    pages.show(start);
 
     this.cancelPendingInit();
     this.initTimer = setTimeout(() => {

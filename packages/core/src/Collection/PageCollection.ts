@@ -7,7 +7,7 @@ import type { Render } from '../Render/Render';
 import { Orientation } from '../Render/Render';
 import type { Page } from '../Page/Page';
 import { PageDensity } from '../Page/Page';
-import { EMIT_PAGE_INDEX, INHERIT_PAGE_INDEX } from '../internal';
+import { EMIT_PAGE_INDEX, INHERIT_PAGE_INDEX, SEED_OPENING_INDEX } from '../internal';
 import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { getPortraitFlippingPage } from './flippingPage';
@@ -75,6 +75,21 @@ export abstract class PageCollection {
    */
   public [INHERIT_PAGE_INDEX](index: number): void {
     this.currentPageIndex = index;
+  }
+
+  /**
+   * Seed the baseline for a first load. See {@link SEED_OPENING_INDEX}.
+   *
+   * A no-op for an out-of-range request: `show()` returns silently for one too,
+   * so the book stays where it is and the baseline must stay with it.
+   *
+   * @internal — symbol-keyed, unreachable by name from outside the package.
+   */
+  public [SEED_OPENING_INDEX](pageNum: number): void {
+    const spreadIndex = this.getSpreadIndexByPage(pageNum);
+    if (spreadIndex === null) return;
+
+    this.currentPageIndex = at(at(this.getSpread(), spreadIndex, 'spread'), 0, 'spread head');
   }
 
   /**

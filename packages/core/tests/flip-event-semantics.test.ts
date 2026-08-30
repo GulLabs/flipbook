@@ -60,6 +60,98 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     host.remove();
   });
 
+  test('mounting at a nonzero startPage emits no flip either — and none before init', () => {
+    // C2. The sibling above passes because the book opens where the fresh
+    // collection already sits. With `startPage: 4` the head moves 0 -> 4 during
+    // the synchronous `pages.show(...)` in `attachMode`, so the ADR 0003 guard
+    // announced `flip(4)` — for a book no reader has touched, and BEFORE `init`,
+    // which ADR 0003 makes the seeding event. A consumer binding `flip` to
+    // controlled state is driven to page 4 by a mount.
+    //
+    // The ordering half matters independently: `init` is dispatched from a
+    // `setTimeout`, so any synchronous emit necessarily precedes it. An `init`
+    // handler that seeds state therefore runs AFTER the `flip` it is supposed
+    // to be the baseline for, and overwrites nothing — the desync is silent.
+    //
+    // Built by hand for the same reason as the sibling: `makeHtmlBook` loads
+    // inside itself, so a listener on its return value has already missed this.
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const pages = makePages(6);
+    for (const p of pages) host.appendChild(p);
+
+    const book = new PageFlip(host, {
+      width: 200,
+      height: 300,
+      size: 'fixed',
+      startPage: 4,
+    });
+
+    const order: string[] = [];
+    const flips: number[] = [];
+    book.on('flip', (e) => {
+      order.push('flip');
+      flips.push(e.data as number);
+    });
+    book.on('init', () => order.push('init'));
+
+    book.loadFromHTML(pages);
+
+    expect(flips).toEqual([]);
+    expect(order).toEqual([]);
+    expect(book.getCurrentPageIndex()).toBe(4);
+
+    book.destroy();
+    host.remove();
+  });
+
+  test('LANDSCAPE: the baseline is the spread HEAD, not the requested page', () => {
+    // A guard on the SHAPE of the C2 fix, not a second reproduction of it —
+    // stated plainly because a test whose comment overclaims is worse than no
+    // test. The unfixed engine passes this one: its baseline is 0 and the head
+    // is 0, so it stays silent by luck.
+    //
+    // What it kills is the obvious wrong fix. Seeding the REQUESTED page rather
+    // than the head looks identical in the sibling above, because that book is
+    // portrait — jsdom leaves the host at 0x0 — and every portrait spread is one
+    // page, so head === request. Here spread [0, 1] has head 0 while the request
+    // is 1, and seeding 1 trades a spurious `flip(4)` for a spurious `flip(0)`.
+    // That is why the resolution lives inside the collection: it is the only
+    // thing that can see the spread table.
+    //
+    // `usePortrait: false` rather than a post-load resize, and that is load-
+    // bearing: sizing the dist element after `loadFromHTML` makes the book
+    // portrait AT LOAD and landscape only on the following `update()`, and that
+    // orientation re-canonicalisation moves the head 1 -> 0, which ADR 0003
+    // requires to emit. The first draft of this test did exactly that and read
+    // the correct emit as a failure.
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const pages = makePages(landscape.pageCount);
+    for (const p of pages) host.appendChild(p);
+
+    const book = new PageFlip(host, {
+      width: landscape.width,
+      height: landscape.height,
+      size: 'fixed',
+      usePortrait: false,
+      startPage: 1,
+    });
+
+    const seen: number[] = [];
+    book.on('flip', (e) => seen.push(e.data as number));
+
+    book.loadFromHTML(pages);
+
+    expect(book.getOrientation()).toBe('landscape');
+    // Spread [0, 1]: the requested page is on screen, under a different index.
+    expect(book.getCurrentPageIndex()).toBe(0);
+    expect(seen).toEqual([]);
+
+    book.destroy();
+    host.remove();
+  });
+
   test('replacing the page NODES at the same index emits no flip', () => {
     // Codex's blocker, and the most common call the React binding makes: every
     // time children change, `updateFromHtml` builds a FRESH collection, which
