@@ -9,6 +9,7 @@ playwright-report
 test-results
 .remember
 .craftsman
+.impeccable
 .claude
 examples/**/dist
 packages/*/dist

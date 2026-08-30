@@ -359,18 +359,60 @@ export abstract class PageCollection {
    */
   private showSpread(): void {
     const spread = at(this.getSpread(), this.currentSpreadIndex);
-    const leftIdx = at(spread, 0);
+    // Named for what it IS — the spread HEAD, the page read first — not for
+    // where it lands. It is the left leaf only in a left-bound book; under
+    // `rtl` the same index is the RIGHT leaf, and a side-shaped name would
+    // invite someone to "correct" `currentPageIndex` to match the side.
+    const headIdx = at(spread, 0);
+
+    // X2 / RTL mirroring. This is the ONLY reading-direction-dependent branch
+    // in the engine, and it is deliberately the only one.
+    //
+    // A right-bound book — Arabic, Hebrew, Persian, Urdu — puts the spine on
+    // the right and page 1 on the right of the first spread. Until now the
+    // engine mirrored the TURN direction but not the LAYOUT, which matches no
+    // real book: the reader turned right-to-left through pages laid out
+    // left-to-right.
+    //
+    // The mirror belongs here because it is COMBINATORIAL, not geometric: it
+    // chooses which of two page objects goes to which of two setters, and
+    // `setLeftPage`/`setRightPage` stamp the `PageOrientation` that drives the
+    // pixel `left`, the `--left`/`--right` classes and `drawHard`'s
+    // transform-origin. Everything spatial mirrors by construction, with no
+    // arithmetic anywhere that could drift out of sync.
+    //
+    // What must NOT mirror, each a live trap:
+    //  - Pointer coordinates and local<->global conversion. Mirroring those
+    //    makes the fold run away from the finger (the I2 defect). Already
+    //    handled by `foldSide`, a GEOMETRIC side that is reading-agnostic.
+    //  - `getFlippingPage` / `getBottomPage` face selection. Those are already
+    //    correct in both readings, and touching them applies the mirror TWICE.
+    //    Derivation: the mover is the destination face on the geometric side
+    //    the fold sweeps into. LTR forward -> left face -> `dest[0]`. RTL
+    //    forward -> geometric BACK -> right face -> also `dest[0]`. The
+    //    semantic and geometric mirrors cancel, which is why a
+    //    direction-keyed selection is reading-agnostic. X2 was never a face
+    //    bug: the faces were right and the static layout they landed into was
+    //    not, so they swapped at commit.
+    //  - The portrait branch below. See its own comment.
+    //
+    // Read live rather than cached: `direction` is not construction-time, so
+    // `updateSettings({ direction })` must take effect on the next draw.
+    const rtl = this.app.getSettings().direction === 'rtl';
 
     if (spread.length === 2) {
-      const rightIdx = at(spread, 1);
-      this.render.setLeftPage(at(this.pages, leftIdx));
-      this.render.setRightPage(at(this.pages, rightIdx));
+      const tailIdx = at(spread, 1);
+      const head = at(this.pages, headIdx);
+      const tail = at(this.pages, tailIdx);
+
+      this.render.setLeftPage(rtl ? tail : head);
+      this.render.setRightPage(rtl ? head : tail);
     } else if (this.render.getOrientation() === Orientation.LANDSCAPE) {
       // A landscape spread holding one leaf is either the front cover — which
       // sits to the RIGHT of the spine, with nothing to its left — or the last
       // leaf of the book, which sits to the left.
       //
-      // PC2. That used to be decided by `leftIdx === pages.length - 1` alone,
+      // PC2. That used to be decided by `headIdx === pages.length - 1` alone,
       // and for a ONE-page book with `showCover` both descriptions are true of
       // the same leaf: index 0 is also index `length - 1`, so the last-leaf test
       // won and the cover was placed on the left half with the right half empty.
@@ -383,19 +425,41 @@ export abstract class PageCollection {
       // would be unreachable code with an invented default. Every other book is
       // untouched — the two tests cannot both hold once there is more than one
       // page.
-      if (leftIdx === this.pages.length - 1 && !(this.isShowCover && leftIdx === 0)) {
-        this.render.setLeftPage(at(this.pages, leftIdx));
-        this.render.setRightPage(null);
-      } else {
-        this.render.setLeftPage(null);
-        this.render.setRightPage(at(this.pages, leftIdx));
-      }
+      const lone = at(this.pages, headIdx);
+      const isTail = headIdx === this.pages.length - 1 && !(this.isShowCover && headIdx === 0);
+
+      // The tail sits away from the spine and the cover sits against it, so
+      // mirroring the binding side mirrors both — a straight inversion of the
+      // tie-break above, not a second rule.
+      const onLeft = rtl ? !isTail : isTail;
+
+      this.render.setLeftPage(onLeft ? lone : null);
+      this.render.setRightPage(onLeft ? null : lone);
     } else {
+      // PORTRAIT DOES NOT MIRROR, and this is the trap in "just swap the
+      // branches when rtl".
+      //
+      // Portrait shows one centred leaf and has no visible spine, so there is
+      // nothing spatial to mirror. It uses `setRightPage` because
+      // `Render.computeBounds` places the visible leaf on the RIGHT half of a
+      // double-width bounds rect (`left = middle.x - 1.5 * pageWidth`). Sending
+      // it left under `rtl` would move the page onto the phantom half —
+      // off-centre and partly off-host.
+      //
+      // Portrait RTL is purely a turn-direction concern, and that is already
+      // handled: `getFoldRect` re-anchors on geometric BACK, so an RTL forward
+      // turn pivots about the leaf's right edge — exactly where the spine is in
+      // a right-bound portrait book.
       this.render.setLeftPage(null);
-      this.render.setRightPage(at(this.pages, leftIdx));
+      this.render.setRightPage(at(this.pages, headIdx));
     }
 
-    this.currentPageIndex = leftIdx;
+    // Unchanged, and it must be: the spread HEAD is the first page read, in
+    // both readings. "Page 5" means the same page whichever way the book binds,
+    // so `getCurrentPageIndex`, `turnToPage` and the React controlled `page`
+    // prop keep their meaning. Index order is reading order; the spatial side
+    // is derived from it, never the other way round.
+    this.currentPageIndex = headIdx;
     this.app.updatePageIndex(this.currentPageIndex);
   }
 }
