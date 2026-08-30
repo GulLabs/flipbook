@@ -81,12 +81,13 @@ does.
   wanted a green build, and then a later agent removed a public helper to buy
   back 40 bytes. Neither asked what the number was for.
 
-  What the numbers actually are: the spec (§5) says **≤ 35 kB minified**. The
-  raw alarm is at 52 kB and the brotli budget at 13 kB — set deliberately, with
-  enough headroom for a real feature rather than pinned to wherever the code
-  happened to sit. The 35 kB target is
-  unmet and is an open owner decision: closing it means removing features (RTL,
-  a11y, the index and null guards), not shaving identifiers.
+  What the numbers actually are: the spec (§5) says **≤ 35 kB minified** and
+  that target is **retired** (upstream itself is 44 kB). The packed HTML engine
+  ceilings are **57 kB raw / 14 kB brotli / 16 kB gzip**, set after canvas
+  removal (ADR 0002) with headroom for a real feature rather than pinned to
+  wherever the code happened to sit. Closing the 35 kB number would mean
+  removing features (RTL, a11y, the index and null guards), not shaving
+  identifiers.
 
   So, in order:
 
@@ -143,9 +144,10 @@ does.
 - **Audit every line you read, not just the lines you change.** You have the
   file open and the context loaded; that is the cheapest a defect will ever be
   to find. _What happened: reading `ImagePage` to plan the portrait-curl fix led
-  to `CanvasUI`, which turned out to size its backing store in CSS pixels — so
-  every canvas book renders at half resolution on a 2× display. Nobody was
-  looking for it, and it is the most visible defect in that renderer._
+  to `CanvasUI`, which sized its backing store in CSS pixels — every canvas book
+  rendered at half resolution on a 2× display. (Canvas mode has since been
+  removed — ADR 0002 — but the lesson stands: the file you opened is the
+  cheapest a defect will ever be.)_
   - Record what you find **with `file:line` and a stated failure mode**, in the
     relevant plan doc or `CHANGELOG.md`, _before_ deciding whether to fix it.
   - Fix in place only when it is the same failure family and the fix is small.

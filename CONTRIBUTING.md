@@ -21,7 +21,7 @@ pnpm test               # Vitest unit (core + react projects)
 pnpm test:coverage      # v8 coverage + global floors (see vitest.config.ts)
 pnpm test:coverage-areas  # per-file floors on Flip/UI/Render/React critical paths
 pnpm quality            # fast local: preflight + typecheck + lint + test
-pnpm quality:ci         # **merge bar**: + format + coverage + areas + build + size + isolated types + packed artifacts
+pnpm quality:ci         # **merge bar**: workflow guards + format + coverage + areas + build + size + isolated types + packed artifacts
 pnpm quality:examples   # demo builds only
 pnpm quality:full       # quality:ci + examples + full audit
 ```

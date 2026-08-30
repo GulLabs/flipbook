@@ -317,8 +317,8 @@ single-line ESM/UMD; `page-flip@2.0.7` was measured from its published tarball
 |                                                            | raw (min) |   gzip | brotli |
 | ---------------------------------------------------------- | --------: | -----: | -----: |
 | `page-flip@2.0.7` (upstream)                               |    44,058 | 10,360 |  9,261 |
-| `@gullabs/flipbook-core` HTML engine (post canvas removal) |   ~55,470 | 15,210 | 13,570 |
-| delta                                                      |    +25.9% | +46.8% | +46.5% |
+| `@gullabs/flipbook-core` HTML engine (post canvas removal) |    56,015 | 15,395 | 13,734 |
+| delta                                                      |    +27.1% | +48.6% | +48.3% |
 
 Canvas mode was **removed** (ADR 0002). The HTML engine is the only renderer; ceilings were re-measured and lowered after the removal.
 
@@ -329,7 +329,7 @@ was a number with no derivation, and enforcing it produced only churn.
 
 Two claims that circulated and were both false: that upstream is "~26–27 kB"
 (it is 44,058 B), and that this engine is "~73% larger" than upstream (it is
-larger raw for the common case (post-canvas-removal ~55.5 kB vs upstream 44.1 kB)). Neither was ever measured before being acted on.
+larger raw for the common case (post-canvas-removal 56.2 kB vs upstream 44.1 kB)). Neither was ever measured before being acted on.
 
 ### The enforced numbers
 
@@ -339,8 +339,8 @@ happened to sit. A budget pinned to "current + 0" is not a budget; it turns
 every later fix into a negotiation, and it did — four correctness fixes cost 13
 bytes and a public helper was deleted to pay for them.
 
-They are now **57 kB raw / 14 kB brotli / 16 kB gzip** (measured ~55.5 / 13.6 /
-15.2 after canvas removal, ADR 0002). Gzip is gated as well as brotli because
+They are now **57 kB raw / 14 kB brotli / 16 kB gzip** (measured 56.2 / 13.8 /
+15.4 after canvas removal, ADR 0002). Gzip is gated as well as brotli because
 not every consumer's CDN negotiates brotli. All three are hard gates that fail
 the build; what makes them workable is headroom, not leniency. `AGENTS.md` §2
 carries the policy: dead code always goes, working code never goes to buy

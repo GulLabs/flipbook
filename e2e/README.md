@@ -64,8 +64,8 @@ pnpm test:e2e:golden:update   # rewrite baselines after an intentional visual ch
 ```
 
 Baselines are browser-specific (`chromium` / `webkit` suffixes). Update them on
-the same OS family CI uses when possible; the 3% ratio absorbs small GPU
-differences, not a redesigned page.
+the same OS family CI uses when possible; `maxDiffPixelRatio: 0.05` absorbs
+small GPU differences, not a redesigned page.
 
 The suite's query string also configures the book for invariants:
 `?cover=1`, `?rtl=1`, `?flippingTime=0`.

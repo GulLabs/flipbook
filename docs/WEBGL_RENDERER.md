@@ -90,9 +90,9 @@ a third `Render` subclass.
 Two things follow from that:
 
 - The existing `Render` abstraction has never been validated. Its only other
-  implementation, `CanvasRender`, came from upstream (Nodlik, 2020-07-08) and
-  sits near 5% coverage. It is inherited, not designed-for, and it is not
-  evidence that the seam works.
+  implementation was `CanvasRender` (upstream, Nodlik, 2020-07-08), which sat
+  near 5% coverage and has since been **removed** (ADR 0002). It was inherited,
+  not designed-for, and it is not evidence that the seam works.
 - Do the extraction only when there is a second real consumer. Building it
   ahead of one is speculative generality, and the interface will be wrong in
   ways nobody can predict from the armchair.

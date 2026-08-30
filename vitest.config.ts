@@ -37,23 +37,20 @@ export default defineConfig({
       // (stmts ~90.2 / branches ~75.1 / fns ~95.1 / lines ~92.2).
       // Floors only move UP (AGENTS.md §2). Per-file floors live in
       // scripts/check-coverage-areas.mjs (also run from quality:ci).
-      // Ratcheted 2026-08-29 after the audit push: measured 96.13 / 97.76 /
-      // 87.24 / 94.71. Set a couple of points below each so an unrelated change
-      // does not fail on noise, but close enough that deleting a tested path is
-      // caught. Do not lower these to make a change pass — the floors exist to
-      // stop the average hiding a newly untested renderer, which is exactly how
-      // canvas mode reached 0% once already.
-      // Re-measured 2026-08-29, after excluding the unshipped `ImageFlipBook`
-      // above. The old floors (94/96/85/92) were set against a measurement that
-      // INCLUDED it, so they understated the shipped code by several points and
-      // the gate was red anyway — lines 93.93 against a 94 floor. Shipped
-      // coverage is actually 97.53 lines / 99.47 functions / 90.10 branches /
-      // 96.37 statements.
+      // Re-measured 2026-08-30, after canvas removal (ADR 0002): 97.85 lines /
+      // 99.13 functions / 90.17 branches / 96.60 statements. Set ~1.5 points
+      // below each so an unrelated change does not fail on noise, but close
+      // enough that deleting a tested path is caught. Do not lower these to make
+      // a change pass — the floors exist to stop the average hiding a newly
+      // untested path, which is exactly how canvas mode reached 0% coverage
+      // before it was removed.
       //
-      // Set ~1.5 points under measured, which is the practice this file already
-      // documents: enough headroom that an honest refactor does not trip it,
-      // tight enough that a genuinely untested addition does. Raised because the
-      // measurement moved, not to make anything go green.
+      // Quote the measurement in the SAME key order as the thresholds below
+      // (lines / functions / branches / statements). The previous note recorded
+      // an older, pre-removal measurement in a different order, which read as
+      // three of four floors sitting ABOVE measured coverage — a reviewer read
+      // it exactly that way and filed the gate as broken. The gate was green;
+      // the comment was wrong. A stale measurement is not a harmless comment.
       thresholds: {
         lines: 96,
         functions: 98,

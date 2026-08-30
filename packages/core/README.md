@@ -42,21 +42,27 @@ Public and engine-boundary failures throw `PageFlipError` with a stable `code`:
 | ------------------------ | ---------------------------------------------------------------------- |
 | `PAGE_FLIP`              | Generic / unspecified                                                  |
 | `NOT_LOADED`             | API used before load finished wiring                                   |
-| `INVALID_PAGE`           | Page index out of range or not in any spread                           |
+| `INVALID_PAGE`           | Page index out of range                                                |
+| `PAGE_NOT_IN_SPREAD`     | Page exists but is in no spread                                        |
 | `INVALID_SPREAD`         | Spread index invalid during a turn                                     |
 | `DESTROYED`              | Called on an engine that has been destroyed                            |
 | `INVALID_SWIPE_DISTANCE` | Non-finite or negative `swipeDistance`                                 |
 | `INVALID_Z_INDEX`        | `startZIndex` not an integer                                           |
-| `INVALID_SHADOW_OPACITY` | Non-finite or negative `maxShadowOpacity`                              |
+| `INVALID_SHADOW_OPACITY` | Outside `[0, 1]`, or non-finite                                        |
+| `INVALID_BOOLEAN`        | A boolean setting was not a real boolean (`'false'`, `0`, `1`, …)      |
 | `DETACHED_PAGE`          | A page element left the document mid-turn                              |
 | `WRONG_MODE`             | `updateFromHtml` against a non-HTML UI (future renderer guard)         |
 | `CANVAS_REMOVED`         | `loadFromImages` / `updateFromImages` — canvas mode removed (ADR 0002) |
-| `INVALID_SIZE`           | Width/height/size type invalid in settings                             |
-| `INVALID_FLIPPING_TIME`  | Negative `flippingTime`                                                |
+| `INVALID_SIZE`           | `size` is not `'fixed'` or `'stretch'`                                 |
+| `INVALID_DIMENSIONS`     | `width` / `height` non-finite or `<= 0`                                |
+| `INVALID_BOUNDS`         | min/max width or height non-finite or negative                         |
+| `INVALID_FLIPPING_TIME`  | Negative or non-finite `flippingTime`                                  |
 | `INVALID_DIRECTION`      | `direction` not `ltr`/`rtl`                                            |
 | `INVALID_INDEX`          | Internal array access out of range                                     |
 | `FLIP_SETUP`             | Could not prepare flipping/bottom pages for a turn                     |
 | `RENDER_SETUP`           | Shadow/DOM render setup failed                                         |
-| `REJECTED`               | Programmatic turn did not start (also `turnRejected` event)            |
+| `NO_ANIMATION_FRAME`     | Animation frame list was empty                                         |
+| `COLLINEAR_SEGMENTS`     | Geometry: segments are collinear                                       |
+| `DEGENERATE_SEGMENT`     | Geometry: a segment has zero length                                    |
 
 `PageFlip.flipNext` / `flipPrev` return `boolean` (`false` = did not start) and emit `turnRejected` when refused.

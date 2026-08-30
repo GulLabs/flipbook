@@ -1,6 +1,7 @@
 # ADR 0001 — The image-page API for canvas mode
 
-- **Status:** proposed (agent decision under [`AGENTS.md`](../../AGENTS.md) §5, pending Codex signoff and owner veto)
+- **Status:** **superseded** by [ADR 0002](./0002-remove-canvas-mode.md). Canvas
+  mode was removed; this API was never published.
 - **Date:** 2026-08-29
 - **Context:** [`docs/CANVAS_FIRST_CLASS.md`](../CANVAS_FIRST_CLASS.md) "Blocking gates before implementation"
 - **Defects settled here:** A3, A4, C7, D1, F1, G2, G3, G4 (policy half), G7

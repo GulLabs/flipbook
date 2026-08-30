@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>@gullabs/flipbook-core vanilla</title>
     <style>
-      /* Fixed metrics so golden screenshots stay stable across platforms. */
+      /*
+       * The engine owns the page ROOT styles: every draw rewrites the leaf's
+       * `style.cssText` (position, size, pageBackground). Put colors and
+       * padding on an INNER element — never on `.page` itself.
+       */
       html,
       body {
         margin: 0;
@@ -25,7 +29,8 @@
         padding: 96px;
         overflow: hidden;
       }
-      body.golden h1 {
+      body.golden h1,
+      body.golden .toolbar {
         display: none;
       }
       #book {
@@ -39,36 +44,70 @@
         overflow: visible;
       }
       .page {
+        /* Root is layout-only. Engine stamps pageBackground on it. */
         box-sizing: border-box;
+      }
+      .page-inner {
+        box-sizing: border-box;
+        height: 100%;
         padding: 24px;
-        background: #fff;
         color: #111;
         font-size: 28px;
         font-weight: 700;
         line-height: 1.2;
       }
-      /* Distinct solid fills make §4.2 fold opacity (and bleed) obvious. */
-      .page:nth-child(1) {
+      /* Distinct fills make §4.2 fold opacity (and bleed) obvious in demos.
+         Goldens stay white via pageBackground on the root; inners are still
+         clipped by the fold, so a translucent fold would show them through. */
+      /* Demo fills (not golden). Specificity must beat these under body.golden. */
+      .page[data-leaf='0'] .page-inner {
         background: #ffe4e1;
       }
-      .page:nth-child(2) {
+      .page[data-leaf='1'] .page-inner {
         background: #e0f0ff;
       }
-      .page:nth-child(3) {
+      .page[data-leaf='2'] .page-inner {
         background: #e6ffe6;
       }
-      .page:nth-child(4) {
+      .page[data-leaf='3'] .page-inner {
         background: #fff5cc;
+      }
+      /* (0,3,1) beats `.page[data-leaf] .page-inner` (0,3,0) so goldens stay white. */
+      body.golden .page[data-leaf] .page-inner {
+        background: transparent;
+      }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 0 16px;
+        align-items: center;
+      }
+      .toolbar button {
+        font: inherit;
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+      .status {
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+        color: #333;
       }
     </style>
   </head>
   <body>
     <h1>Vanilla core</h1>
+    <div class="toolbar">
+      <button type="button" id="prev">Prev</button>
+      <button type="button" id="next">Next</button>
+      <button type="button" id="first">First</button>
+      <span class="status" id="status">page —</span>
+    </div>
     <div id="book">
-      <div class="page">One</div>
-      <div class="page">Two</div>
-      <div class="page">Three</div>
-      <div class="page">Four</div>
+      <div class="page" data-leaf="0"><div class="page-inner">One</div></div>
+      <div class="page" data-leaf="1"><div class="page-inner">Two</div></div>
+      <div class="page" data-leaf="2"><div class="page-inner">Three</div></div>
+      <div class="page" data-leaf="3"><div class="page-inner">Four</div></div>
     </div>
     <script type="module" src="./main.ts"></script>
   </body>

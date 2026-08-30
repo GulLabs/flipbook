@@ -18,7 +18,8 @@ Forked from [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) and [Nodli
 On a phone, a back swipe must curl the **current** leaf away and show the previous leaf underneath. Upstream slides the previous page in from the left. That is the bug this fork exists to kill — in the engine, not with a monkey-patch.
 
 Fixed in the HTML engine. Covered by tests that fail if the fix is reverted.
-Canvas mode was removed in 3.0.0 (ADR 0002).
+
+Canvas / images mode was **removed** in 3.0.0 ([ADR 0002](./docs/adr/0002-remove-canvas-mode.md)). Put pictures in HTML pages with `<img>`.
 
 ---
 
@@ -68,7 +69,7 @@ The fold and its temporary copy fill with `pageBackground` (default `#fff`). Und
 | `flipToPage` swallows errors and lands one page forward                      | Flip.flipToPage empty catch                                                                                           | 3.0.0    |
 | Shipped types lose `react` under pnpm isolated `node_modules`                | react-pageflip `index.d.ts`                                                                                           | 3.0.0    |
 
-Also: Pointer Events (one input path), `ResizeObserver` + `visualViewport`, `respectReducedMotion` (default on), SSR-safe imports, opt-in keyboard, `direction: 'rtl'` (turn direction only — the fold still follows the finger), controlled `page` + `usePageFlip()`.
+Also: Pointer Events (one input path), `ResizeObserver` + `visualViewport`, `respectReducedMotion` (default on), SSR-safe imports, keyboard turning (Arrow/Home/End, default on — pass `useKeyboard={false}` to disable), `direction: 'rtl'` (turn direction only — the fold still follows the finger), controlled `page` + `usePageFlip()`, `once()` on the event emitter.
 
 ### What it costs
 
@@ -81,8 +82,8 @@ Measured from the published artifacts, both terser-minified, zero runtime depend
 
 Larger than upstream because of RTL, reduced motion, typed errors, validation,
 and the portrait back-curl fix. This is not a smaller drop-in replacement; it is
-a maintained one. Canvas mode was removed (ADR 0002) — ceilings are 57 kB raw /
-14 kB brotli / 16 kB gzip on the packed HTML engine.
+a maintained one. CI ceilings on the packed HTML engine are **57 kB raw / 14 kB
+brotli / 16 kB gzip**.
 
 Reproduce with `npm pack page-flip@2.0.7` and `pnpm build && pnpm size`.
 
@@ -113,7 +114,7 @@ import { PageFlip } from '@gullabs/flipbook-core';
 
 const pageFlip = new PageFlip(root, { width: 400, height: 600 });
 pageFlip.loadFromHTML(pages);
-// Image books: put <img alt="…"> inside HTML page elements (canvas mode removed).
+// Pictures: <img alt="…"> inside the HTML page elements.
 ```
 
 **React**
@@ -139,11 +140,11 @@ export function Book() {
 
 ### Examples
 
-| Example            | Path                   | What it shows                         |
-| ------------------ | ---------------------- | ------------------------------------- |
-| Vanilla HTML       | `examples/vanilla/`    | HTML pages, golden / gesture e2e host |
-| Vite + React       | `examples/vite-react/` | Controlled `page`, `usePageFlip`, RTL |
-| Next.js App Router | `examples/nextjs/`     | SSR placeholder → hydrate             |
+| Example            | Path                   | What it shows                                       |
+| ------------------ | ---------------------- | --------------------------------------------------- |
+| Vanilla HTML       | `examples/vanilla/`    | HTML pages, golden / gesture e2e host               |
+| Vite + React       | `examples/vite-react/` | Controlled `page`, `usePageFlip`, RTL, HTML+`<img>` |
+| Next.js App Router | `examples/nextjs/`     | SSR placeholder → hydrate, controlled turns         |
 
 ---
 

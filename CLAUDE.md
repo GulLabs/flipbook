@@ -116,8 +116,9 @@ These encode the flagship fixes; there are unit tests for each, but the tests pa
   `updateSettings` mutates the shared settings object in place, so `Render` and
   `UI` see changes for free — unless someone copies a value into a field.
   `swipeDistance` shipped cached and silently ignored every runtime update.
-  Only `showCover` (baked into `PageCollection`) and `size` are genuinely
-  construction-time, and those are what `remountKeyOf` keys on.
+  Engine `updateSettings` refuses a changed `showCover` or `startPage` (baked
+  in at load). The React binding remounts on `showCover` and `size`
+  (`remountKeyOf`).
 - **Core compiles under `strictNullChecks`.** The published `.d.ts` is the contract; do not silence a null with a cast that makes a public getter lie.
 
 ## Who owns which DOM node
@@ -142,17 +143,16 @@ tears the book down mid-animation.
 
 ## Known gaps in the current state
 
-- **Bundle size.** The engine is ~55.5 kB raw / ~13.6 kB brotli against ceilings of
-  57 / 14 / 16 kB. The §5 target of 35 kB minified is **retired**: upstream
+- **Bundle size.** The packed HTML engine is **56.02 kB raw / 13.73 kB brotli /
+  15.39 kB gzip** against ceilings of **57 / 14 / 16 kB** (lowered after canvas
+  removal, ADR 0002). Re-measure with `pnpm size` before quoting these — the
+  figures here have twice been left behind by the code they describe. The §5 target of 35 kB minified is **retired**: upstream
   `page-flip@2.0.7` is itself 44,058 B minified (measured from its published
   tarball), so that target asked this fork to be ~20% smaller than the thing it
   forks while doing strictly more. See `docs/QUALITY_BAR_CLIMB.md` for the
   measured comparison, and `AGENTS.md` §2 for the policy: dead code always goes,
   working code never goes to buy bytes, and a correctness fix may spend the
-  headroom **and say so**. The ceilings were last raised deliberately in 61a80fd
-  — roughly 7 kB for about seventy correctness fixes — which is the opposite of
-  the earlier ratcheting that raised them to green a red gate with no reason
-  attached.
+  headroom **and say so**.
 - **TypeScript is pinned below latest.** 6.0.3, not 7.0.2, because
   typescript-eslint 8.68 declares `typescript: <6.1.0` and TS 7 would install
   cleanly and then silently disable every type-aware rule. `ignoreDeprecations`

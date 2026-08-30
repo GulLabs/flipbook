@@ -18,11 +18,26 @@ for a future renderer.
   `<img>` elements — see MIGRATION.md.
 - **Removed:** `getPageAltText` / `getPageAltTexts`, `INVALID_IMAGE_SOURCE`,
   `CANVAS_LOAD`, and dead exports `portraitBackCurl` / `portraitForwardCurl`.
-- **Size:** HTML engine re-measured after removal — **56_207 B raw / 13.78 kB
-  brotli / 15.43 kB gzip**. Ceilings lowered from 62 / 15.5 / 17.5 kB to
+- **Size:** HTML engine re-measured after removal — **56_015 B raw / 13.73 kB
+  brotli / 15.40 kB gzip**. Ceilings lowered from 62 / 15.5 / 17.5 kB to
   **57 / 14 / 16 kB**.
 
-### Historical — canvas work superseded by ADR 0002 removal above
+### Added — `once()`, strict booleans, hard back cover
+
+- **`PageFlip.once(event, fn)`** — one-shot listener, detached before `fn` runs.
+  `off(event, fn)` cancels it by the same reference you passed to `once`.
+- **Boolean settings throw** `INVALID_BOOLEAN` unless the value is a real
+  boolean. `'false'` / `0` / `1` no longer sneak through as truthy.
+- **`showCover: true` hardens the back cover regardless of page-count parity.**
+  A five-page book and a six-page book both get a hard last leaf. `showCover:
+false` still never hardens a terminal leaf (that path is the portrait
+  back-curl fix).
+
+### Historical — canvas work that was then deleted (ADR 0002)
+
+The bullets below describe work that landed on this branch and was then removed
+with canvas mode. They are not current features. Do not restore `ImageFlipBook`,
+canvas fixtures, or a 3.1 canvas binding from these notes.
 
 ### Added — canvas fixtures, Phase 2 e2e harness, examples, `ImageFlipBook`
 
@@ -71,9 +86,8 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   drawn as loaded, producing a blank leaf beside siblings that look fine, with
   nothing reporting it.
 
-  A failed leaf now paints paper. That is the honest interim answer, not the
-  final one: the broken-image glyph and the `imageError` event belong to the
-  Phase 2 error contract.
+  A failed leaf painted paper. Canvas mode — and this path — was then removed
+  (ADR 0002).
 
 ### Fixed — a tall narrow leaf started its turn already past the spine
 
@@ -89,15 +103,11 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   (browsers cap live contexts). With no cleanup bracket the wrapper stayed in the
   consumer's DOM and a retry built a second UI on top of the first.
 
-### Changed — `ImageFlipBook` is not part of 3.0.0
+### Changed — `ImageFlipBook` was never part of 3.0.0 (then canvas was removed)
 
-- **The React canvas binding is deliberately not exported.** It is written to
-  the Phase 2 descriptor API — blank leaves, per-leaf `alt`, `crossOrigin`,
-  `density`, fit modes — and the engine implements none of it yet: every
-  descriptor is flattened back to a bare URL, so `alt`, `crossOrigin` and
-  `density` are silently discarded, and blank leaves are dropped with a console
-  warning. Publishing a surface that does not do what its own types say would
-  freeze it on the first release. It ships with the engine support, in 3.1.
+- **The React canvas binding was never exported**, and canvas mode was then
+  deleted entirely (ADR 0002). There is no 3.1 canvas binding in plan. Use HTML
+  pages with `<img>`.
 
 ### Fixed — `pointsBetween` could loop without bound
 
@@ -341,13 +351,9 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   turn still gets every one of its frames, and the park decision is taken only
   after a frame has been drawn, so the pose a turn lands on is always painted.
 
-  **Canvas mode keeps its continuous loop for now.** A canvas book paints a
-  loader spinner from the wall clock for any page whose bitmap has not decoded,
-  and the decode completes on an `img.onload` that changes no renderer state —
-  there is nothing to wake a parked loop with, so parking would freeze the
-  spinner and never paint the image. `Render.needsContinuousFrames()` is the
-  seam where the canvas renderer will opt in once it can answer "is any page I
-  am drawing still loading".
+  Canvas mode used to need a continuous loop for its loader spinner; that
+  renderer is gone (ADR 0002). `needsContinuousFrames()` remains on `Render` for
+  a future subclass.
 
 ### Changed — `PageFlipError.code` is a union, and two overloaded codes are split
 

@@ -46,8 +46,14 @@ book.loadFromHTML([...root.querySelectorAll<HTMLElement>('.page')]);
 // Handy for the e2e suite and for poking at the engine in devtools.
 (window as unknown as { flipbook: PageFlip }).flipbook = book;
 
+const status = document.getElementById('status');
+const writeStatus = (page: number) => {
+  if (status) status.textContent = `page ${page} / ${Math.max(0, book.getPageCount() - 1)}`;
+};
+
 book.on('flip', (event) => {
   document.body.dataset['page'] = String(event.data);
+  writeStatus(typeof event.data === 'number' ? event.data : 0);
 });
 book.on('changeOrientation', (event) => {
   document.body.dataset['orientation'] = String(event.data);
@@ -55,4 +61,24 @@ book.on('changeOrientation', (event) => {
 book.on('init', (event) => {
   document.body.dataset['orientation'] = String(event.data.mode);
   document.body.dataset['ready'] = '1';
+  writeStatus(book.getCurrentPageIndex());
+});
+book.on('turnRejected', (event) => {
+  if (status) {
+    status.textContent = `rejected ${JSON.stringify(event.data)} · page ${book.getCurrentPageIndex()}`;
+  }
+});
+
+document.getElementById('prev')?.addEventListener('click', () => {
+  book.flipPrev();
+});
+document.getElementById('next')?.addEventListener('click', () => {
+  book.flipNext();
+});
+document.getElementById('first')?.addEventListener('click', () => {
+  try {
+    book.turnToPage(0);
+  } catch {
+    // Empty / already-first book — status stays put.
+  }
 });
