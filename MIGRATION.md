@@ -46,6 +46,20 @@ The `init` event's `page` is now the index the book actually settled on.
 Consumers seeding page state from `init` no longer start desynced. If you relied
 on `init` echoing your `startPage` back, read it from settings instead.
 
+### `Render.getDirection()` returns the GEOMETRIC fold side
+
+`direction: 'rtl'` used to mirror the turn direction and, through
+`convertToPage`, silently mirror the pointer coordinates with it — which is why
+an RTL drag ran away from the finger. The fix splits the two: `setDirection()`
+takes the SEMANTIC direction (which way the book moves in page order) and stores
+the GEOMETRIC side (which physical half folds).
+
+`Render` is exported, so `getDirection()` is reachable. It now answers the
+geometric question. Every internal consumer — coordinate conversion, page
+orientation, shadow gradients, hard-page z-order — wanted that already. If you
+were reading it to learn which way a turn was heading, read the `flip` event or
+compare page indices instead.
+
 ### `clear()` now emits events
 
 `clear()` emits `update` and `collectionRebuild` with `page: 0` and
@@ -68,13 +82,14 @@ binding already remounts on `showCover` via `remountKeyOf`.
 
 `getSettings` now throws `PageFlipError` for values it previously accepted:
 
-| Setting                                          | Now rejected                                                                   |
-| ------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `width`, `height`                                | non-finite, or `<= 0` (`INVALID_SIZE`)                                         |
-| `minWidth`, `maxWidth`, `minHeight`, `maxHeight` | non-finite, or negative (`INVALID_SIZE`). `0` remains the "unset" sentinel     |
-| `flippingTime`                                   | non-finite or negative (`INVALID_FLIPPING_TIME`). `0` remains instant          |
-| `swipeDistance`                                  | non-finite or negative (**new** `INVALID_SWIPE_DISTANCE`)                      |
-| `startZIndex`                                    | non-finite (**new** `INVALID_Z_INDEX`). Negative stays legal — it is valid CSS |
+| Setting                                          | Now rejected                                                                                                     |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `width`, `height`                                | non-finite, or `<= 0` (`INVALID_SIZE`)                                                                           |
+| `minWidth`, `maxWidth`, `minHeight`, `maxHeight` | non-finite, or negative (`INVALID_SIZE`). `0` remains the "unset" sentinel                                       |
+| `flippingTime`                                   | non-finite or negative (`INVALID_FLIPPING_TIME`). `0` remains instant                                            |
+| `swipeDistance`                                  | non-finite or negative (**new** `INVALID_SWIPE_DISTANCE`)                                                        |
+| `startZIndex`                                    | non-integer, including non-finite (**new** `INVALID_Z_INDEX`). Negative stays legal — `z-index` takes an integer |
+| `maxShadowOpacity`                               | outside `[0, 1]`, or non-finite (**new** `INVALID_SHADOW_OPACITY`)                                               |
 
 An explicit `undefined` is now treated as "not supplied" and falls back to the
 default, rather than clobbering it. The checks were `value <= 0`, which is

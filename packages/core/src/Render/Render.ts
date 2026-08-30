@@ -565,9 +565,26 @@ export abstract class Render {
    */
   public cancelAnimation(): void {
     this.animation = null;
-    this.shadow = null;
+
+    // RD1: `clearShadow()`, not `this.shadow = null` — the X3 defect at a second
+    // site. `HTMLRender` overrides `clearShadow()` to hide the four shadow
+    // ELEMENTS as well, and nothing in `drawFrame` ever resets them: it only
+    // *writes* them, from a non-null `this.shadow`. Dropping the field alone
+    // therefore stops the shadow being recomputed while leaving the last one
+    // painted — so abandoning a turn because the collection is being replaced
+    // (React's `updateFromHtml`, `replacePages`) left a stale fold shadow lying
+    // over the new book until some later turn happened to end.
+    this.clearShadow();
+
     this.flippingPage = null;
     this.bottomPage = null;
+
+    // RD2: the fold rect belongs to the turn, not to the renderer. It is the
+    // clip `HTMLRender.drawInnerShadow` cuts the inner shadow against, so a rect
+    // left over from a collection that no longer exists can clip the first frame
+    // of the NEXT fold. Every other piece of per-turn state is dropped here;
+    // this one was simply missed.
+    this.pageRect = null;
   }
 
   /**

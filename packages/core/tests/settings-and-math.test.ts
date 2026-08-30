@@ -329,5 +329,15 @@ describe('validation gaps Codex round 3 found', () => {
     expect(() =>
       new Settings().getSettings({ width: 100, height: 100, maxShadowOpacity: -0.5 }),
     ).toThrow(PageFlipError);
+
+    // The declared range is [0, 1]. Rejecting only negatives let `2` through to
+    // produce alphas above 1, which browsers clamp silently — so the setting
+    // looked inert past 1 rather than invalid.
+    expect(() =>
+      new Settings().getSettings({ width: 100, height: 100, maxShadowOpacity: 2 }),
+    ).toThrow(PageFlipError);
+    expect(() =>
+      new Settings().getSettings({ width: 100, height: 100, maxShadowOpacity: 1 }),
+    ).not.toThrow();
   });
 });

@@ -34,9 +34,14 @@ function effectiveDevicePixelRatio(cssWidth: number, cssHeight: number): number 
   //
   // Requiring `(w*s + 1) * (h*s + 1) <= MAX` absorbs the rounding, which is a
   // quadratic in `s`:  (w*h)s^2 + (w+h)s + (1 - MAX) = 0.
+  // The NUMERICALLY STABLE root. `(-b + sqrt(D)) / 2a` is the same value
+  // algebraically but subtracts two near-equal numbers for an extreme aspect
+  // ratio, and its intermediates can overflow. Codex produced a box where it
+  // returned 8,388,609 — one pixel over. `2c / (b + sqrt(D))` never cancels.
   const a = cssWidth * cssHeight;
   const b = cssWidth + cssHeight;
-  const areaCap = (-b + Math.sqrt(b * b - 4 * a * (1 - MAX_BACKING_PIXELS))) / (2 * a);
+  const discriminant = b * b + 4 * a * (MAX_BACKING_PIXELS - 1);
+  const areaCap = (2 * (MAX_BACKING_PIXELS - 1)) / (b + Math.sqrt(discriminant));
 
   // NO LOWER BOUND. Flooring at 1 overrode the cap in exactly the case it
   // exists for (a 6000x4000 book got 24M backing pixels against a stated 8.4M
@@ -48,8 +53,25 @@ function effectiveDevicePixelRatio(cssWidth: number, cssHeight: number): number 
   // No floor is needed for safety either: for finite positive dimensions
   // `areaCap` is itself finite and positive, so the scale stays well defined.
   // Callers guard the zero-size case before reaching here.
-  return Math.min(raw, MAX_DEVICE_PIXEL_RATIO, areaCap);
+  const scale = Math.min(raw, MAX_DEVICE_PIXEL_RATIO, areaCap);
+
+  // Belt and braces, and cheap. Floating point is not obliged to give an exact
+  // answer at any aspect ratio, so verify the property the cap actually claims
+  // — the CEILED product fits — rather than trusting the algebra. One
+  // corrective pass is enough because the overshoot is at most a pixel per axis.
+  if (!Number.isFinite(scale) || scale <= 0) return MIN_SCALE;
+
+  const width = Math.ceil(cssWidth * scale);
+  const height = Math.ceil(cssHeight * scale);
+  if (width * height <= MAX_BACKING_PIXELS) return scale;
+
+  const corrected = scale * Math.sqrt(MAX_BACKING_PIXELS / (width * height));
+
+  return Number.isFinite(corrected) && corrected > 0 ? corrected : MIN_SCALE;
 }
+
+/** Only reached if the arithmetic degenerates; a book this shape is unusable. */
+const MIN_SCALE = 1e-6;
 
 /** ~2896 squared. Conservative against the smallest documented canvas limits. */
 const MAX_BACKING_PIXELS = 8_388_608;

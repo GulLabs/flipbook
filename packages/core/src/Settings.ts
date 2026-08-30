@@ -201,8 +201,16 @@ export class Settings {
     // Feeds `opacity` on the shadow elements and the alpha of the canvas
     // gradients. A non-finite value produces a declaration the browser drops,
     // which reads as a shadow at FULL opacity rather than as an error.
-    if (!Number.isFinite(result.maxShadowOpacity) || result.maxShadowOpacity < 0) {
-      throw new PageFlipError('Invalid max shadow opacity', 'INVALID_SHADOW_OPACITY');
+    // The declared range is [0, 1] — 1 is documented as maximum intensity — and
+    // the value flows straight into a computed alpha. Rejecting only negatives
+    // let `2` through to produce alphas above 1, which browsers clamp silently,
+    // so the setting appeared to do nothing past 1 rather than to be wrong.
+    if (
+      !Number.isFinite(result.maxShadowOpacity) ||
+      result.maxShadowOpacity < 0 ||
+      result.maxShadowOpacity > 1
+    ) {
+      throw new PageFlipError('Invalid max shadow opacity (0..1)', 'INVALID_SHADOW_OPACITY');
     }
 
     const direction = result.direction as string;

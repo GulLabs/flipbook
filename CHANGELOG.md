@@ -38,8 +38,12 @@ All notable changes to this monorepo will be documented in this file.
 - **`swipeDistance: -5` is rejected** instead of silently making swipes
   impossible: the comparison is `distY < -swipeDistance`, which a negative
   threshold can never satisfy.
-- `startZIndex` is checked for finiteness only — negative z-index is valid CSS
-  and someone may deliberately want the book behind a sibling.
+- `startZIndex` must be an INTEGER. Negative stays legal — that is valid CSS
+  and someone may deliberately want the book behind a sibling — but `z-index:5.5`
+  is discarded by the browser exactly as quietly as `z-index:NaN`.
+- `maxShadowOpacity` is validated against its declared `[0, 1]` range. Rejecting
+  only negatives let `2` through to produce alphas above 1, which browsers clamp
+  silently — so the setting looked inert past 1 rather than invalid.
 - `limitToCircle` returned `NaN` (and, in another branch, a fabricated
   coordinate with the sign discarded) for a perfectly vertical clamp; the guard
   tested the wrong quantity.
