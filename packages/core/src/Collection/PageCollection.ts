@@ -155,7 +155,10 @@ export abstract class PageCollection {
   public nextBy(current: Page): Page | null {
     const idx = this.pages.indexOf(current);
 
-    if (idx < this.pages.length - 1) return at(this.pages, idx + 1);
+    // `indexOf` returns -1 for a page that is not in this collection, and
+    // `-1 < length - 1` is true — upstream answered `pages[0]` for a stranger.
+    // `prevBy` already returned null for the same input.
+    if (idx >= 0 && idx < this.pages.length - 1) return at(this.pages, idx + 1);
 
     return null;
   }

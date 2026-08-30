@@ -4,7 +4,42 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Fixed — settings validation
+
+- **A non-finite dimension is now an error, not a blank book.** The checks were
+  `value <= 0`, which is **false for `NaN`** — so `{ width: undefined }` (or any
+  binding forwarding an optional prop) produced a `NaN` bounds rect and
+  `min-width: NaNpx`, and the book rendered nothing with nothing in the console.
+  An explicit `undefined` now means "not supplied" and falls back to the default
+  instead of clobbering it.
+- **`swipeDistance: -5` is rejected** instead of silently making swipes
+  impossible: the comparison is `distY < -swipeDistance`, which a negative
+  threshold can never satisfy.
+- `startZIndex` is checked for finiteness only — negative z-index is valid CSS
+  and someone may deliberately want the book behind a sibling.
+- `limitToCircle` returned `NaN` (and, in another branch, a fabricated
+  coordinate with the sign discarded) for a perfectly vertical clamp; the guard
+  tested the wrong quantity.
+- `pointsBetween` never emitted its destination for a fractional delta, so every
+  animation landed up to 1px short per axis.
+- `angleBetweenSegments` returned `NaN` for a zero-length segment and had no
+  `acos` domain clamp — currently unreachable because a guard two files away
+  catches it first, which is exactly why it is worth pinning.
+- `PageCollection.nextBy` returned `pages[0]` for a page not in the collection,
+  where `prevBy` correctly returned `null`.
+
 ### Fixed — input, pointer and teardown
+
+- **`flipToPage` no longer leaks a phantom index.** It parked a speculative
+  spread index for the whole animation and let the commit land it, so a second
+  call read the phantom as current: `flip(5)` then `flip(2)` finished on page 3,
+  and in between `getCurrentPageIndex()` and `getCurrentSpreadIndex()`
+  disagreed. The index is now borrowed only for the instant `start()` needs it,
+  and the destination travels separately. A second call while one is in flight
+  finishes the outgoing turn and starts again from the real index, so the last
+  page you asked for is where you end up — refusing would have silently dropped
+  navigations from a controlled `page` prop, which is the normal way this engine
+  is driven.
 
 _These landed inside commit 295fa85, whose message described only part of the
 work it carried. Recorded here rather than left implicit._

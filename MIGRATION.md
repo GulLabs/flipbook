@@ -2,6 +2,72 @@
 
 Drop-in `HTMLFlipBook` keeps **required `width` and `height`**. Other settings stay optional.
 
+## 3.0.0 — engine lifecycle and settings validation
+
+These are behaviour changes on the public surface, landed while hardening the
+engine. Each replaces a silent failure with a reported one.
+
+### A destroyed engine is observably dead
+
+`PageFlip.destroy()` now drops the engine's internal `pages` / `render` / `ui`
+and flip controller, so a destroyed instance no longer quietly serves a disposed
+collection and a stopped render.
+
+`getRender`, `getUI`, `getPageCollection`, `getPage`, `getPageCount`,
+`getCurrentPageIndex`, `getOrientation`, `getBoundsRect`, `turnToPage`,
+`turnToNextPage`, `turnToPrevPage`, `flip` and `clear` throw `PageFlipError`
+with the **new code `'DESTROYED'`**. `flipNext` / `flipPrev` keep their boolean
+contract and emit `turnRejected` with `code: 'DESTROYED'`.
+
+`'DESTROYED'` is deliberately distinct from `'NOT_LOADED'`: the remedy differs.
+`NOT_LOADED` means "load first", but a destroyed engine refuses to attach a new
+mode, so it can only be replaced — reporting `NOT_LOADED` would invite a retry
+that cannot work.
+
+Cleanup-shaped calls stay safe, because tearing down twice is normal: `destroy`,
+`update`, `updateSettings`, `replacePages`, `updateFromHtml` and
+`updateFromImages` are no-ops after destroy. `getSettings`, `getState` (`READ`),
+`getFlipController` (`null`), `getBlock` and `isDestroyed` remain safe.
+
+**If you inspect an engine after tearing it down** — a late effect, an async
+callback, a `finally` block — guard with `isDestroyed()` or catch
+`PageFlipError`.
+
+### `init` reports where the book landed, not what you asked for
+
+The `init` event's `page` is now the index the book actually settled on.
+
+- An out-of-range `startPage` is **clamped into the book**: `startPage: 99` on a
+  4-page book lands on page 3 and reports 3. It previously stayed on page 0 and
+  reported 99.
+- In landscape a valid request resolves to its spread head: `startPage: 3`
+  reports 2.
+
+Consumers seeding page state from `init` no longer start desynced. If you relied
+on `init` echoing your `startPage` back, read it from settings instead.
+
+### Settings are validated for finiteness, not just sign
+
+`getSettings` now throws `PageFlipError` for values it previously accepted:
+
+| Setting                                          | Now rejected                                                                   |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `width`, `height`                                | non-finite, or `<= 0` (`INVALID_SIZE`)                                         |
+| `minWidth`, `maxWidth`, `minHeight`, `maxHeight` | non-finite, or negative (`INVALID_SIZE`). `0` remains the "unset" sentinel     |
+| `flippingTime`                                   | non-finite or negative (`INVALID_FLIPPING_TIME`). `0` remains instant          |
+| `swipeDistance`                                  | non-finite or negative (**new** `INVALID_SWIPE_DISTANCE`)                      |
+| `startZIndex`                                    | non-finite (**new** `INVALID_Z_INDEX`). Negative stays legal — it is valid CSS |
+
+An explicit `undefined` is now treated as "not supplied" and falls back to the
+default, rather than clobbering it. The checks were `value <= 0`, which is
+**false for `NaN`** — so `{ width: undefined }` produced a `NaN` bounds rect and
+`min-width: NaNpx`, and the book rendered nothing with no error anywhere.
+`swipeDistance: -5` was accepted and silently made swipes impossible.
+
+TypeScript consumers with `exactOptionalPropertyTypes` were already protected at
+compile time; this closes the runtime hole for JavaScript consumers and for
+bindings forwarding an optional prop (`width={props.width}`).
+
 ## Install
 
 ```bash
