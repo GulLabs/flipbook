@@ -25,8 +25,6 @@ const AREAS = [
   { label: 'HTMLRender.ts', match: /[/\\]Render[/\\]HTMLRender\.ts$/, lines: 89, branches: 63 },
   { label: 'HTMLPage.ts', match: /[/\\]Page[/\\]HTMLPage\.ts$/, lines: 98, branches: 73 },
   { label: 'Flip.ts', match: /[/\\]Flip[/\\]Flip\.ts$/, lines: 86, branches: 78 },
-  { label: 'CanvasRender.ts', match: /[/\\]Render[/\\]CanvasRender\.ts$/, lines: 87, branches: 70 },
-  { label: 'ImagePage.ts', match: /[/\\]Page[/\\]ImagePage\.ts$/, lines: 86, branches: 64 },
   // Lines eased 92 -> 91 for the `instanceof PageFlipError` rethrows added
   // when explicit navigation stopped swallowing non-engine errors: those
   // lines only execute when something else is already broken, and React's

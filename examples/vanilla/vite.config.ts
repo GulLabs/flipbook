@@ -15,14 +15,8 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      // The canvas e2e harness is a second entry point, not a route of the
-      // showcase — `vite build` only emits HTML it is told about.
       input: {
         main: path.resolve(root, 'index.html'),
-        canvas: path.resolve(root, 'canvas.html'),
-        // Public canvas/images showcase (defect F3) — separate from the
-        // pixel-probe harness at canvas.html.
-        'canvas-demo': path.resolve(root, 'canvas-demo.html'),
       },
     },
   },

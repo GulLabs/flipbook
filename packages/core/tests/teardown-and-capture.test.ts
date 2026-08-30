@@ -140,65 +140,6 @@ describe('X4 destroying from an onFlip handler survives the frame already in fli
     expect(() => app.getPageCollection()).toThrow(PageFlipError);
     expect(() => app.getUI()).toThrow(PageFlipError);
   });
-
-  test('canvas mode: the same frame reads getUI(), and must not throw either', async () => {
-    const ctx = {
-      save: vi.fn(),
-      restore: vi.fn(),
-      beginPath: vi.fn(),
-      closePath: vi.fn(),
-      clip: vi.fn(),
-      rect: vi.fn(),
-      moveTo: vi.fn(),
-      lineTo: vi.fn(),
-      arc: vi.fn(),
-      stroke: vi.fn(),
-      fill: vi.fn(),
-      fillRect: vi.fn(),
-      clearRect: vi.fn(),
-      translate: vi.fn(),
-      rotate: vi.fn(),
-      scale: vi.fn(),
-      drawImage: vi.fn(),
-      setTransform: vi.fn(),
-      createLinearGradient: vi.fn(() => ({ addColorStop: vi.fn() })),
-      fillStyle: '',
-      strokeStyle: '',
-      lineWidth: 1,
-    };
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(
-      ctx as unknown as CanvasRenderingContext2D,
-    );
-
-    const host = document.createElement('div');
-    document.body.appendChild(host);
-
-    const app = new PageFlip(host, { width: 200, height: 300, flippingTime: 300 });
-    // The canvas chunk is imported before the fake rAF goes in: `attachMode`
-    // starts the loop, and the loop has to be the fake one from then on.
-    installFakeRaf();
-    await app.loadFromImages([
-      { src: 'a.png', alt: 'Page a' },
-      { src: 'b.png', alt: 'Page b' },
-      { src: 'c.png', alt: 'Page c' },
-      { src: 'd.png', alt: 'Page d' },
-    ]);
-
-    const flips: number[] = [];
-    app.on('flip', (e) => {
-      flips.push(e.data);
-      app.destroy();
-    });
-
-    expect(app.flipNext()).toBe(true);
-    tick(0);
-    expect(() => tick(100_000)).not.toThrow();
-
-    expect(flips).toHaveLength(1);
-    expect(app.isDestroyed()).toBe(true);
-
-    host.remove();
-  });
 });
 
 /* ================================================================== *

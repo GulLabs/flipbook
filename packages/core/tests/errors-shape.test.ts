@@ -37,7 +37,7 @@ describe('PageFlipError shape', () => {
 
   test('exposes `cause` on the published type, not only at runtime', () => {
     const root = new Error('root');
-    const err = new PageFlipError('wrapper', 'CANVAS_LOAD', { cause: root });
+    const err = new PageFlipError('wrapper', 'NOT_LOADED', { cause: root });
 
     // The load-bearing half of this test is the property access itself: `lib`
     // is ES2020, which predates `Error.cause`, so before `cause` was declared
@@ -68,11 +68,11 @@ describe('PageFlipError shape', () => {
     const root = new TypeError('root');
 
     try {
-      throw new PageFlipError('wrapper', 'CANVAS_LOAD', { cause: root });
+      throw new PageFlipError('wrapper', 'NOT_LOADED', { cause: root });
     } catch (e) {
       expect(e).toBeInstanceOf(PageFlipError);
       expect((e as PageFlipError).cause).toBe(root);
-      expect((e as PageFlipError).code).toBe('CANVAS_LOAD');
+      expect((e as PageFlipError).code).toBe('NOT_LOADED');
     }
 
     expect.assertions(3);

@@ -75,47 +75,6 @@ describe('I12 — Settings rejects non-finite numbers instead of leaking NaN', (
     expect(codeOf({ ...base, startZIndex: Infinity })).toBe('INVALID_Z_INDEX');
   });
 
-  test('imageFit and imageInset are rejected at the boundary, not coerced at draw time', () => {
-    const codeOf = (setting: Partial<FlipSetting>): string => {
-      try {
-        new Settings().getSettings(setting);
-      } catch (error) {
-        return (error as PageFlipError).code;
-      }
-      return 'NO_THROW';
-    };
-
-    // The whole point of validating here rather than letting `ImagePage`'s
-    // defensive default absorb it: a typo that silently falls back to `contain`
-    // looks *identical to it working*, so the author never learns their setting
-    // did nothing. This is the `imageFit: 'containn'` case.
-    expect(codeOf({ ...base, imageFit: 'containn' as never })).toBe('INVALID_IMAGE_SOURCE');
-    expect(codeOf({ ...base, imageFit: 'stretch' as never })).toBe('INVALID_IMAGE_SOURCE');
-
-    // `inset` is a FRACTION of page width, so anyone reaching for pixels lands
-    // outside the range — which is the mistake worth catching loudly, because
-    // `12` is a plausible-looking pixel margin and a catastrophic fraction.
-    expect(codeOf({ ...base, imageInset: 12 })).toBe('INVALID_IMAGE_SOURCE');
-    expect(codeOf({ ...base, imageInset: 0.5 })).toBe('INVALID_IMAGE_SOURCE');
-    expect(codeOf({ ...base, imageInset: -0.1 })).toBe('INVALID_IMAGE_SOURCE');
-    expect(codeOf({ ...base, imageInset: NaN })).toBe('INVALID_IMAGE_SOURCE');
-
-    // The negative control. Without these the test passes for a validator that
-    // simply rejects everything, including every legal book.
-    expect(codeOf({ ...base, imageFit: 'cover' as never })).toBe('NO_THROW');
-    expect(codeOf({ ...base, imageInset: 0 })).toBe('NO_THROW');
-    expect(codeOf({ ...base, imageInset: 0.499 })).toBe('NO_THROW');
-  });
-
-  test('the canvas image defaults are contain and no inset', () => {
-    // `contain` is a behaviour change from the implicit `fill` canvas mode drew
-    // with before 3.0.0, and it is the kind that changes pixels with no compile
-    // error — so it is pinned here as well as in MIGRATION.md.
-    const settings = new Settings().getSettings(base);
-    expect(settings.imageFit).toBe('contain');
-    expect(settings.imageInset).toBe(0);
-  });
-
   test('an explicit undefined falls back to the default, it does not override it', () => {
     // A plain spread copies an undefined-valued key *over* the default. The
     // cast is the point of the test: `exactOptionalPropertyTypes` stops this at

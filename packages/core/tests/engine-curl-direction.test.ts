@@ -7,12 +7,7 @@
  * back curl with `to.x > pageWidth` re-creates the slide-in regression."
  *
  * That was previously "tested" by `geometry.test.ts` and
- * `reader-flip-invariants.test.ts` comparing `portraitBackCurl(...)` with
- * `portraitForwardCurl(...)`. Both are one-line aliases of `portraitCurlLocal`
- * that take NO direction argument and have NO caller in the engine, so
- * `expect(back).toEqual(forward)` is a tautology: it can only fail if someone
- * edits the aliases themselves.
- *
+ * Pure helper equality tests cannot catch a regression in `Flip.runFlip`.
  * The real decision is one line in `Flip.runFlip`:
  *
  *   const curl = portraitCurlLocal(rect.pageWidth, rect.height, corner);

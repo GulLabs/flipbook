@@ -9,9 +9,7 @@ import {
   convertPageToGlobal,
   curlGoesLeft,
   getPortraitFlippingPage,
-  portraitBackCurl,
   portraitCurlLocal,
-  portraitForwardCurl,
   shouldDrawBottomPage,
 } from '@gullabs/flipbook-core';
 
@@ -41,18 +39,10 @@ describe('reader-flip invariants without consumer monkey-patches', () => {
     expect(getPortraitFlippingPage(list, 2, FlipDirection.BACK).id).toBe('copy-2');
   });
 
-  // NOT the engine's curl decision. `portraitBackCurl` / `portraitForwardCurl`
-  // are direction-less aliases of `portraitCurlLocal` with no caller in the
-  // engine, so this comparison cannot fail on any change to `Flip.runFlip` —
-  // the slide-in regression was injected there and this test stayed green. The
-  // real assertion lives in `engine-curl-direction.test.ts`.
-  test('2. local path is leftward for both directions (to.x = -pageWidth)', () => {
-    const back = portraitBackCurl(400, 600, 'top');
-    const forward = portraitForwardCurl(400, 600, 'top');
-    expect(back).toEqual(forward);
-    expect(back).toEqual(portraitCurlLocal(400, 600, 'top'));
-    expect(back.to.x).toBe(-400);
-    expect(curlGoesLeft(back)).toBe(true);
+  test('2. local path is leftward (to.x = -pageWidth)', () => {
+    const local = portraitCurlLocal(400, 600, 'top');
+    expect(local.to.x).toBe(-400);
+    expect(curlGoesLeft(local)).toBe(true);
   });
 
   test('3. BACK + convertToGlobal mirror ⇒ visual right', () => {

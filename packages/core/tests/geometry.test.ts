@@ -4,9 +4,7 @@ import {
   backCurlAppearsRight,
   convertPageToGlobal,
   curlGoesLeft,
-  portraitBackCurl,
   portraitCurlLocal,
-  portraitForwardCurl,
 } from '@gullabs/flipbook-core';
 
 const PAGE_WIDTH = 400;
@@ -20,32 +18,16 @@ const RECT = {
 };
 
 /**
- * PURE-FUNCTION TESTS ONLY. These do NOT prove the engine's curl invariant.
- *
- * `portraitBackCurl` / `portraitForwardCurl` are one-line aliases of
- * `portraitCurlLocal` that take no direction argument and have no caller in the
- * engine, so `expect(back).toEqual(forward)` is a tautology — it can fail only
- * if someone edits the aliases themselves. A mutation sweep proved it: the exact
- * slide-in regression `CLAUDE.md` warns about, injected at `Flip.ts`'s real curl
- * decision, left this whole file green.
- *
- * The invariant is asserted where the engine decides it, in
- * `engine-curl-direction.test.ts`. What is left here is worth keeping on its own
- * terms — `portraitCurlLocal`'s aspect-ratio bound and the `convertPageToGlobal`
- * mirror are genuine pure-function behaviour — but read this describe block as
- * "the exported helpers agree with each other", not as "the book curls right".
+ * PURE-FUNCTION TESTS for exported geometry helpers.
+ * The engine curl invariant is asserted in `engine-curl-direction.test.ts`.
  */
-describe('portrait curl geometry (exported helpers, NOT the engine path)', () => {
-  test('portrait back and forward share the same local curl (vendor FlipCalculation space)', () => {
-    const back = portraitBackCurl(PAGE_WIDTH, HEIGHT, 'top');
-    const forward = portraitForwardCurl(PAGE_WIDTH, HEIGHT, 'top');
+describe('portrait curl geometry (exported helpers)', () => {
+  test('portraitCurlLocal goes left and BACK mirroring reads as right', () => {
     const local = portraitCurlLocal(PAGE_WIDTH, HEIGHT, 'top');
-    expect(back).toEqual(forward);
-    expect(back).toEqual(local);
-    expect(curlGoesLeft(back)).toBe(true);
-    expect(back.to.x).toBeLessThan(0);
-    expect(backCurlAppearsRight(back, FlipDirection.BACK, RECT)).toBe(true);
-    expect(backCurlAppearsRight(back, FlipDirection.FORWARD, RECT)).toBe(false);
+    expect(curlGoesLeft(local)).toBe(true);
+    expect(local.to.x).toBeLessThan(0);
+    expect(backCurlAppearsRight(local, FlipDirection.BACK, RECT)).toBe(true);
+    expect(backCurlAppearsRight(local, FlipDirection.FORWARD, RECT)).toBe(false);
   });
 
   test('local curl destination is left of the page for both FORWARD and BACK', () => {
