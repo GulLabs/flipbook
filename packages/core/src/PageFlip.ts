@@ -3,8 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
+  ADOPT_ORIENTATION,
   DROP_POINTER_GESTURE,
   EMIT_PAGE_INDEX,
+  EMIT_STATE,
   INHERIT_PAGE_INDEX,
   SEED_OPENING_INDEX,
 } from './internal';
@@ -1151,15 +1153,13 @@ export class PageFlip extends EventObject {
   /**
    * Call a state change event trigger
    *
-   * @internal Wiring seam for `Flip.setState`. Public only because `Flip` is a
-   * separate class; calling it from outside announces a state the engine is not
-   * in, and `UI.onPointerMove` reads that state to decide whether to
-   * `preventDefault()` — so a spurious READ turns page scrolling back on in the
-   * middle of a turn.
+   * See {@link EMIT_STATE}. Symbol-keyed, because `@internal` on a `public`
+   * member is documentation, not a fence: it survives into the emitted `.d.ts`
+   * and a consumer can call it.
    *
    * @param {FlippingState} newState - New  state of the object
    */
-  public updateState(newState: FlippingState): void {
+  public [EMIT_STATE](newState: FlippingState): void {
     this.dispatch('changeState', newState);
   }
 
@@ -1180,15 +1180,13 @@ export class PageFlip extends EventObject {
   /**
    * Call a page orientation change event trigger. Update UI and rendering area
    *
-   * @internal Wiring seam for `Render.update`, which has already decided the
-   * orientation from the measured box. Calling it from outside rebuilds the
-   * spreads and restyles the UI for an orientation the renderer has not
-   * adopted, leaving `Render`, `UI` and `PageCollection` disagreeing about how
-   * many leaves are on screen.
+   * See {@link ADOPT_ORIENTATION}. Symbol-keyed for the same reason as the
+   * other engine seams: `@internal` on a `public` member is a comment, not a
+   * boundary.
    *
    * @param {Orientation} newOrientation - New page orientation (portrait, landscape)
    */
-  public updateOrientation(newOrientation: Orientation): void {
+  public [ADOPT_ORIENTATION](newOrientation: Orientation): void {
     this.uiOrThrow.setOrientationStyle(newOrientation);
     this.update();
     this.dispatch('changeOrientation', newOrientation);

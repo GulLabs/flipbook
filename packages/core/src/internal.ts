@@ -42,6 +42,25 @@ export const INHERIT_PAGE_INDEX = Symbol('flipbook.inheritPageIndex');
 export const EMIT_PAGE_INDEX = Symbol('flipbook.emitPageIndex');
 
 /**
+ * Announces a flipping-state change. `Flip.setState`'s seam.
+ *
+ * Public, it let a consumer announce a state the engine is not in — and
+ * `UI.onPointerMove` reads that state to decide whether to `preventDefault()`,
+ * so a spurious READ turns page scrolling back on in the middle of a turn.
+ */
+export const EMIT_STATE = Symbol('flipbook.emitState');
+
+/**
+ * Adopts a new orientation. `Render.update`'s seam, called only after the
+ * renderer has decided the orientation from the measured box.
+ *
+ * Public, it rebuilt the spreads and restyled the UI for an orientation the
+ * renderer has NOT adopted, leaving `Render`, `UI` and `PageCollection`
+ * disagreeing about how many leaves are on screen.
+ */
+export const ADOPT_ORIENTATION = Symbol('flipbook.adoptOrientation');
+
+/**
  * Seeds a FIRST load's baseline with the head of the spread the book is about
  * to open on.
  *

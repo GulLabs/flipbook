@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { at } from '../arrayAccess';
+import { ADOPT_ORIENTATION } from '../internal';
 import type { PageFlip } from '../PageFlip';
 import type { Point, PageRect, RectPoints } from '../BasicTypes';
 import { FlipDirection } from '../Flip/Flip';
@@ -722,7 +723,7 @@ export abstract class Render {
 
     if (this.orientation !== orientation) {
       this.orientation = orientation;
-      this.app.updateOrientation(orientation);
+      this.app[ADOPT_ORIENTATION](orientation);
     }
   }
 

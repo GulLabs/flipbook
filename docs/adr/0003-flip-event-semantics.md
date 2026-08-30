@@ -99,6 +99,45 @@ Three reasons it must stay that way:
    generalises. Adding `flip` to `clear` would contradict the change while
    claiming to implement it.
 
+## Every path that can move the head — exhaustively
+
+C5. The decision above is only as good as the list of places it applies, and
+that list was never written down. All three entries into `showSpread()` and all
+six callers that reach them are enumerated here so a new one cannot be added
+without noticing it needs a baseline.
+
+`PageCollection.showSpread()` has exactly three callers:
+
+| Entry           | Moves the head?                            | Announces?        |
+| --------------- | ------------------------------------------ | ----------------- |
+| `showNext()`    | yes, by one spread                         | yes — a real turn |
+| `showPrev()`    | yes, by one spread                         | yes — a real turn |
+| `show(pageNum)` | only if `pageNum` is in a different spread | guarded           |
+
+Everything else reaches the head through `show()`, and every one of those
+callers needs a deliberate answer to "what is the baseline here":
+
+| Caller                             | Baseline                                    | Emits                                                                    |
+| ---------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------ |
+| `PageFlip.update()`                | unchanged — same collection                 | only when an orientation change re-canonicalises the head, which it must |
+| `UI.cancelGesture()`               | unchanged — repaint after an abandoned fold | no                                                                       |
+| `PageFlip.turnToPage(page)`        | unchanged — a real navigation               | yes                                                                      |
+| `PageFlip.replacePages`            | `INHERIT_PAGE_INDEX(outgoing)`              | only if the head really moved                                            |
+| `PageFlip.updateFromHtml`          | `INHERIT_PAGE_INDEX(current)`               | only if the head really moved                                            |
+| `PageFlip.attachMode` — reload     | `INHERIT_PAGE_INDEX(outgoing)`              | only if the head really moved                                            |
+| `PageFlip.attachMode` — first load | `SEED_OPENING_INDEX(start)`                 | no — opening is not turning                                              |
+
+The last row is C2, and the distinction between the last two rows is the whole
+of it: a reload carries the outgoing index because the reader was somewhere,
+while a first load has nowhere to have come from and must be seeded with the
+head it is about to show. An **emptied** outgoing collection counts as a first
+load — `clear()` does not null `PageFlip.pages`, so `=== null` alone missed it.
+
+The rule a new caller should apply: if a reader could have been looking at a
+different page a moment ago, seed the outgoing index and let the guard decide.
+If they could not — a mount, a first load — seed the head being shown, so the
+guard stays silent.
+
 ## Alternatives rejected
 
 **(b) Keep `flip` as-is; add a new event for real turns.** Ships the bug

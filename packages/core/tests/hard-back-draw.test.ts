@@ -149,13 +149,16 @@ describe('the leaf under a BACK fold', () => {
   // `ENGINE_LEAF_CLASSES` — and `drawHard`'s transform-origin.
   //
   // Asserted on a SOFT fold, which is where the sweep found it and which is the
-  // flagship mobile back-flip. NOT asserted for a hard cover: measured, a hard
-  // BACK fold leaves the underside carrying `--right`, because it is also the
-  // right static leaf and `drawRightPage` runs before `drawBottomPage` in
-  // `drawFrame`. Whether that is correct or a live defect is an open question —
-  // it is recorded in the notes rather than pinned here, because writing an
-  // assertion for a value nobody has justified is how a bug gets certified as
-  // the contract. That has happened twice in this repo already.
+  // flagship mobile back-flip.
+  //
+  // The hard-cover case was left as an open question here — measured, a hard
+  // BACK fold leaves the underside carrying `--right` — on the grounds that
+  // pinning a value nobody had justified is how a bug gets certified as the
+  // contract. Codex answered it, and the answer is that `--right` is CORRECT:
+  // on a hard BACK fold the flipping page and the bottom page are the same
+  // leaf, and RIGHT selects `drawHard`'s right-leaf base, whose transform
+  // origin is the spine. LEFT would rotate the closing cover about its outer
+  // edge instead. It is now pinned below.
 
   /** A soft landscape book, two leaves per spread. */
   function softBook(): PageFlip {
@@ -195,6 +198,20 @@ describe('the leaf under a BACK fold', () => {
 
     expect(el.className).toContain('--left');
     expect(el.className).not.toContain('--right');
+  });
+
+  test('is stamped RIGHT under a HARD back fold — the answered question', () => {
+    // Not the same rule as the soft case, and that is the point: here the
+    // flipping leaf and the leaf under it are the SAME page, so the stamp has
+    // to serve `drawHard`, which needs the spine-side base. Regressing this to
+    // `--left` for symmetry with the soft case rotates a closing cover about
+    // its outer edge — it swings out from the book instead of shutting.
+    const book = hardBackFold(60);
+    const el = inner(book).bottomPage!.getElement();
+
+    expect(inner(book).flippingPage?.getDrawingDensity()).toBe('hard');
+    expect(el.className).toContain('--right');
+    expect(el.className).not.toContain('--left');
   });
 
   test('and RIGHT under a soft FORWARD fold — the control', () => {

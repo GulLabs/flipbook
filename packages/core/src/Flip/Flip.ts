@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Render } from '../Render/Render';
+import { EMIT_STATE } from '../internal';
 import { foldSide, Orientation } from '../Render/Render';
 import type { PageFlip } from '../PageFlip';
 import { pointsBetween } from '../Helper';
@@ -887,7 +888,7 @@ export class Flip {
       // READ as "not flipping" — observed the state the book was LEAVING. A
       // `changeState('read')` handler saw `fold_corner`.
       this.state = newState;
-      this.app.updateState(newState);
+      this.app[EMIT_STATE](newState);
     }
   }
 

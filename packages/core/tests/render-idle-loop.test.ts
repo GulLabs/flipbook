@@ -23,6 +23,7 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { ADOPT_ORIENTATION } from '../src/internal';
 
 import { PageFlip } from '@gullabs/flipbook-core';
 import { Render } from '../src/Render/Render';
@@ -448,7 +449,7 @@ function probeOn(dist: HTMLElement): ProbeRender {
   const app = {
     getUI: () => ({ getDistElement: () => dist }),
     getSettings: () => setting,
-    updateOrientation: () => undefined,
+    [ADOPT_ORIENTATION]: () => undefined,
   } as unknown as PageFlipType;
 
   return new ProbeRender(app, setting);

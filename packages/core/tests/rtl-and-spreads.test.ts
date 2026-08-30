@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { EMIT_STATE } from '../src/internal';
 import { Flip, FlipCorner, FlipDirection } from '@gullabs/flipbook-core';
 import type { Render } from '@gullabs/flipbook-core';
 
@@ -86,7 +87,7 @@ function makeFlip(options?: Options) {
     getPageCount: () => options?.spreadCount ?? 8,
     turnToPrevPage() {},
     turnToNextPage() {},
-    updateState() {},
+    [EMIT_STATE]() {},
   };
 
   const flip = new Flip(render as unknown as Render, app as never);

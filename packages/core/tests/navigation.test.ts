@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { EMIT_STATE } from '../src/internal';
 import {
   Flip,
   FlipCorner,
@@ -88,7 +89,7 @@ function makeFlip(options?: { pageCount?: number; currentPage?: number }) {
     getPageCount: () => options?.pageCount ?? 0,
     turnToPrevPage() {},
     turnToNextPage() {},
-    updateState() {},
+    [EMIT_STATE]() {},
   };
 
   const flip = new Flip(render as unknown as Render, app as never);

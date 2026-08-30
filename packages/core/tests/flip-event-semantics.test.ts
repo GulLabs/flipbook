@@ -2,6 +2,14 @@
 import { describe, expect, test } from 'vitest';
 import { HTMLPageCollection, PageFlip } from '@gullabs/flipbook-core';
 import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
+import {
+  ADOPT_ORIENTATION,
+  DROP_POINTER_GESTURE,
+  EMIT_PAGE_INDEX,
+  EMIT_STATE,
+  INHERIT_PAGE_INDEX,
+  SEED_OPENING_INDEX,
+} from '../src/internal';
 
 /**
  * ADR 0003 — `flip` fires only when `getCurrentPageIndex()` actually changes.
@@ -348,10 +356,37 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     const book = makeHtmlBook(landscape);
 
     const api = book.book as unknown as Record<string, unknown>;
-    expect(typeof api['updatePageIndex']).toBe('undefined');
-
     const collection = book.book.getPageCollection() as unknown as Record<string, unknown>;
-    expect(typeof collection['adoptCurrentPageIndex']).toBe('undefined');
+
+    // Every engine-to-engine seam that used to be a named `public` member.
+    // `@internal` on one of those is documentation, not a fence: it survives
+    // into the emitted `.d.ts` and a consumer can call it.
+    for (const name of [
+      'updatePageIndex',
+      'updateState',
+      'updateOrientation',
+      'adoptCurrentPageIndex',
+    ]) {
+      expect(typeof api[name], `PageFlip.${name} is reachable by name`).toBe('undefined');
+      expect(typeof collection[name], `collection.${name} is reachable by name`).toBe('undefined');
+    }
+
+    // …and they MOVED rather than vanished. Without this the block above is
+    // satisfied by deleting the seams outright, which would take the engine
+    // with them — it pins a NAME, and a name alone is not a behaviour. The
+    // symbols are module-private, so this is the one place that can check.
+    const seamed = book.book as unknown as Record<symbol, unknown>;
+    expect(typeof seamed[EMIT_PAGE_INDEX]).toBe('function');
+    expect(typeof seamed[EMIT_STATE]).toBe('function');
+    expect(typeof seamed[ADOPT_ORIENTATION]).toBe('function');
+    expect(typeof seamed[DROP_POINTER_GESTURE]).toBe('undefined'); // that one lives on UI
+
+    const ui = book.book.getUI() as unknown as Record<symbol, unknown>;
+    expect(typeof ui[DROP_POINTER_GESTURE]).toBe('function');
+
+    const coll = book.book.getPageCollection() as unknown as Record<symbol, unknown>;
+    expect(typeof coll[INHERIT_PAGE_INDEX]).toBe('function');
+    expect(typeof coll[SEED_OPENING_INDEX]).toBe('function');
 
     book.destroy();
   });

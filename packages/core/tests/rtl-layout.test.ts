@@ -444,3 +444,79 @@ describe('RTL spread layout is mirrored', () => {
     book.destroy();
   });
 });
+
+describe('a COMPLETED swipe lands on the right page in both readings', () => {
+  // C4. Everything else about rtl asserts a decision: which `FlipDirection`
+  // `Flip` resolved, or which side a leaf was drawn on. Nothing anywhere ran a
+  // swipe all the way through `onPointerUp` and checked where the book ENDED
+  // UP. So an engine that mirrored the direction decision and then committed
+  // the unmirrored turn passed the entire rtl suite.
+  //
+  // This is also the closest unit-level proxy for the gesture the fork exists
+  // to fix, and it is asserted as a RELATION between the two readings: the same
+  // physical finger movement must move the index in opposite directions. Pinned
+  // constants would break on an unrelated change to spread layout.
+  function swipe(book: ReturnType<typeof makeHtmlBook>, dx: number): void {
+    const dist = book.book.getUI().getDistElement();
+    const rect = book.book.getBoundsRect();
+    const y = rect.top + rect.height / 2;
+    const startX = rect.left + rect.width / 2 + (dx < 0 ? 60 : -60);
+
+    const send = (type: string, x: number): void => {
+      dist.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          button: 0,
+          buttons: type === 'pointerup' ? 0 : 1,
+          pointerType: 'mouse',
+          clientX: x,
+          clientY: y,
+        }),
+      );
+    };
+
+    send('pointerdown', startX);
+    send('pointermove', startX + dx / 2);
+    send('pointerup', startX + dx);
+  }
+
+  test('the same finger movement moves the index OPPOSITE ways under ltr and rtl', () => {
+    const ltr = makeHtmlBook({ ...landscape, pageCount: 6, direction: 'ltr', flippingTime: 0 });
+    const rtl = makeHtmlBook({ ...landscape, pageCount: 6, direction: 'rtl', flippingTime: 0 });
+
+    ltr.book.turnToPage(2);
+    rtl.book.turnToPage(2);
+
+    // A right-to-left drag: "onward" for a left-bound book, "back" for a
+    // right-bound one.
+    swipe(ltr, -200);
+    swipe(rtl, -200);
+
+    expect(ltr.book.getCurrentPageIndex()).toBeGreaterThan(2);
+    expect(rtl.book.getCurrentPageIndex()).toBeLessThan(2);
+
+    ltr.destroy();
+    rtl.destroy();
+  });
+
+  test('and the mirror image of that drag reverses both', () => {
+    // Without this, an engine that simply refuses every rtl forward turn
+    // satisfies the test above.
+    const ltr = makeHtmlBook({ ...landscape, pageCount: 6, direction: 'ltr', flippingTime: 0 });
+    const rtl = makeHtmlBook({ ...landscape, pageCount: 6, direction: 'rtl', flippingTime: 0 });
+
+    ltr.book.turnToPage(2);
+    rtl.book.turnToPage(2);
+
+    swipe(ltr, 200);
+    swipe(rtl, 200);
+
+    expect(ltr.book.getCurrentPageIndex()).toBeLessThan(2);
+    expect(rtl.book.getCurrentPageIndex()).toBeGreaterThan(2);
+
+    ltr.destroy();
+    rtl.destroy();
+  });
+});

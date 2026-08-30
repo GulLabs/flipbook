@@ -22,6 +22,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { ADOPT_ORIENTATION } from '../src/internal';
 
 import { PageFlipError } from '../src/errors';
 import { FlipDirection } from '../src/Flip/Flip';
@@ -62,6 +63,11 @@ type Harness = {
   pending: () => boolean;
   /** The measured box the render reads through `getDistElement()`. */
   box: { offsetWidth: number; offsetHeight: number };
+  /**
+   * The spy the fake app exposes under the `ADOPT_ORIENTATION` symbol. Kept
+   * under a plain name HERE because it is the test's own handle, not the seam:
+   * only the object handed to `Render` needs the symbol key.
+   */
   updateOrientation: ReturnType<typeof vi.fn>;
 };
 
@@ -78,7 +84,7 @@ function makeHarness(
   const app = {
     getUI: () => ({ getDistElement: () => box }),
     getSettings: () => setting,
-    updateOrientation,
+    [ADOPT_ORIENTATION]: updateOrientation,
   } as unknown as PageFlip;
 
   const render = new TestRender(app, setting);

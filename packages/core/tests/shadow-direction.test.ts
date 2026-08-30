@@ -144,6 +144,48 @@ describe('soft fold — inner shadow gradient direction', () => {
   });
 });
 
+describe('soft fold — OUTER shadow gradient direction', () => {
+  // C4. The inner shadow is covered above; `drawOuterShadow` picks its own
+  // direction and picks the OPPOSITE token for the same fold
+  // (`HTMLRender.drawOuterShadow`). Nothing asserted it, so swapping its
+  // ternary left the suite green — and the two shadows then point the same way,
+  // which on screen is a page lit from two contradictory directions at once.
+  //
+  // The relation is asserted rather than only the literals: 'the outer is the
+  // opposite of the inner' is the invariant, and it fails for a mutant that
+  // swaps BOTH ternaries together, which matching literals alone would not
+  // catch.
+  test('FORWARD: outer goes to right — the opposite of the inner', () => {
+    const book = softBook();
+    foldFrom(book, 'right');
+
+    expect(shadowCss(book, '.stf__outerShadow')).toContain('to right');
+    expect(shadowCss(book, '.stf__innerShadow')).toContain('to left');
+  });
+
+  test('BACK: outer goes to left — still the opposite', () => {
+    const book = softBook();
+    book.turnToPage(2);
+    foldFrom(book, 'left');
+
+    expect(shadowCss(book, '.stf__outerShadow')).toContain('to left');
+    expect(shadowCss(book, '.stf__innerShadow')).toContain('to right');
+  });
+
+  test('and the two directions actually differ between FORWARD and BACK', () => {
+    // Without this, a constant 'to right' outer satisfies the FORWARD test and
+    // an engine that never varies the outer shadow passes half this block.
+    const forward = softBook();
+    foldFrom(forward, 'right');
+
+    const back = softBook();
+    back.turnToPage(2);
+    foldFrom(back, 'left');
+
+    expect(shadowCss(forward, '.stf__outerShadow')).not.toBe(shadowCss(back, '.stf__outerShadow'));
+  });
+});
+
 describe('hard fold — shadow face selection', () => {
   // `drawHardInnerShadow` / `drawHardOuterShadow` choose which FACE of the
   // cover the shadow sits on with
