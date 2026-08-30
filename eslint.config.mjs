@@ -8,12 +8,27 @@ import eslintConfigPrettier from 'eslint-config-prettier';
 import tseslint from 'typescript-eslint';
 
 /** Typed package + example sources — type-aware rules run here. */
-const typedFiles = ['packages/*/src/**/*.{ts,tsx}', 'examples/**/*.{ts,tsx}'];
-
-const nonTypedTsFiles = [
-  '**/*.{test,spec}.{ts,tsx}',
+// LINT-003 (craft-audit). The TEST SUITE is type-checked by these rules too.
+//
+// It used to sit in `nonTypedTsFiles`, so every type-aware rule — including
+// `@typescript-eslint/no-floating-promises`, which is an `error` below — was
+// silently off for every test, every e2e spec and every fixture. That is not a
+// style gap. A floating promise in a test is an assertion that never runs: the
+// test finishes, the promise settles afterwards, and it reports green whatever
+// the code does. This repo has caught TWELVE tests that passed against broken
+// code by hand; this is the automated form of the same failure, and it was
+// unguarded in the one place it matters most.
+//
+// Costs a slower lint (the tests join the typed program). Measured at zero
+// existing violations, so it is free today and only ever refuses new ones.
+const typedFiles = [
+  'packages/*/src/**/*.{ts,tsx}',
   'packages/*/tests/**/*.{ts,tsx}',
   'e2e/**/*.{ts,tsx}',
+  'examples/**/*.{ts,tsx}',
+];
+
+const nonTypedTsFiles = [
   'fixtures/**/*.{ts,tsx}',
   'scripts/**/*.{ts,mjs,js}',
   'vitest.config.ts',
@@ -25,7 +40,7 @@ const nonTypedTsFiles = [
 
 const nonTypedJsFiles = ['**/*.{js,mjs,cjs}'];
 
-/** Block focused tests from landing (Veloir / ai-studio / any-llm). */
+/** Block focused tests from landing. */
 const focusGuards = [
   'error',
   {
@@ -45,7 +60,7 @@ const focusGuards = [
   },
 ];
 
-/** Shared non-type-aware hygiene (ai-studio baseSecurity + baseGeneral, slimmed for a library). */
+/** Shared non-type-aware hygiene, slimmed for a library. */
 const hygieneRules = {
   curly: 'error',
   eqeqeq: ['error', 'always', { null: 'ignore' }],
@@ -168,6 +183,43 @@ export default defineConfig(
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'error',
       'react/jsx-no-leaked-render': 'error',
+    },
+  },
+  {
+    // Test code joins the TYPED program (LINT-003) but keeps the relaxations
+    // that make tests readable: `!` on a fixture lookup and `any` in a stub are
+    // noise to forbid here, and forbidding them buys nothing. What it gains is
+    // every type-AWARE rule, `no-floating-promises` above all.
+    files: ['packages/*/tests/**/*.{ts,tsx}', 'e2e/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      '@typescript-eslint/consistent-type-imports': 'off',
+      '@typescript-eslint/unbound-method': 'off',
+
+      // The two type-aware rules that are NOISE in a test and signal in source.
+      // A test defends against its own fixture drifting — a `?? fallback` on a
+      // value the types currently say is non-nullable is how a fixture change
+      // gets caught instead of crashing, and an "unnecessary" assertion is
+      // often documenting what the test believes. Neither can make an assertion
+      // silently not run, which is the bar for keeping a rule here.
+      '@typescript-eslint/no-unnecessary-condition': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+
+      // Off for a specific reason: a test's job includes feature-DETECTING the
+      // environment it runs in. `if (!HTMLElement.prototype.setPointerCapture)`
+      // is correct and necessary — jsdom lacks it — while the DOM lib types it
+      // as always present, so the rule calls a real runtime guard impossible.
+      '@typescript-eslint/strict-boolean-expressions': 'off',
+      // An `async () => {}` with no `await` is idiomatic in testing-library
+      // callbacks and cannot cause a missed assertion.
+      '@typescript-eslint/require-await': 'off',
+
+      // KEPT, deliberately — these are the ones that decide whether a test
+      // asserts anything at all:
+      //   no-floating-promises   an un-awaited assertion never runs
+      //   await-thenable         awaiting a non-promise hides a sync bug
+      //   no-misused-promises    an async callback where none is expected
     },
   },
   {

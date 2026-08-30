@@ -2220,3 +2220,140 @@ describe('round 9 — two engines on one host', () => {
     expect(shared.classList.contains('stf__parent')).toBe(false);
   });
 });
+
+/**
+ * RE-1 / RE-4 — the LOAD path dispatches too, and the guards did not cover it.
+ *
+ * Seven reentrancy defects had been fixed on the turn and teardown paths. These
+ * two are the load path: `Render.start()` calls `update()`, which on a fresh
+ * render always reports an orientation change, and `updateOrientation` emits
+ * `flip` before `changeOrientation`. Consumer code therefore runs while
+ * `start()` is halfway through installing the loop.
+ */
+describe('RE-1 — a listener during the first paint cannot leave a zombie loop', () => {
+  test('destroy() from the first `flip` leaves nothing scheduled', () => {
+    // Own the frame queue, so the frame the bug schedules can actually be RUN.
+    // Asserting "nothing was scheduled" would be weaker: the failure is not the
+    // scheduling, it is what the frame does when it runs.
+    const queued: FrameRequestCallback[] = [];
+    const realRaf = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      queued.push(cb);
+      return queued.length;
+    }) as typeof globalThis.requestAnimationFrame;
+
+    const book = new PageFlip(host(), { width: 200, height: 300 });
+
+    book.on('flip', () => {
+      book.destroy();
+    });
+
+    // Reverted fix: `stop()` ran inside `destroy()`, then `start()` re-armed
+    // and scheduled one more frame. Running it threw `DESTROYED` out of
+    // `HTMLRender.clear()` — X4 on the load path, where X4's own generation
+    // guard cannot help because `start()` bumps the generation AFTER the
+    // destroy, making the zombie loop's generation legitimately current.
+    expect(() => {
+      book.loadFromHTML(makePages(6));
+    }).not.toThrow();
+
+    expect(book.isDestroyed()).toBe(true);
+
+    // Run whatever was queued. THIS is the assertion: the zombie frame called
+    // `HTMLRender.clear()`, which reaches `app.getPageCollection()` on a
+    // destroyed engine and throws.
+    expect(() => {
+      for (const cb of queued.splice(0, queued.length)) cb(0);
+    }).not.toThrow();
+
+    globalThis.requestAnimationFrame = realRaf;
+  });
+
+  test('loadFromHTML() from the first `flip` does not blank the new book', () => {
+    const scheduled: FrameRequestCallback[] = [];
+    const realRaf = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      scheduled.push(cb);
+      return scheduled.length;
+    }) as typeof globalThis.requestAnimationFrame;
+
+    const book = new PageFlip(host(), { width: 200, height: 300 });
+
+    let swapped = false;
+    book.on('flip', () => {
+      if (swapped) return;
+      swapped = true;
+      book.loadFromHTML(makePages(6));
+    });
+
+    book.loadFromHTML(makePages(4));
+
+    // Reverted fix: the nested load installed a new UI, render and collection,
+    // and then the OUTER `start()` revived the old, detached render. Its
+    // `clear()` iterates the NEW collection and hides every page that is not
+    // one of the OLD render's references — measured, all six pages ended
+    // `display: none`, both loops parked, and nothing scheduled another frame.
+    // A permanently blank book until a resize or a turn.
+    expect(book.getPageCount()).toBe(6);
+
+    // THE LOOP MUST ACTUALLY BE RUNNING. Without this, the whole block is
+    // satisfied by a `start()` that returns early and never installs anything —
+    // which is exactly what happens if the generation check is placed after
+    // `stop()`, since `stop()` bumps the generation itself. That variant
+    // shipped for several minutes and was caught by an unrelated test, not by
+    // this one.
+    expect(book.getRender().isAnimating() || scheduled.length > 0).toBe(true);
+
+    const pages = book.getPageCollection().getPages();
+    const hidden = pages.filter(
+      (p) => (p as unknown as { element?: HTMLElement }).element?.style.display === 'none',
+    );
+    expect(hidden.length).toBeLessThan(pages.length);
+
+    globalThis.requestAnimationFrame = realRaf;
+    book.destroy();
+  });
+});
+
+describe('RE-4 — a teardown supersedes a turn, and the refusal says so', () => {
+  test('destroy() from `changeState` makes the turn report its refusal', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 400 });
+    book.loadFromHTML(makePages(8));
+
+    let torn = false;
+    book.on('changeState', (e) => {
+      if ((e.data as string) !== 'flipping' || torn) return;
+      torn = true;
+      book.destroy();
+    });
+
+    // Reverted fix: `true`, with no `turnRejected` at all. `turnGeneration` was
+    // bumped only by `start()`, so the three reentrancy guards fired for a
+    // listener that started another TURN and not for one that tore the book
+    // down. Nothing corrupted — the downstream `calc === null` checks caught it
+    // — but the contract lied, and `runFlip` still installed a ghost animation
+    // on a stopped render.
+    expect(book.flipNext()).toBe(false);
+    expect(book.isDestroyed()).toBe(true);
+  });
+
+  test('a nested TURN still supersedes, so the guard did not just get narrower', () => {
+    const book = new PageFlip(host(), { width: 200, height: 300, flippingTime: 400 });
+    book.loadFromHTML(makePages(8));
+
+    let chained = false;
+    book.on('changeState', (e) => {
+      if ((e.data as string) !== 'flipping' || chained) return;
+      chained = true;
+      book.flipNext();
+    });
+
+    // The control: bumping the generation in `abandon()` must not disturb the
+    // AN4 path it shares a counter with.
+    expect(book.flipNext()).toBe(false);
+    expect(book.getState()).toBe(FlippingState.FLIPPING);
+    expect(book.getFlipController()!.getCalculation()).not.toBeNull();
+
+    book.destroy();
+  });
+});

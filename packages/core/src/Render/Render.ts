@@ -375,7 +375,48 @@ export abstract class Render {
       );
     }
 
+    // RE-1. `update()` DISPATCHES, and this method is halfway through.
+    //
+    // On a fresh render `this.orientation` is null, so the first `update()`
+    // always reports an orientation change — and `PageFlip.updateOrientation`
+    // runs `pages.show()` (emitting `flip`) before it emits `changeOrientation`.
+    // So consumer code runs here, on the LOAD path, with the loop not yet
+    // installed, and this method used to go on and set `running`, install
+    // `frameLoop` and schedule a frame unconditionally.
+    //
+    // Two measured outcomes, both from a listener on that first `flip`:
+    //
+    //  - `destroy()` — teardown ran `stop()`, then this method re-armed. One
+    //    frame ran AFTER the destroy and threw `DESTROYED` out of
+    //    `HTMLRender.clear()`. That is X4 exactly, on the load path instead of
+    //    the turn path, and X4's own guard cannot help: the generation is
+    //    bumped below, i.e. AFTER the destroy, so the zombie loop's generation
+    //    is legitimately current.
+    //  - `loadFromHTML()` — the nested `attachMode` installs a new UI, render
+    //    and collection, and then this method revives the OLD, detached render.
+    //    Its `clear()` iterates `app.getPageCollection()` — the NEW collection —
+    //    and hides every page that is not one of the old render's references.
+    //    Measured: all six pages of the freshly loaded book ended
+    //    `display: none`, both loops parked, and nothing scheduled another
+    //    frame. A permanently blank book until a resize or a turn.
+    //
+    // The generation is the right instrument and it already exists: `stop()`
+    // bumps it, and both `destroy()` and `attachMode` call `stop()`. Capture it
+    // across the dispatch and install nothing if it moved — whoever moved it
+    // owns the renderer now.
+    const entryGeneration = this.loopGeneration;
+
     this.update();
+
+    // BEFORE `stop()`, and the order is the whole guard. `stop()` bumps
+    // `loopGeneration` itself, so a check placed after it compares the
+    // generation against one this method just moved — always unequal, always
+    // returning early, and the loop never starts at all. That variant is not
+    // hypothetical: it is what this fix was accidentally reformatted into, and
+    // the only thing that caught it was an unrelated U6 test noticing that no
+    // animation ever ran.
+    if (entryGeneration !== this.loopGeneration) return;
+
     this.stop();
 
     // R7: capture the generation, not the rAF id. `generation` is fully

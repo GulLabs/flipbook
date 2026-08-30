@@ -40,6 +40,22 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — the load path dispatches too
+
+- **A listener on the book's first `flip` could leave a zombie render loop.**
+  `Render.start()` calls `update()` before installing the loop, and on a fresh
+  render that always reports an orientation change — which emits `flip` first.
+  So consumer code runs mid-`start()`, and the method then installed a loop
+  regardless. Measured: `destroy()` from that listener let one frame run after
+  teardown and throw `DESTROYED`; `loadFromHTML()` from it revived the old,
+  detached renderer, which hid every page of the newly loaded book — a
+  permanently blank book until a resize or a turn.
+- **A turn interrupted by a teardown reported success.** The reentrancy guards
+  keyed on a counter only a new turn bumped, so a `changeState` listener calling
+  `destroy()` or `clear()` left `flipNext()` returning `true` with no
+  `turnRejected`, against a documented contract of `false` plus
+  `code: 'DESTROYED'` — and left a ghost animation on a stopped renderer.
+
 ### Fixed — four ownership failures across the lifecycle methods
 
 - **`attachMode` did not abandon the outgoing turn**, so a turn's destination

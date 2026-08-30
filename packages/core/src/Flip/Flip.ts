@@ -1006,6 +1006,22 @@ export class Flip {
    * @internal Wiring seam for `PageFlip.replacePages` / `destroy`.
    */
   public abandon(): void {
+    // RE-4. A teardown is a supersession too.
+    //
+    // `turnGeneration` was bumped only by `start()`, so the three reentrancy
+    // guards — in `fold`, `runFlip` and `showCorner` — fired for a listener
+    // that started another TURN and not for one that tore the book down. They
+    // survived on the `calc === null` checks downstream, so nothing corrupted,
+    // but the refusal contract lied: measured, a `changeState('flipping')`
+    // listener calling `destroy()` left `flipNext()` returning TRUE with no
+    // `turnRejected` at all, where the contract promises `false` plus
+    // `code: 'DESTROYED'`. `runFlip` also went on to install a ghost animation
+    // on a stopped render, which never completes.
+    //
+    // Bumping here makes one counter mean "the turn you were holding is no
+    // longer yours", whether it was replaced or destroyed.
+    this.turnGeneration += 1;
+
     // The destination goes with the turn: the pages it referred to are the ones
     // being replaced.
     this.pendingTarget = null;
