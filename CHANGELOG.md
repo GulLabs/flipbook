@@ -18,6 +18,40 @@ scale()` ancestor** — a zoom-to-fit shell, a responsive wrapper, a CSS zoom on
   `cssText` on every frame. The CSSOM discarded it, so it was harmless, but it
   was emitted sixty times a second.
 
+### Fixed — re-entrancy from the engine's own synchronous events
+
+- **A turn started from an `onFlip` handler could be overwritten by the call
+  that finished it.** `finishAnimation()` commits the outgoing turn and emits
+  `flip` synchronously, and a listener is entitled to start the next turn from
+  it (auto-advance, a controlled `page` prop). The caller then carried on and
+  clobbered that nested turn's `calc` and `pendingTarget`, handed its running
+  animation the caller's own destination, and committed on top. Measured on the
+  built engine: the book landed on page 3 with events `[1, 2, 3]` — two page
+  turns for one request. The nested turn is the later intent, so it wins and
+  the outer call is refused.
+- **`turnRejected` gained `reason: 'superseded'`** for exactly that refusal.
+  Reporting it as `boundary` told consumers the book was at its end while it was
+  mid-turn — the shape of failure that disables a "next" button.
+- **`flip(page)` no longer throws `FLIP_SETUP` when a nested turn overtakes
+  it.** Nothing about the request was invalid; the book is moving, just not
+  where that call asked.
+- **`changeState` announced the state the book was LEAVING.** `updateState`
+  fired before the field was assigned, so a `changeState('read')` listener read
+  `fold_corner` from `getState()` — and `UI.onPointerMove` reads the same field
+  to decide whether to `preventDefault()`.
+- **A turn started from the `read` announcement was destroyed immediately.**
+  `setState(READ)` ran before the turn's own `reset()`, so the listener's fresh
+  `calc`, flipping page and animation were all torn down on the next line. The
+  nested `flipNext()` returned `true` and nothing moved.
+- **The FORWARD corner band was clamped to the BACK band's bound.** Portrait's
+  direction split is asymmetric (2/5 back, 3/5 forward), so one shared
+  `min(operatingDistance, splitOffset)` shrank a band that had no defect: on a
+  100x200 leaf a point 43 px in from the right edge is unambiguously forward and
+  was refused, which under `disableFlipByClick` is a corner that will not turn
+  the page. Each edge now takes the bound that actually constrains it — the
+  split on the left, the midline on the right — which also keeps the two bands
+  from meeting.
+
 ### Changed — `destroy()` releases event listeners
 
 - **`PageFlip.destroy()` now releases every registered event listener.** Handlers

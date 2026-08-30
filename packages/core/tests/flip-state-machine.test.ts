@@ -464,7 +464,21 @@ describe('I10 — the corner band and the direction split cannot disagree', () =
     expect(flip.isPointOnCorners(leaf(50, 5))).toBe(false);
     expect(flip.isPointOnCorners(leaf(50, rect.height - 5))).toBe(false);
     expect(flip.isPointOnCorners(leaf(45, 5))).toBe(false);
-    expect(flip.isPointOnCorners(leaf(55, 5))).toBe(false);
+
+    // AMENDED, and the amendment is the point. `leaf(55)` used to be asserted
+    // false, which held only because the two bands shared the LEFT band's
+    // bound (the 40 px split). Bounding the right band by the midline instead
+    // — the fix for the forward corner Codex measured on a 100x200 leaf, and
+    // the same rule Z2 applies on y — puts offset 55 inside the right band at
+    // 45 px from its own edge.
+    //
+    // That is the intended tiling, not a hole: the bands meet the midline from
+    // opposite sides and stop, exactly as the y bands do, and the midline
+    // itself belongs to neither. The property this block is named for survives
+    // and is asserted above and below — the MIDDLE (offsets 40 through 50) is
+    // not a corner, and the two bands do not overlap.
+    expect(flip.isPointOnCorners(leaf(55, 5))).toBe(true);
+    expect(flip.isPointOnCorners(leaf(49, 5))).toBe(false);
 
     // …while the actual corners are all still corners.
     expect(flip.isPointOnCorners(leaf(5, 5))).toBe(true);
@@ -503,9 +517,23 @@ describe('I10 — the corner band and the direction split cannot disagree', () =
       // one leaf qualifies as a corner of the other. Reverted fix: the band is
       // 121.7 on a 100-wide leaf, so offset 50 lands in the FORWARD half while
       // sitting 50 from its own (right) edge, half the leaf away.
+      //
+      // Bounded per edge, because the split is asymmetric: the LEFT band may
+      // not reach the split (40), the RIGHT band may not reach the midline
+      // (50). Asserting the left bound on both sides is what wrongly rejected
+      // the forward corner on a 100x200 leaf; asserting the right band's own
+      // distance to the split (60) instead would let the two bands meet and
+      // make the whole leaf a corner again.
       const distanceToOwnEdge = backHalf ? offset : rect.pageWidth - offset;
-      expect(distanceToOwnEdge).toBeLessThan(splitOffset);
+      const ownBound = backHalf ? splitOffset : rect.pageWidth / 2;
+      expect(distanceToOwnEdge).toBeLessThanOrEqual(ownBound);
     }
+
+    // The bands may touch the midline but never cross it, so no offset can
+    // qualify through both. This is what the `visibleSpan / 2` term buys and
+    // the reason the far-side-of-the-split bound was rejected: that one sums
+    // the two bands to the full leaf.
+    expect(Math.max(...backCorners)).toBeLessThan(Math.min(...forwardCorners));
 
     // Both corners still exist — a band clamped to nothing would satisfy the
     // loop above vacuously.
@@ -513,6 +541,44 @@ describe('I10 — the corner band and the direction split cannot disagree', () =
     expect(forwardCorners.length).toBeGreaterThan(0);
     // …and there is a real stretch of leaf between them that is not a corner.
     expect(backCorners.length + forwardCorners.length).toBeLessThan(rect.pageWidth - 10);
+  });
+
+  test('the FORWARD corner is not shrunk to the BACK band (100x200)', () => {
+    // Codex's case, and the one the shared clamp got wrong. The leaf is 100x200
+    // so `operatingDistance` is 44.7 and the 2/5 split is 40 — the narrow range
+    // where the diagonal heuristic reaches PAST the split on the back side and
+    // not on the forward side. At ordinary proportions neither bound binds and
+    // this fixture proves nothing, which is why it is not 200x300.
+    const { book: app } = book({ pageCount: 6, width: 100, height: 200 });
+    const flip = app.getFlipController()!;
+    const rect = app.getBoundsRect();
+
+    expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
+    const operatingDistance = Math.sqrt(rect.pageWidth ** 2 + rect.height ** 2) / 5;
+    const splitOffset = (rect.pageWidth * 2) / 5;
+    // The precondition: the heuristic must sit strictly between the split and
+    // the midline, or the two clamps agree and the test cannot discriminate.
+    expect(operatingDistance).toBeGreaterThan(splitOffset);
+    expect(operatingDistance).toBeLessThan(rect.pageWidth / 2);
+
+    const leafLeft = rect.left + rect.width - rect.pageWidth;
+    const at = (offset: number) => ({ x: leafLeft + offset, y: rect.top + 5 });
+
+    // 43 px in from the right edge: 57 px into the leaf, well clear of the
+    // 40 px split, and a corner by the heuristic. Clamping it to the BACK
+    // band's 40 rejected it — a corner that refuses to peel, and under
+    // `disableFlipByClick` a click that does nothing.
+    expect(flip.isPointOnCorners(at(rect.pageWidth - 43))).toBe(true);
+
+    // …and the band still stops short of the midline, so the middle of the
+    // leaf is not a corner from either side.
+    expect(flip.isPointOnCorners(at(50))).toBe(false);
+    expect(flip.isPointOnCorners(at(rect.pageWidth - 46))).toBe(false);
+    expect(flip.isPointOnCorners(at(41))).toBe(false);
+
+    // The back corner is unchanged: the split still bounds it, because a band
+    // reaching past the split is the I10 defect.
+    expect(flip.isPointOnCorners(at(39))).toBe(true);
   });
 
   test('ordinary proportions are untouched', () => {
@@ -786,5 +852,179 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
     expect(parked.calc({ x: rect.pageWidth - 30, y: rect.height - 30 })).toBe(true);
     expect(calc.getPosition()).toEqual(parked.getPosition());
     expect(calc.getPosition().y).toBeGreaterThanOrEqual(rect.height / 2);
+  });
+});
+
+/**
+ * AN1 / AN2 — re-entrancy from the engine's own synchronous events.
+ *
+ * `finishAnimation()` and `setState()` both dispatch synchronously, and a
+ * listener is entitled to start a turn from either. Both of these were found by
+ * Codex running the BUILT engine, after unit tests that composed
+ * `Render.startAnimation` callbacks directly went green: those tests never
+ * touch `Flip.calc`, `turnGeneration` or `pendingTarget`, which is where the
+ * two defects live. Everything below drives the public `PageFlip` surface.
+ */
+describe('AN1 — a turn started from `flip` beats the call that finished it', () => {
+  test('the outer turn is refused rather than committing on top of the nested one', () => {
+    // A REAL animation duration: with `flippingTime: 0` the turn is instant,
+    // `calc` is null by the time the next call looks, and there is no outgoing
+    // animation to finish — the race cannot be expressed.
+    const { book: app } = book({ pageCount: 8, flippingTime: 400 });
+
+    const seen: number[] = [];
+    let chained = false;
+
+    app.on('flip', (e) => {
+      seen.push(e.data as number);
+      // The ordinary auto-advance shape: chain the next turn from `onFlip`.
+      if (chained) return;
+      chained = true;
+      app.flipNext();
+    });
+
+    const rejections: string[] = [];
+    app.on('turnRejected', (e) => {
+      rejections.push((e.data as { reason: string }).reason);
+    });
+
+    app.flipNext(); // turn A, now animating
+    expect(app.getCurrentPageIndex()).toBe(0);
+
+    // Turn C, racing A. Finishing A emits `flip`, whose listener starts nested
+    // turn B — and B is the reader's most recent intent.
+    const started = app.flipNext();
+
+    // Reverted fix: C overwrites B's `calc` and `pendingTarget`, C's
+    // `startAnimation` then finishes B's still-running animation against C's
+    // state so B commits C's destination, and C commits on top. Measured
+    // against the built engine: page 3, events [1, 2, 3] — two commits for one
+    // request, one of them a page the reader never asked for.
+    expect(started).toBe(false);
+    expect(seen).toEqual([1]);
+    expect(app.getCurrentPageIndex()).toBe(1);
+
+    // …and the nested turn is genuinely still running, not collateral damage.
+    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+    expect(app.getState()).toBe(FlippingState.FLIPPING);
+
+    // `boundary` would say the book is at its end. It is on page 1 of 8.
+    expect(rejections).toEqual(['superseded']);
+  });
+
+  test('the refusal reason does not leak into the NEXT rejection', () => {
+    const { book: app } = book({ pageCount: 4, flippingTime: 400 });
+
+    let chained = false;
+    app.on('flip', () => {
+      if (chained) return;
+      chained = true;
+      app.flipNext();
+    });
+
+    const rejections: string[] = [];
+    app.on('turnRejected', (e) => {
+      rejections.push((e.data as { reason: string }).reason);
+    });
+
+    app.flipNext();
+    expect(app.flipNext()).toBe(false); // superseded
+
+    // A genuine boundary refusal afterwards must report `boundary`. A sticky
+    // field would report `superseded` for the rest of the book's life — and
+    // `superseded` says "a newer turn is running", which is the opposite of
+    // what a consumer disabling a "previous" button needs to hear.
+    app.getFlipController()!.abandon();
+    app.turnToPage(0); // instant, no turn — put the book on the first spread
+    expect(app.flipPrev()).toBe(false);
+
+    expect(rejections).toEqual(['superseded', 'boundary']);
+  });
+
+  test('an unraced turn is untouched — the guard is not a blanket refusal', () => {
+    const { book: app } = book({ pageCount: 8, flippingTime: 400 });
+
+    // No listener chains anything, so finishing A moves no generation and C is
+    // the ordinary finish-then-restart the engine has always done.
+    expect(app.flipNext()).toBe(true);
+    expect(app.flipNext()).toBe(true);
+    expect(app.getCurrentPageIndex()).toBe(1);
+  });
+
+  test('an absolute turn overtaken by a nested one does not throw', () => {
+    const { book: app } = book({ pageCount: 8, flippingTime: 400 });
+
+    let chained = false;
+    app.on('flip', () => {
+      if (chained) return;
+      chained = true;
+      app.flipNext();
+    });
+
+    app.flipNext();
+
+    // `PageFlip.flip` calls `flipToPage` directly, so a throw here reaches the
+    // consumer uncaught — and the React binding drives it from the controlled
+    // `page` prop on every change. Without the guard the phantom index is
+    // computed against a spread the nested turn has already left, `runFlip`
+    // refuses, and the caller gets `FLIP_SETUP` for a book working correctly.
+    expect(() => {
+      app.flip(5);
+    }).not.toThrow();
+
+    expect(app.getCurrentPageIndex()).toBe(1);
+  });
+});
+
+describe('AN2 — the state is true before it is announced', () => {
+  test('a `changeState` listener observes the state being ENTERED', () => {
+    const { book: app } = book({ pageCount: 4, flippingTime: 0 });
+    const rect = app.getBoundsRect();
+
+    const observed: string[] = [];
+    app.on('changeState', (e) => {
+      observed.push(`${e.data as string}:${app.getState()}`);
+    });
+
+    app.startUserTouch({ x: rect.left + rect.width - 5, y: rect.top + 10 });
+    app.userMove({ x: rect.left + rect.width - 45, y: rect.top + 12 }, false);
+    app.userStop({ x: rect.left + rect.width - 45, y: rect.top + 12 });
+
+    // Reverted fix: `updateState` fired before `this.state` was assigned, so
+    // every listener read the state the book was LEAVING — `read:fold_corner`
+    // for the settle. `UI.onPointerMove` reads `getState()` to decide whether
+    // to `preventDefault()`, so this is not only a listener-facing lie.
+    expect(observed.length).toBeGreaterThan(0);
+    for (const entry of observed) {
+      const [announced, actual] = entry.split(':');
+      expect(actual).toBe(announced);
+    }
+  });
+
+  test('a turn started from the `read` announcement is not torn down', () => {
+    const { book: app } = book({ pageCount: 8, flippingTime: 400 });
+
+    let chained = false;
+    let nestedStarted: boolean | null = null;
+
+    app.on('changeState', (e) => {
+      if ((e.data as string) !== 'read' || chained) return;
+      chained = true;
+      // The natural place to chain a turn: the book has just come to rest.
+      nestedStarted = app.flipNext();
+    });
+
+    app.flipNext();
+    app.getRender().finishAnimation();
+
+    // Reverted fix: `setState(READ)` ran BEFORE `reset()`, so the listener's
+    // `start()` installed a fresh calc, flipping page and animation and the
+    // next line destroyed all of it. Measured: `flipNext()` returned true with
+    // a live calculation, and once the listener returned the state was READ,
+    // `calc` was null and the page had not moved — a turn that reported
+    // success and never happened.
+    expect(nestedStarted).toBe(true);
+    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+    expect(app.getState()).toBe(FlippingState.FLIPPING);
   });
 });

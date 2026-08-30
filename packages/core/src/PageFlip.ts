@@ -42,14 +42,21 @@ const CONSTRUCTION_TIME_SETTINGS = ['showCover', 'startPage'] as const;
  *
  * The numeric clamp alone is not enough: `NaN`, `Infinity` and `0.5` all
  * survive it (`NaN < 0` and `NaN >= length` are both false), and
- * `PageCollection.show()` then silently DECLINES them — leaving the renderer
- * unseeded and the book blank, with nothing reported. The React binding repairs
- * that later through `onNavigationError`; a raw core or canvas consumer never
- * gets that path, which is why this belongs at load rather than in the
- * constructor. Codex round 5.
+ * `PageCollection.show()` then silently DECLINES them, with nothing reported.
  *
- * Asking the collection whether a spread actually contains the index is the
- * only check that covers all three cases at once.
+ * WHAT THIS DOES NOT DO, corrected in round 6 after the earlier claim here was
+ * measured and found false: it does not fix a blank book, because no supported
+ * configuration produces one. Every new `Render` starts with
+ * `orientation === null`, and its first update calls `PageFlip.update()`, which
+ * calls `pages.show()` before the explicit start-page show ever runs — so the
+ * renderer is seeded whatever `startPage` was. Measured with `NaN`: index 0, a
+ * populated `rightPage`, identical with and without this resolver.
+ *
+ * It stays because a declined `show()` is a silent no-op on a documented
+ * setting and the collection is the only thing that can answer "is this index
+ * in a spread" for all three cases at once. It is defensive validation, not an
+ * observable fix, and the tests written to prove it passed against the unfixed
+ * code and were deleted rather than kept as decoration.
  */
 function resolveStartPage(pages: PageCollection, pageCount: number, requested: number): number {
   if (pageCount === 0) return 0;
@@ -867,7 +874,14 @@ export class PageFlip extends EventObject {
 
     if (started) return true;
 
-    this.dispatch('turnRejected', { reason: 'boundary' });
+    // `boundary` used to be hard-coded here, on the reasoning that the only way
+    // a relative turn can be refused is that there is no spread that way. There
+    // is a second way — a `flip` listener started its own turn while this one
+    // was finishing the outgoing animation, and that later turn wins (see
+    // `Flip.finishOutgoingTurn`). Reporting that as `boundary` tells a consumer
+    // the book is at its end while it is mid-turn, which is the shape of
+    // failure that disables "next" buttons.
+    this.dispatch('turnRejected', { reason: flip.takeRefusal() });
     return false;
   }
 

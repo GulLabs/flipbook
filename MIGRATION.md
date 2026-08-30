@@ -60,6 +60,18 @@ orientation, shadow gradients, hard-page z-order — wanted that already. If you
 were reading it to learn which way a turn was heading, read the `flip` event or
 compare page indices instead.
 
+### `turnRejected` has a fourth reason: `superseded`
+
+`reason` was `'boundary' | 'setup' | 'disabled'`. It is now
+`'boundary' | 'setup' | 'disabled' | 'superseded'`.
+
+You will see `superseded` when a turn you asked for was overtaken by one your
+own `onFlip` handler started — the common auto-advance shape. It means "a newer
+turn is running", not "there is no page that way", so a consumer disabling a
+next/previous button on `turnRejected` should treat it differently from
+`boundary`. If you `switch` exhaustively on `reason`, TypeScript will point at
+the new arm.
+
 ### `destroy()` unbinds your event handlers
 
 Before: handlers registered with `on()` stayed registered on a destroyed engine,

@@ -37,6 +37,17 @@ export class Flip {
    */
   private turnGeneration = 0;
 
+  /**
+   * Why the last turn was refused, for {@link PageFlip.requestTurn} to report.
+   *
+   * `boundary` — there is no spread that way — was the only refusal a relative
+   * turn could have, so `requestTurn` hard-coded it. `superseded` is a second
+   * one, and reporting it as `boundary` would tell a consumer the book is at
+   * its end when it is not. Read-and-clear, so a stale reason cannot attach to
+   * a later refusal.
+   */
+  private refusal: 'boundary' | 'superseded' = 'boundary';
+
   private state: FlippingState = FlippingState.READ;
 
   /**
@@ -123,7 +134,10 @@ export class Flip {
     target: number | null,
   ): boolean {
     // the flipping process is already running
-    if (this.calc !== null) this.render.finishAnimation();
+    if (!this.finishOutgoingTurn()) {
+      this.refusal = 'superseded';
+      return false;
+    }
 
     this.pendingTarget = target;
 
@@ -148,6 +162,58 @@ export class Flip {
 
     this.animateFlippingTo(curl.from, curl.to, true);
     return true;
+  }
+
+  /**
+   * Commit the turn already in flight, and report whether THIS call still owns
+   * the book afterwards.
+   *
+   * `finishAnimation()` is not a quiet cleanup. It runs the outgoing turn's
+   * completion callback, which commits the page and emits `flip`
+   * **synchronously** — and a listener is entitled to start the next turn from
+   * that event (auto-advance, a controlled `page` prop, `flipNext()` inside
+   * `onFlip`). By the time control comes back here, that nested turn is fully
+   * installed: its own `calc`, its own flipping page, its own running
+   * animation, its own `turnGeneration`.
+   *
+   * The generation guard inside `animateFlippingTo`'s callback cannot see this.
+   * It fires when the callback finds the world moved on underneath it, and here
+   * the callback has already returned; what moves on is the CALLER. Measured on
+   * the built engine, an outer `flipNext()` racing a turn whose `onFlip`
+   * flipped again landed on page 3 with events [1, 2, 3] — two commits — where
+   * the nested turn alone should have left the book on page 2:
+   *
+   *   - the outer call overwrites `pendingTarget` and, through `start()` →
+   *     `reset()`, the nested turn's `calc`;
+   *   - its `startAnimation` then finishes the nested turn's still-running
+   *     animation against the outer call's freshly installed state, so the
+   *     nested turn commits the OUTER destination;
+   *   - the outer turn then commits on top of it.
+   *
+   * The nested turn is the reader's most recent intent, so it wins and this
+   * call is refused. The alternative — letting the outer call clobber it — is
+   * what produced the double commit, and there is no ordering in which both
+   * can be honoured, because the outer call's own point and direction were
+   * computed against a spread the book has since left.
+   */
+  private finishOutgoingTurn(): boolean {
+    if (this.calc === null) return true;
+
+    const generation = this.turnGeneration;
+    this.render.finishAnimation();
+
+    return this.turnGeneration === generation;
+  }
+
+  /**
+   * @internal Read-and-clear the reason the last turn was refused. Only
+   * meaningful immediately after a `false` from `flip` / `flipNext` /
+   * `flipPrev`; see {@link Flip.refusal}.
+   */
+  public takeRefusal(): 'boundary' | 'superseded' {
+    const reason = this.refusal;
+    this.refusal = 'boundary';
+    return reason;
   }
 
   /**
@@ -322,7 +388,18 @@ export class Flip {
     // `flip(2)` landed on 3). Refusing the second call was the alternative, but
     // the controlled-`page` binding legitimately issues turns faster than they
     // animate, and §4.6 says the caller must end up where it last asked.
-    if (this.calc !== null) this.render.finishAnimation();
+    // ...and if finishing it let a `flip` listener start its own turn, that
+    // turn is the later request and this one is abandoned — see
+    // {@link Flip.finishOutgoingTurn}. Returning is deliberate where the rest
+    // of this method throws: `PageFlip.flip` calls it directly, so a throw
+    // reaches the consumer uncaught, and the React binding drives it from the
+    // controlled `page` prop on every change. "A newer turn overtook you" is
+    // not a `PageFlipError` — nothing about the request was invalid, and the
+    // book is moving, just not where this call asked. Without this guard the
+    // phantom index below is computed against a spread the nested turn has
+    // already left, `runFlip` refuses, and the caller gets a spurious
+    // `FLIP_SETUP` throw for a book that is working correctly.
+    if (!this.finishOutgoingTurn()) return;
 
     const current = collection.getCurrentSpreadIndex();
     const next = collection.getSpreadIndexByPage(page);
@@ -645,8 +722,23 @@ export class Flip {
         this.render.setFlippingPage(null);
         this.render.clearShadow();
 
-        this.setState(FlippingState.READ);
+        // CLEANUP FIRST, ANNOUNCEMENT SECOND — the same ordering family as I1
+        // and I9, and the last place it was still backwards.
+        //
+        // `setState` emits `changeState` synchronously, so a `read` listener
+        // that starts a turn (the natural place to chain one — the book has
+        // just come to rest) had `start()` install a fresh `calc`, flipping
+        // page and animation, and then `reset()` on the next line destroyed all
+        // of it. Measured: the nested `flipNext()` returned `true` with a live
+        // calculation, and by the time the listener returned the state was
+        // READ, `calc` was null and the page had not moved — a turn that
+        // reported success and never happened.
+        //
+        // Nothing is lost by reordering. `reset()` touches only this turn's
+        // own state, and once READ is announced this turn is finished, so
+        // anything the listener installs is by definition not ours to clear.
         this.reset();
+        this.setState(FlippingState.READ);
       }
     });
   }
@@ -667,8 +759,13 @@ export class Flip {
 
   private setState(newState: FlippingState): void {
     if (this.state !== newState) {
-      this.app.updateState(newState);
+      // ASSIGNED BEFORE DISPATCH. `updateState` emits `changeState`
+      // synchronously, so a listener that read `getState()` — or anything the
+      // engine itself routes through it, such as `UI.onPointerMove` treating
+      // READ as "not flipping" — observed the state the book was LEAVING. A
+      // `changeState('read')` handler saw `fold_corner`.
       this.state = newState;
+      this.app.updateState(newState);
     }
   }
 
@@ -855,13 +952,53 @@ export class Flip {
     // by coincidence of proportions, and at ordinary proportions the clamp is
     // inert — a 200x300 leaf keeps its 72.1 in both orientations.
     //
-    // One term, not two: the FAR side of the split would need
-    // `cornerBand <= visibleSpan - splitOffset`, and `splitOffset` is never more
-    // than half the visible span in either orientation (landscape splits it
-    // exactly in half, portrait at 2/5), so the near-side bound is always the
-    // tighter one. Carrying the far-side term as well would be an unreachable
-    // branch — the C11 mistake in a `Math.min`.
-    const cornerBand = Math.min(operatingDistance, this.getDirectionSplitOffset(rect));
+    // TWO BANDS, not one — but they do NOT get the same bound, and the two
+    // wrong answers here are instructive enough to record.
+    //
+    // The first version took a single `min(operatingDistance, splitOffset)` for
+    // both edges, on the reasoning that `splitOffset` is never more than half
+    // the visible span so the near-side bound is always the tighter one. True
+    // of the LEFT band; false of the RIGHT one, because portrait's split is
+    // ASYMMETRIC — the leading 2/5 of the leaf turns BACK and the trailing 3/5
+    // FORWARD. That shrank a band with no defect behind it: on a 100x200 leaf
+    // `operatingDistance` is 44.7 and `splitOffset` is 40, so a point 43 px in
+    // from the RIGHT edge sits 57 px into the leaf, is unambiguously FORWARD,
+    // cannot cross the split, and was a valid corner hit before the clamp
+    // existed. Under `disableFlipByClick` that is a corner that visibly refuses
+    // to turn the page.
+    //
+    // The obvious repair — bound the right band by `visibleSpan - splitOffset`,
+    // its own distance to the split — is worse, and this is the trap. It makes
+    // the two bands MEET whenever `operatingDistance` is large: they sum to
+    // exactly `visibleSpan`, leaving no gap at all. Measured on the 100x600
+    // leaf this clamp exists for, the left band is 40 and the right 60, and
+    // every single point on the leaf is a corner again. That is the I10 defect
+    // verbatim, reintroduced by a bound that looks strictly more correct.
+    //
+    // So each edge takes the tighter of the two boundaries that actually
+    // constrain it, and they are different boundaries:
+    //
+    //   - LEFT is bounded by the SPLIT. A band reaching past it would claim
+    //     points the direction test hands to the other leaf (I10).
+    //   - RIGHT is bounded by the MIDLINE. The split is on the far side of the
+    //     midline in portrait and on it in landscape, so it can never bind
+    //     here — carrying it as a second term would be a dead branch, the C11
+    //     mistake in a `Math.min`. What binds is the same rule Z2 applies on
+    //     the y axis: neither band may cross the middle of the leaf, so the two
+    //     can never overlap.
+    //
+    // At ordinary proportions both are inert — a 200x300 leaf keeps 72.1 on
+    // both sides — which is the property that says this is a clamp and not a
+    // narrowing of every book's corners.
+    const splitOffset = this.getDirectionSplitOffset(rect);
+    const visibleSpan = rect.width - visibleLeft;
+
+    // Named by EDGE, not by direction. `getDirectionSplitOffset` is documented
+    // as the geometry of the line before any `rtl` mirror, which flips which
+    // side MEANS back; these are the two sides of that line, and they are the
+    // same two sides in both reading directions.
+    const leftBand = Math.min(operatingDistance, splitOffset);
+    const rightBand = Math.min(operatingDistance, visibleSpan / 2);
 
     // Z2, the same missing constraint on the other axis. `operatingDistance` is
     // a fifth of the DIAGONAL and knows nothing about the page's height either,
@@ -899,7 +1036,7 @@ export class Flip {
       bookPos.y > 0 &&
       bookPos.x < rect.width &&
       bookPos.y < rect.height &&
-      (bookPos.x < visibleLeft + cornerBand || bookPos.x > rect.width - cornerBand) &&
+      (bookPos.x < visibleLeft + leftBand || bookPos.x > rect.width - rightBand) &&
       (bookPos.y < cornerHeight || bookPos.y > rect.height - cornerHeight)
     );
   }
