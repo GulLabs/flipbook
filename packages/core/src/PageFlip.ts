@@ -69,23 +69,6 @@ export class PageFlip extends EventObject {
   private loadGeneration = 0;
 
   /**
-   * How many engine-emitted events are currently on the stack.
-   *
-   * Non-zero means a consumer callback is running inside the engine, so
-   * anything that callback does to the engine is RE-ENTRANT: the engine will
-   * carry on with the rest of that operation after the callback returns. The
-   * one that matters is `destroy()` — see {@link teardownPages}.
-   */
-  private dispatchDepth = 0;
-
-  /**
-   * The emptied collection and the detached UI, kept alive for the remainder of
-   * a teardown that happened mid-dispatch. See {@link destroy}.
-   */
-  private teardownPages: PageCollection | null = null;
-  private teardownUi: UI | null = null;
-
-  /**
    * Create a new PageFlip instance
    *
    * @constructor
@@ -126,49 +109,24 @@ export class PageFlip extends EventObject {
    *
    * `destroy()` from an `onFlip` handler is the cleanup this whole contract
    * exists to support — a reader that unmounts the book when it reaches the
-   * last page — and it was the one path where `'DESTROYED'` was not safe. The
-   * render loop's turn completion runs `onAnimateEnd` (which is what emits
-   * `flip`) and then draws ONE more frame, unconditionally; the loop is already
-   * past the guard `render.stop()` moves. That trailing frame reads engine
+   * last page — and it used to be the one path where `'DESTROYED'` was not
+   * safe. The render loop's turn completion runs `onAnimateEnd` (which is what
+   * emits `flip`) and then drew ONE more frame; that trailing frame read engine
    * state back out — `getPageCollection()` in HTML mode, `getUI()` in canvas —
    * so nulling both threw a `PageFlipError` out of the consumer's rAF callback
    * for doing exactly what the docs told them to.
    *
-   * The teardown is complete and synchronous either way; what changes is what
-   * that one already-scheduled frame finds. When `destroy()` runs re-entrantly
-   * (`dispatchDepth > 0`), the emptied collection and the detached UI are kept
-   * for the rest of the current task, so the frame finds a **coherent but empty
-   * engine**: no pages to iterate, no page references left in the renderer,
-   * nothing painted. Everything else — `isDestroyed()`, the released
-   * references, the stopped loop, every other guarded accessor — is unchanged
-   * and immediate.
-   *
-   * The window closes on a microtask, which is strictly inside the same task as
-   * the rAF callback and therefore before any consumer code that could observe
-   * it asynchronously. The deviation is real and deliberately narrow: for the
-   * remainder of that one dispatch, `getPageCollection()` and `getUI()` answer
-   * with the inert objects rather than throwing.
-   *
-   * This is a mitigation, not the whole fix. The trailing draw is `Render`'s
-   * (`render()` draws after `onAnimateEnd` with no generation check — U6), and
-   * only `Render` can decline to draw at all.
+   * That is fixed where it belongs, in `Render`: `render()` declines the draw
+   * after `onAnimateEnd` when the loop generation has moved, and `loop()`
+   * declines the re-arm for the same reason (`Render.stop()` bumps the
+   * generation, and `destroy()` calls it). The frame that used to read a
+   * torn-down engine no longer happens at all, so there is nothing here to
+   * keep coherent for it: the teardown is complete, synchronous and
+   * unconditional,
+   * and every guarded accessor reports `'DESTROYED'` from the moment
+   * `destroy()` returns — including inside the handler that called it.
    */
   public destroy(): void {
-    // X4. Armed BEFORE the teardown, and only when a consumer callback is on
-    // the stack: outside a dispatch there is no frame in flight to keep
-    // coherent, and arming it unconditionally would weaken the contract for
-    // every ordinary teardown. The stand-ins are the same objects the teardown
-    // below empties and detaches — that is the point, they end up inert.
-    if (this.dispatchDepth > 0) {
-      this.teardownPages = this.pages;
-      this.teardownUi = this.ui;
-
-      queueMicrotask(() => {
-        this.teardownPages = null;
-        this.teardownUi = null;
-      });
-    }
-
     this.destroyed = true;
     this.cancelPendingInit();
     // May be called before create() finishes wiring render/ui.
@@ -200,23 +158,54 @@ export class PageFlip extends EventObject {
     return this.destroyed;
   }
 
-  /**
-   * Emit one engine event, recording that a consumer callback is on the stack.
-   *
-   * Every `trigger` in this class goes through here so the depth cannot drift:
-   * a call site that emitted directly would be invisible to `destroy()`, and
-   * the one that matters most (`flip`) is emitted from the render loop.
-   */
+  /** Emit one engine event. A thin alias so call sites do not repeat `this`. */
   private dispatch<K extends keyof FlipbookEventMap>(
     eventName: K,
     data: FlipbookEventMap[K],
   ): void {
-    this.dispatchDepth += 1;
+    this.trigger(eventName, this, data);
+  }
+
+  /**
+   * Announce a collection change as ONE event pair (`update`, then
+   * `collectionRebuild`), whatever the listeners do.
+   *
+   * `replacePages`, `updateFromHtml` and `clear` all swap the collection and
+   * then emit both events. Emitting them as two plain calls meant a listener on
+   * the FIRST that threw took the second down with it: the exception unwound
+   * out of the public method between the two, so the collection had already
+   * been replaced and only half the pair had been delivered. Every *other*
+   * listener — including well-behaved ones on `collectionRebuild` — was then
+   * permanently desynced from a book that had already changed, and no later
+   * event ever re-announces it.
+   *
+   * So the pair is atomic and the throw still propagates. Swallowing it was the
+   * other candidate and is worse: a listener that throws is a consumer defect,
+   * and this engine's rule (see `requestTurn`) is that a failure which is not
+   * the engine's own is never converted into silence. The caller sees the same
+   * error it sees today; what changes is that the listener at fault no longer
+   * decides what the rest of the consumer's code gets told.
+   *
+   * If both listeners throw, the first error is the one rethrown — it is the
+   * one that actually happened first, and it is what a caller catching today
+   * already gets.
+   */
+  private dispatchCollectionChange(page: number, pageCount: number, mode: Orientation): void {
+    let failure: { err: unknown } | null = null;
+
     try {
-      this.trigger(eventName, this, data);
-    } finally {
-      this.dispatchDepth -= 1;
+      this.dispatch('update', { page, mode });
+    } catch (err: unknown) {
+      failure = { err };
     }
+
+    try {
+      this.dispatch('collectionRebuild', { page, pageCount });
+    } catch (err: unknown) {
+      failure ??= { err };
+    }
+
+    if (failure !== null) throw failure.err;
   }
 
   /**
@@ -353,16 +342,11 @@ export class PageFlip extends EventObject {
       this.pages.show(target);
     }
 
-    const resolved = this.resolvedPageIndex(this.pages);
-
-    this.dispatch('update', {
-      page: resolved,
-      mode: render.getOrientation(),
-    });
-    this.dispatch('collectionRebuild', {
-      page: resolved,
+    this.dispatchCollectionChange(
+      this.resolvedPageIndex(this.pages),
       pageCount,
-    });
+      render.getOrientation(),
+    );
   }
 
   /**
@@ -552,7 +536,14 @@ export class PageFlip extends EventObject {
     this.nextGeneration();
     const render = this.renderOrThrow;
     const previous = this.pagesOrThrow;
-    const current = previous.getCurrentPageIndex();
+    // PF3: `resolvedPageIndex`, not `getCurrentPageIndex()`.
+    // `PageCollection.destroy()` empties the page array but leaves
+    // `currentPageIndex` where it was, so a `clear()` — which announces page 0
+    // to the consumer — followed by `updateFromHtml(pages)` carried the index
+    // of the emptied collection into the new book and opened it on the page
+    // `clear()` had just said it was no longer on. This helper exists for
+    // exactly that and every other index-reporting path here already uses it.
+    const current = this.resolvedPageIndex(previous);
 
     // P2 / I9: an in-flight turn belongs to the OLD collection, and
     // `finishAnimation()` would COMMIT it — running `onAnimateEnd` against
@@ -593,16 +584,11 @@ export class PageFlip extends EventObject {
       pages.show(target);
     }
 
-    const resolved = this.resolvedPageIndex(this.pages);
-
-    this.dispatch('update', {
-      page: resolved,
-      mode: render.getOrientation(),
-    });
-    this.dispatch('collectionRebuild', {
-      page: resolved,
+    this.dispatchCollectionChange(
+      this.resolvedPageIndex(this.pages),
       pageCount,
-    });
+      render.getOrientation(),
+    );
   }
 
   /**
@@ -665,9 +651,20 @@ export class PageFlip extends EventObject {
    * Clear pages from HTML (remove to initinalState)
    */
   public clear(): void {
-    this.nextGeneration();
+    // PF2: resolve every piece of engine state FIRST, and only then claim the
+    // generation. `nextGeneration()` used to run before `uiOrThrow`, so
+    // `loadFromImages(x)` immediately followed by `clear()` — `render`/`ui` are
+    // null until the canvas chunk lands — threw `NOT_LOADED` out of `clear()`
+    // having ALREADY invalidated the pending load: the continuation saw a stale
+    // generation, returned early, and the book silently never appeared, with no
+    // error on the load promise either. Same family as L5, inverted — a
+    // generation claimed by an operation that then fails. An operation that
+    // cannot proceed must not invalidate the one that can.
     const ui = this.uiOrThrow;
     const render = this.renderOrThrow;
+    const pages = this.pagesOrThrow;
+
+    this.nextGeneration();
 
     // L2: a load schedules `init` on a 1 ms timer, and only another
     // `attachMode` used to invalidate it. `loadFromHTML(pages)` immediately
@@ -677,7 +674,7 @@ export class PageFlip extends EventObject {
     // longer has any pages. There is nothing left to initialise; drop it.
     this.cancelPendingInit();
 
-    this.pagesOrThrow.destroy();
+    pages.destroy();
     // Emptying the collection is not enough: the renderer holds its own
     // left/right/flipping/bottom references, so the rAF loop went on painting
     // the pages that had just been discarded.
@@ -697,14 +694,7 @@ export class PageFlip extends EventObject {
     // needs no special case: `update` because what is rendered changed,
     // `collectionRebuild` because the collection did. Not `flip` (no turn
     // happened) and not `init` (the book is not becoming ready).
-    this.dispatch('update', {
-      page: 0,
-      mode: render.getOrientation(),
-    });
-    this.dispatch('collectionRebuild', {
-      page: 0,
-      pageCount: 0,
-    });
+    this.dispatchCollectionChange(0, 0, render.getOrientation());
   }
 
   /**
@@ -952,10 +942,6 @@ export class PageFlip extends EventObject {
    * @returns {UI}
    */
   public getUI(): UI {
-    // X4: the canvas renderer asks for the UI on every frame (`backingScale`),
-    // including the frame already scheduled when a handler destroyed the book.
-    if (this.teardownUi !== null) return this.teardownUi;
-
     return this.uiOrThrow;
   }
 
@@ -975,11 +961,6 @@ export class PageFlip extends EventObject {
    * @returns {PageCollection}
    */
   public getPageCollection(): PageCollection {
-    // X4: the HTML renderer iterates the collection on every frame (`clear()`),
-    // including the frame already scheduled when a handler destroyed the book.
-    // `PageCollection.destroy()` has emptied it, so that iteration is a no-op.
-    if (this.teardownPages !== null) return this.teardownPages;
-
     return this.pagesOrThrow;
   }
 

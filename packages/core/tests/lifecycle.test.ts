@@ -1324,3 +1324,305 @@ describe('L7 — an abandoned canvas load resolves, a live one still throws', ()
     await expect(book.updateFromImages(['a.png'])).resolves.toBeUndefined();
   });
 });
+
+/**
+ * PF2 — `clear()` claimed a load generation before it knew there was anything
+ * to clear.
+ *
+ * `nextGeneration()` ran ahead of `uiOrThrow`, so a `clear()` on an engine
+ * whose canvas chunk was still in flight threw `NOT_LOADED` *after* it had
+ * already invalidated the pending load. The continuation then saw a stale
+ * generation, returned early, and the book silently never appeared — and
+ * because the load promise resolves normally on a superseded load (L7), there
+ * was no error anywhere to explain it.
+ *
+ * The assertion that matters is that the book APPEARS. "clear() threw and
+ * nothing else blew up" is true of the broken code too.
+ */
+describe('PF2 — a clear() that cannot run must not cancel the load that can', () => {
+  let hostEl: HTMLElement;
+
+  beforeEach(() => {
+    stubCanvas2dContext();
+    hostEl = host();
+    sizeElement(hostEl, 380, 300);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    hostEl.remove();
+  });
+
+  test('loadFromImages then clear(): the book still appears', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
+
+    const inits: { page: number }[] = [];
+    book.on('init', (e) => inits.push(e.data as { page: number }));
+
+    // In flight: the dynamic import has not resolved, so `attachMode` has not
+    // run and render/ui/pages are all still null.
+    const pending = book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+
+    // `clear()` cannot do its job on an engine with no book — that has always
+    // been a throw, and it stays one. What it must not do is take the load
+    // with it.
+    const err = (() => {
+      try {
+        book.clear();
+        return null;
+      } catch (e: unknown) {
+        return e as PageFlipError;
+      }
+    })();
+    expect(err).toBeInstanceOf(PageFlipError);
+    expect(err?.code).toBe('NOT_LOADED');
+
+    await pending;
+
+    // The book is really there: a collection, a render, the canvas element in
+    // the host, and the one-shot readiness event a consumer seeds its state
+    // from. Asserting only "no throw" is what let this ship.
+    expect(book.getPageCount()).toBe(4);
+    expect(book.getPageCollection().getPages()).toHaveLength(4);
+    expect(() => book.getRender()).not.toThrow();
+    expect(hostEl.querySelector('canvas.stf__canvas')).not.toBeNull();
+
+    await new Promise((r) => setTimeout(r, 10));
+    expect(inits).toEqual([{ page: 0, mode: book.getOrientation() }]);
+
+    book.destroy();
+  });
+
+  test('control: the same sequence without the clear() behaves identically', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
+
+    await book.loadFromImages(['a.png', 'b.png', 'c.png', 'd.png']);
+
+    expect(book.getPageCount()).toBe(4);
+    expect(hostEl.querySelector('canvas.stf__canvas')).not.toBeNull();
+
+    book.destroy();
+  });
+
+  test('a clear() on a LOADED book still claims a generation (L5 is not undone)', async () => {
+    const book = new PageFlip(hostEl, { width: 100, height: 150, flippingTime: 0 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    // A second load is in flight; `clear()` supersedes it, exactly as
+    // `replacePages` and `attachMode` do.
+    const stale = book.loadFromImages(['s1.png', 's2.png', 's3.png', 's4.png', 's5.png']);
+    book.clear();
+    await stale;
+
+    // Without the generation claim here, the stale continuation would run
+    // `attachMode` and re-fill the book the consumer had just emptied.
+    expect(book.getPageCount()).toBe(0);
+
+    book.destroy();
+  });
+});
+
+/**
+ * PF3 — `updateFromHtml` carried the index of an EMPTIED collection.
+ *
+ * `PageCollection.destroy()` empties the page array but leaves
+ * `currentPageIndex` alone, so `clear()` — which announces page 0 to the
+ * consumer and whose getter reports 0 — followed by `updateFromHtml(pages)`
+ * opened the new book on the stale index, contradicting what `clear()` had
+ * just said. The clamp does not catch it: the stale index is in range in the
+ * new book, which is precisely why it is invisible until a user sees the wrong
+ * page.
+ */
+describe('PF3 — a rebuild after clear() opens where clear() said it was', () => {
+  test('portrait: clear() then updateFromHtml lands on page 0', () => {
+    const { book, host: hostEl, destroy } = makeHtmlBook({ pageCount: 6, usePortrait: true });
+
+    book.turnToPage(3);
+    expect(book.getCurrentPageIndex()).toBe(3);
+
+    book.clear();
+    // The contract `clear()` just published, and the one the new book has to
+    // agree with.
+    expect(book.getCurrentPageIndex()).toBe(0);
+
+    const rebuilt: { page: number; pageCount: number }[] = [];
+    const updated: number[] = [];
+    book.on('collectionRebuild', (e) => rebuilt.push(e.data));
+    book.on('update', (e) => updated.push(e.data.page));
+
+    const fresh = makePages(6);
+    for (const p of fresh) hostEl.appendChild(p);
+    book.updateFromHtml(fresh);
+
+    expect(book.getCurrentPageIndex()).toBe(0);
+    expect(rebuilt).toEqual([{ page: 0, pageCount: 6 }]);
+    expect(updated).toEqual([0]);
+
+    // Not vacuous: the renderer is showing the FIRST page, not merely
+    // reporting 0 while painting page 3.
+    const render = book.getRender() as unknown as { rightPage: unknown; leftPage: unknown };
+    const shown = [render.leftPage, render.rightPage].filter((p) => p !== null);
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown).toContain(book.getPage(0));
+
+    destroy();
+  });
+
+  test('landscape: same, on a spread book where the stale index is well in range', () => {
+    const {
+      book,
+      host: hostEl,
+      destroy,
+    } = makeHtmlBook({ pageCount: 8, usePortrait: false, showCover: false });
+
+    expect(book.getOrientation()).toBe('landscape');
+    book.turnToPage(4);
+    expect(book.getCurrentPageIndex()).toBe(4);
+
+    book.clear();
+
+    const rebuilt: { page: number; pageCount: number }[] = [];
+    book.on('collectionRebuild', (e) => rebuilt.push(e.data));
+
+    const fresh = makePages(8);
+    for (const p of fresh) hostEl.appendChild(p);
+    book.updateFromHtml(fresh);
+
+    expect(book.getCurrentPageIndex()).toBe(0);
+    expect(rebuilt).toEqual([{ page: 0, pageCount: 8 }]);
+
+    destroy();
+  });
+
+  test('control: an update on a NON-empty book still keeps its place', () => {
+    // The half-fix this separates from the real one: zeroing the carried index
+    // unconditionally. `updateFromHtml` on a live book must preserve where the
+    // reader was — that is the whole point of carrying the index.
+    const { book, destroy } = makeHtmlBook({ pageCount: 6, usePortrait: true });
+
+    book.turnToPage(3);
+    book.updateFromHtml(makePages(6));
+
+    expect(book.getCurrentPageIndex()).toBe(3);
+
+    destroy();
+  });
+});
+
+/**
+ * PF4 — a throwing `update` listener used to suppress `collectionRebuild`.
+ *
+ * The two events describe ONE collection change, and by the time the first is
+ * emitted the swap has already happened and is irreversible. Emitting them as
+ * two plain calls let a listener on the first take the second down with it:
+ * the exception unwound out of the public method in between, so every OTHER
+ * listener — including well-behaved ones on `collectionRebuild` — was left
+ * permanently desynced from a book that had already changed, with no later
+ * event to re-announce it.
+ *
+ * Decision: emit the pair atomically AND let the throw through. A listener
+ * that throws is a consumer defect and this engine does not convert failures
+ * that are not its own into silence (`requestTurn` draws the same line); but
+ * the listener at fault does not get to decide what the rest of the consumer's
+ * code is told.
+ */
+describe('PF4 — a throwing listener does not swallow half the event pair', () => {
+  const boom = new Error('listener blew up');
+
+  test('updateFromHtml: collectionRebuild still fires, and the throw still escapes', () => {
+    const { book, destroy } = makeHtmlBook({ pageCount: 6, usePortrait: true });
+
+    book.turnToPage(5);
+
+    const seen: string[] = [];
+    const rebuilt: { page: number; pageCount: number }[] = [];
+
+    book.on('update', () => {
+      seen.push('update');
+      throw boom;
+    });
+    book.on('collectionRebuild', (e) => {
+      seen.push('collectionRebuild');
+      rebuilt.push(e.data);
+    });
+
+    expect(() => book.updateFromHtml(makePages(2))).toThrow(boom);
+
+    // Order matters as much as delivery: `update` is what changed on screen,
+    // `collectionRebuild` is what changed in the book.
+    expect(seen).toEqual(['update', 'collectionRebuild']);
+    expect(rebuilt).toEqual([{ page: 1, pageCount: 2 }]);
+
+    destroy();
+  });
+
+  test('clear(): same pair, same guarantee', () => {
+    const { book, destroy } = makeHtmlBook({ pageCount: 4, usePortrait: true });
+
+    const seen: string[] = [];
+    const rebuilt: { page: number; pageCount: number }[] = [];
+
+    book.on('update', () => {
+      seen.push('update');
+      throw boom;
+    });
+    book.on('collectionRebuild', (e) => {
+      seen.push('collectionRebuild');
+      rebuilt.push(e.data);
+    });
+
+    expect(() => book.clear()).toThrow(boom);
+
+    expect(seen).toEqual(['update', 'collectionRebuild']);
+    expect(rebuilt).toEqual([{ page: 0, pageCount: 0 }]);
+
+    destroy();
+  });
+
+  test('a throwing collectionRebuild listener still propagates', () => {
+    // The subtly-wrong variant this catches: swallowing listener errors
+    // outright, which would make this call succeed and hide a consumer defect.
+    const { book, destroy } = makeHtmlBook({ pageCount: 4, usePortrait: true });
+
+    book.on('collectionRebuild', () => {
+      throw boom;
+    });
+
+    expect(() => book.clear()).toThrow(boom);
+
+    destroy();
+  });
+
+  test('both listeners throwing reports the FIRST error', () => {
+    const { book, destroy } = makeHtmlBook({ pageCount: 4, usePortrait: true });
+
+    const first = new Error('from update');
+    const second = new Error('from collectionRebuild');
+
+    book.on('update', () => {
+      throw first;
+    });
+    book.on('collectionRebuild', () => {
+      throw second;
+    });
+
+    expect(() => book.clear()).toThrow(first);
+
+    destroy();
+  });
+
+  test('control: nobody throwing is unchanged, and the engine is not left mid-swap', () => {
+    const { book, destroy } = makeHtmlBook({ pageCount: 6, usePortrait: true });
+
+    const seen: string[] = [];
+    book.on('update', () => seen.push('update'));
+    book.on('collectionRebuild', () => seen.push('collectionRebuild'));
+
+    expect(() => book.updateFromHtml(makePages(3))).not.toThrow();
+
+    expect(seen).toEqual(['update', 'collectionRebuild']);
+    expect(book.getPageCount()).toBe(3);
+
+    destroy();
+  });
+});

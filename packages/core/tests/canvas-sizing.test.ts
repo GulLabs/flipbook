@@ -123,6 +123,31 @@ describe('canvas backing store is capped by AREA, not by a DPR floor', () => {
     book.destroy();
   });
 
+  test('an extreme aspect ratio cannot overflow past the cap', async () => {
+    vi.stubGlobal('devicePixelRatio', 3);
+    stubLayout(1e200, 1);
+
+    const book = new PageFlip(host, { width: 400, height: 300 });
+    await book.loadFromImages(['a.png', 'b.png']);
+
+    // Assert the SCALE, not `canvas.width`: jsdom clamps the element's
+    // dimensions, so reading them back hides the defect entirely — the first
+    // version of this test passed against the unfixed code for exactly that
+    // reason, the tenth non-discriminating test caught in this repo.
+    const ui = book.getUI() as unknown as { getBackingScale(): { x: number; y: number } };
+    const { x: scale } = ui.getBackingScale();
+
+    // `b * b` overflows to Infinity here, which made the solved cap 0 and sent
+    // the earlier code to a fixed minimum scale — and a fixed minimum is not a
+    // cap: 1e200 x 1 at 1e-6 is still about 1e194 backing pixels. Normalising
+    // the dimensions before solving keeps every intermediate at or below 1.
+    expect(Number.isFinite(scale)).toBe(true);
+    expect(scale).toBeGreaterThan(0);
+    expect(Math.ceil(1e200 * scale) * Math.ceil(1 * scale)).toBeLessThanOrEqual(MAX_BACKING_PIXELS);
+
+    book.destroy();
+  });
+
   test('a phone still gets its full 3x — the cap is not a blanket ceiling', async () => {
     vi.stubGlobal('devicePixelRatio', 3);
     stubLayout(390, 700);

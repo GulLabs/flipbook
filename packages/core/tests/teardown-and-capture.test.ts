@@ -85,12 +85,16 @@ afterEach(() => {
  * X4 — `destroy()` from an `onFlip` handler.
  *
  * The render loop runs `onAnimateEnd` (which is what emits `flip`) and then
- * draws ONE more frame unconditionally; `render.stop()` cannot reach into a
- * tick that is already past its guard. That trailing frame reads engine state
+ * drew ONE more frame unconditionally. That trailing frame reads engine state
  * back out — the HTML renderer iterates `getPageCollection()`, the canvas one
  * asks `getUI()` for the backing scale — so nulling both threw a
  * `PageFlipError('DESTROYED')` out of the consumer's rAF callback for doing
  * exactly what the destroy contract documents.
+ *
+ * `Render` now declines both the trailing draw and the loop re-arm once the
+ * loop generation has moved (`stop()` bumps it, and `destroy()` calls `stop()`),
+ * so the frame does not happen at all. These tests are what keeps that true:
+ * revert either `Render` guard and the two below fail.
  *
  * The bar (per the brief): destroy from inside a real `onFlip` on a real
  * engine, and assert that nothing escapes the rAF callback. Asserting only
@@ -125,45 +129,14 @@ describe('X4 destroying from an onFlip handler survives the frame already in fli
     expect(app.isDestroyed()).toBe(true);
   });
 
-  test('the DESTROYED contract is unchanged — the window is one task wide', async () => {
-    installFakeRaf();
-
-    const { book: app } = book({ pageCount: 6, flippingTime: 300, usePortrait: true });
-
-    let duringHandler: PageFlipError | Error | null = null;
-    app.on('flip', () => {
-      app.destroy();
-      // Inside the window: the render's own reads answer with the emptied
-      // collection rather than throwing. This is the deliberate, narrow
-      // deviation, pinned here so it cannot widen unnoticed.
-      try {
-        expect(app.getPageCollection().getPages()).toHaveLength(0);
-      } catch (err) {
-        duringHandler = err as Error;
-      }
-    });
-
-    app.flipNext();
-    tick(0);
-    tick(100_000);
-
-    expect(duringHandler).toBeNull();
-
-    // The window closes on a microtask — strictly inside the same task as the
-    // rAF callback, so no consumer can observe it asynchronously.
-    await Promise.resolve();
-
-    expect(() => app.getPageCollection()).toThrow(PageFlipError);
-    expect(() => app.getUI()).toThrow(PageFlipError);
-  });
-
-  test('an ordinary destroy() is untouched: no window is ever armed', () => {
+  test('destroy() is unconditional: the guarded accessors report DESTROYED at once', () => {
     const { book: app } = book({ pageCount: 4 });
 
     app.destroy();
 
-    // Synchronously, with no microtask in between. A fix that armed the window
-    // unconditionally would return an object here and this would not throw.
+    // Synchronously, with no grace window of any kind. The engine no longer
+    // keeps inert stand-ins alive for a trailing frame, because `Render`
+    // declines that frame outright (see the test above).
     expect(() => app.getPageCollection()).toThrow(PageFlipError);
     expect(() => app.getUI()).toThrow(PageFlipError);
   });

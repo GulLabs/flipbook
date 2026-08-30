@@ -34,44 +34,47 @@ function effectiveDevicePixelRatio(cssWidth: number, cssHeight: number): number 
   //
   // Requiring `(w*s + 1) * (h*s + 1) <= MAX` absorbs the rounding, which is a
   // quadratic in `s`:  (w*h)s^2 + (w+h)s + (1 - MAX) = 0.
+  // NORMALISE FIRST. `b * b` overflows to Infinity for a box like 1e200 x 1,
+  // which made `areaCap` 0 and sent the old code to a fixed minimum scale —
+  // and a fixed minimum is not a cap: 1e200 x 1 at 1e-6 is still ~1e194 backing
+  // pixels. Dividing both dimensions by the larger one keeps every intermediate
+  // at or below 1, so nothing can overflow, and the substitution is exact:
+  // solving `(w't + 1)(h't + 1) <= MAX` for `t` gives `s = t / m`.
+  const m = Math.max(cssWidth, cssHeight);
+  const w = cssWidth / m;
+  const h = cssHeight / m;
+
   // The NUMERICALLY STABLE root. `(-b + sqrt(D)) / 2a` is the same value
   // algebraically but subtracts two near-equal numbers for an extreme aspect
-  // ratio, and its intermediates can overflow. Codex produced a box where it
-  // returned 8,388,609 — one pixel over. `2c / (b + sqrt(D))` never cancels.
-  const a = cssWidth * cssHeight;
-  const b = cssWidth + cssHeight;
+  // ratio; `2c / (b + sqrt(D))` never cancels.
+  const a = w * h;
+  const b = w + h;
   const discriminant = b * b + 4 * a * (MAX_BACKING_PIXELS - 1);
-  const areaCap = (2 * (MAX_BACKING_PIXELS - 1)) / (b + Math.sqrt(discriminant));
+  const areaCap = (2 * (MAX_BACKING_PIXELS - 1)) / (b + Math.sqrt(discriminant)) / m;
 
-  // NO LOWER BOUND. Flooring at 1 overrode the cap in exactly the case it
-  // exists for (a 6000x4000 book got 24M backing pixels against a stated 8.4M
-  // ceiling), and flooring at 0.1 did the same thing further out: a 30000x30000
-  // canvas has an areaCap of 0.0965, the floor picked 0.1, and the result was
-  // 9.0M — still over. A floor and an absolute cap are contradictory claims;
-  // the cap wins.
+  let scale = Math.min(raw, MAX_DEVICE_PIXEL_RATIO, areaCap);
+
+  // Then VERIFY the property the cap actually claims — that the CEILED product
+  // fits — rather than trusting the algebra. Halving is guaranteed to reach a
+  // 1x1 backing store, so this always terminates.
   //
-  // No floor is needed for safety either: for finite positive dimensions
-  // `areaCap` is itself finite and positive, so the scale stays well defined.
-  // Callers guard the zero-size case before reaching here.
-  const scale = Math.min(raw, MAX_DEVICE_PIXEL_RATIO, areaCap);
+  // Honest note: with the normalisation above, no input has been found that
+  // reaches the second iteration, and no test discriminates it — removing this
+  // loop leaves the suite green. It stays as a backstop because the cap is an
+  // absolute claim about memory on a platform where exceeding it returns a
+  // BLANK canvas, and because three previous versions of this function were
+  // each wrong in a way the algebra looked right about.
+  if (!Number.isFinite(scale) || scale <= 0) scale = Number.MIN_VALUE;
 
-  // Belt and braces, and cheap. Floating point is not obliged to give an exact
-  // answer at any aspect ratio, so verify the property the cap actually claims
-  // — the CEILED product fits — rather than trusting the algebra. One
-  // corrective pass is enough because the overshoot is at most a pixel per axis.
-  if (!Number.isFinite(scale) || scale <= 0) return MIN_SCALE;
+  for (let i = 0; i < 64; i++) {
+    const width = Math.ceil(cssWidth * scale);
+    const height = Math.ceil(cssHeight * scale);
+    if (width * height <= MAX_BACKING_PIXELS) break;
+    scale *= 0.5;
+  }
 
-  const width = Math.ceil(cssWidth * scale);
-  const height = Math.ceil(cssHeight * scale);
-  if (width * height <= MAX_BACKING_PIXELS) return scale;
-
-  const corrected = scale * Math.sqrt(MAX_BACKING_PIXELS / (width * height));
-
-  return Number.isFinite(corrected) && corrected > 0 ? corrected : MIN_SCALE;
+  return scale;
 }
-
-/** Only reached if the arithmetic degenerates; a book this shape is unusable. */
-const MIN_SCALE = 1e-6;
 
 /** ~2896 squared. Conservative against the smallest documented canvas limits. */
 const MAX_BACKING_PIXELS = 8_388_608;
