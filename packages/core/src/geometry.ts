@@ -60,22 +60,6 @@ export function portraitCurlLocal(
   };
 }
 
-export function portraitForwardCurl(
-  pageWidth: number,
-  height: number,
-  corner: CurlCorner = 'top',
-): Curl {
-  return portraitCurlLocal(pageWidth, height, corner);
-}
-
-export function portraitBackCurl(
-  pageWidth: number,
-  height: number,
-  corner: CurlCorner = 'top',
-): Curl {
-  return portraitCurlLocal(pageWidth, height, corner);
-}
-
 export function curlGoesLeft(curl: Curl): boolean {
   return curl.to.x < curl.from.x;
 }

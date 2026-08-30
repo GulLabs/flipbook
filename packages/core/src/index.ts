@@ -14,14 +14,10 @@ export { HTMLPageCollection } from './Collection/HTMLPageCollection';
 export { HTMLPage } from './Page/HTMLPage';
 export { Page, PageDensity, PageOrientation } from './Page/Page';
 export { PageFlipError } from './errors';
-export { ImageFit, isBlankLeaf, validateCanvasLeaves } from './canvasLeaf';
-export type { CanvasLeaf, ImagePageSource, BlankPageSource } from './canvasLeaf';
 export type { PageFlipErrorCode } from './errors';
 export {
   convertPageToGlobal,
   portraitCurlLocal,
-  portraitBackCurl,
-  portraitForwardCurl,
   curlGoesLeft,
   backCurlAppearsRight,
   FLIP_DIR_FORWARD,
@@ -30,11 +26,6 @@ export {
 export type { Curl, CurlCorner } from './geometry';
 export { getPortraitFlippingPage } from './Collection/flippingPage';
 export { shouldDrawBottomPage } from './Render/bottomPage';
-// Same reasoning as `geometry.ts` and `shouldDrawBottomPage`: the fit maths is
-// pure, separately testable, and the thing a consumer needs in order to place
-// their own overlay in the same coordinates the engine drew the bitmap in.
-export { fitImage, insetRect } from './Render/imageFit';
-export type { FitRect, FitPlacement } from './Render/imageFit';
 export {
   safePageBackground,
   isOpaquePageBackground,
