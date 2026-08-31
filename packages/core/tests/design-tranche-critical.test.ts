@@ -906,15 +906,26 @@ describe('pagesChanged and turnRejected.landedOn', () => {
 /* D3 — pageBackground throws at the boundary                                 */
 /* -------------------------------------------------------------------------- */
 
-describe('D3 — pageBackground rejects translucent / junk at the boundary', () => {
-  test('a translucent colour throws INVALID_SETTING instead of becoming white', () => {
-    // Reverted fix: isOpaque treated unrecognised syntax as opaque, construction
-    // succeeded, and foldFill silently substituted white at draw time.
+describe('D3 — pageBackground rejects junk at the boundary; opacity is structural (B3)', () => {
+  test('a translucent colour is ACCEPTED and kept verbatim', () => {
+    // B3 superseded the translucency throw: the ::before paper composites the
+    // consumer value over an opaque base, so a translucent colour is safe by
+    // construction and rejecting it made the library refuse ordinary 2026
+    // design tokens. The boundary still throws for junk — the next test.
+    const settings = new Settings().resolve({
+      width: 100,
+      height: 100,
+      pageBackground: 'rgba(255,255,255,0.4)',
+    });
+    expect(settings.pageBackground).toBe('rgba(255,255,255,0.4)');
+  });
+
+  test('an unparseable non-colour still throws INVALID_SETTING with the setting key', () => {
     expect(() =>
       new Settings().resolve({
         width: 100,
         height: 100,
-        pageBackground: 'rgba(255,255,255,0.4)',
+        pageBackground: '#fff; position: fixed',
       }),
     ).toThrow(PageFlipError);
 
@@ -922,7 +933,7 @@ describe('D3 — pageBackground rejects translucent / junk at the boundary', () 
       new Settings().resolve({
         width: 100,
         height: 100,
-        pageBackground: 'rgba(255,255,255,0.4)',
+        pageBackground: '#fff; position: fixed',
       });
     } catch (error) {
       expect((error as PageFlipError).code).toBe('INVALID_SETTING');

@@ -188,8 +188,19 @@ export class PageCollection {
       start++;
     }
 
-    for (let i = start; i < this.pages.length; i += 2) {
-      if (i < this.pages.length - 1) this.landscapeSpread.push([i, i + 1]);
+    // B2. A cover book's LAST leaf is reserved out of the pairing loop so it
+    // gets a spread of its own — "first and last leaves are hard and shown
+    // alone" is the setting's contract, and NF3 already hardens it below.
+    // Before this, a 5-leaf cover book paired it: [0] [1,2] [3,4] — a hard
+    // back cover drawn beside leaf 3. Gated on `isShowCover` exactly like
+    // NF3: singling a cover-less book's last leaf would change every photo
+    // album that never asked for covers. `length - start > 1` leaves the
+    // one- and two-leaf books alone (leaf 0 is already its own spread).
+    const end =
+      this.isShowCover && this.pages.length - start > 1 ? this.pages.length - 1 : this.pages.length;
+
+    for (let i = start; i < end; i += 2) {
+      if (i < end - 1) this.landscapeSpread.push([i, i + 1]);
       else {
         this.landscapeSpread.push([i]);
 
@@ -239,6 +250,12 @@ export class PageCollection {
     // `length > 1` guards the one-page book: page 0 is already the front cover,
     // and it must not be re-hardened as its own back cover — harmless today,
     // but it would make the two rules read as though they could disagree.
+    // B2, second half: the leaf reserved out of the pairing loop above gets
+    // its own spread here, exactly where its density is settled.
+    if (end < this.pages.length) {
+      this.landscapeSpread.push([this.pages.length - 1]);
+    }
+
     if (this.isShowCover && this.pages.length > 1) {
       at(this.pages, this.pages.length - 1).setDensity(PageDensity.HARD);
     }

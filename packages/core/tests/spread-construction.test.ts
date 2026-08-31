@@ -198,6 +198,72 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
 });
 
 /* ------------------------------------------------------------------ *
+ * B2 — the hard back cover is SHOWN ALONE, not just hardened
+ * ------------------------------------------------------------------ */
+
+describe('B2 — hardCovers shows the back cover alone in landscape', () => {
+  const landscape = { usePortrait: false, hostWidth: 520, hostHeight: 460, flippingTime: 0 };
+
+  test('odd book: the back cover is its own spread, not paired with its neighbour', () => {
+    // NF3 hardened leaf 4 of a 5-leaf cover book but the spread table still
+    // paired it: [0] [1,2] [3,4] — a hard back cover shown BESIDE leaf 3,
+    // contradicting the setting's own contract ("first and last leaves are
+    // hard and shown alone"). The table must be [0] [1,2] [3] [4].
+    const { book: app } = book({ pageCount: 5, hardCovers: true, ...landscape });
+
+    expect(app.getOrientation()).toBe('landscape');
+
+    app.turnToPage(4);
+    expect(app.getVisiblePages()).toEqual([4]);
+
+    app.turnToPage(3);
+    expect(app.getVisiblePages()).toEqual([3]);
+
+    app.turnToPage(1);
+    expect(app.getVisiblePages()).toEqual([1, 2]);
+
+    app.turnToPage(0);
+    expect(app.getVisiblePages()).toEqual([0]);
+  });
+
+  test('even book: unchanged — its back cover was already the leftover singleton', () => {
+    const { book: app } = book({ pageCount: 6, hardCovers: true, ...landscape });
+
+    expect(app.getOrientation()).toBe('landscape');
+
+    app.turnToPage(5);
+    expect(app.getVisiblePages()).toEqual([5]);
+
+    app.turnToPage(3);
+    expect(app.getVisiblePages()).toEqual([3, 4]);
+  });
+
+  test('coverless book: no singling — the rule is about covers, not parity', () => {
+    // The negative control, next to PC1's: a cover-less odd book keeps plain
+    // pairing with a trailing leftover. Singling its last leaf would change
+    // every photo album that never asked for covers.
+    const { book: app } = book({ pageCount: 5, hardCovers: false, ...landscape });
+
+    expect(app.getOrientation()).toBe('landscape');
+
+    app.turnToPage(0);
+    expect(app.getVisiblePages()).toEqual([0, 1]);
+
+    app.turnToPage(4);
+    expect(app.getVisiblePages()).toEqual([4]);
+  });
+
+  test('two-page cover book: cover and back cover, one spread each', () => {
+    const { book: app } = book({ pageCount: 2, hardCovers: true, ...landscape });
+
+    app.turnToPage(1);
+    expect(app.getVisiblePages()).toEqual([1]);
+    app.turnToPage(0);
+    expect(app.getVisiblePages()).toEqual([0]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
  * PC2 — a lone cover belongs to the right of the spine
  * ------------------------------------------------------------------ */
 

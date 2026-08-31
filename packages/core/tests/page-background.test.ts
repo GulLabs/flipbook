@@ -1,51 +1,51 @@
 import { describe, expect, test } from 'vitest';
 import { foldFill } from '../src/Render/pageBackground';
 import { DEFAULT_PAGE_BACKGROUND } from '../src/Render/pageBackground';
-import { isOpaquePageBackground } from '../src/Render/pageBackground';
 import { safePageBackground } from '../src/Render/pageBackground';
 
-describe('opaque fold fill (shipped)', () => {
-  test('temporary copy / fold use opaque pageBackground', () => {
+/**
+ * B3 (docs/API-CONTRACT.md): there is no opacity parser any more. Opacity is
+ * structural — `.stf__item::before` composites the consumer's value over an
+ * opaque base (see `styling-contract.test.ts`) — so this module checks only
+ * injection safety and "is it a colour at all", and everything that passes is
+ * drawn VERBATIM, translucent values included.
+ */
+describe('fold fill draws verbatim; safety is the only gate', () => {
+  test('ordinary values pass through untouched', () => {
     expect(foldFill(undefined)).toBe('#fff');
     expect(foldFill('')).toBe('#fff');
     expect(foldFill('#f5f0e6')).toBe('#f5f0e6');
     expect(foldFill('#fff')).toBe('#fff');
-    expect(isOpaquePageBackground(foldFill())).toBe(true);
   });
 
-  test('recognises see-through values', () => {
-    expect(isOpaquePageBackground('transparent')).toBe(false);
-    expect(isOpaquePageBackground('inherit')).toBe(false);
-    expect(isOpaquePageBackground('currentColor')).toBe(false);
-    expect(isOpaquePageBackground('rgba(0, 0, 0, 0)')).toBe(false);
-    expect(isOpaquePageBackground('rgba(0, 0, 0, 0.5)')).toBe(false);
-    expect(isOpaquePageBackground('hsla(0, 0%, 0%, 0.2)')).toBe(false);
-    expect(isOpaquePageBackground('#ffffff00')).toBe(false);
-    expect(isOpaquePageBackground('#fff8')).toBe(false);
-  });
-
-  test('recognises opaque values', () => {
-    expect(isOpaquePageBackground('#fff')).toBe(true);
-    expect(isOpaquePageBackground('cream')).toBe(true);
-    expect(isOpaquePageBackground('rgb(255, 255, 255)')).toBe(true);
-    expect(isOpaquePageBackground('rgba(255, 255, 255, 1)')).toBe(true);
-    expect(isOpaquePageBackground('#ffffffff')).toBe(true);
-    expect(isOpaquePageBackground(undefined)).toBe(true);
-  });
-
-  test('a translucent background never reaches the fold', () => {
-    // §4.2 exists precisely so content cannot bleed through the turning leaf.
-    expect(safePageBackground('rgba(0, 0, 0, 0.4)')).toBe(DEFAULT_PAGE_BACKGROUND);
-    expect(safePageBackground('transparent')).toBe(DEFAULT_PAGE_BACKGROUND);
-    expect(safePageBackground('#ffffff00')).toBe(DEFAULT_PAGE_BACKGROUND);
+  test('translucent values are ACCEPTED — the opaque base is structural now', () => {
+    // Two alpha parsers in a row were defeated by syntax they had not met
+    // (`rgb(0 0 0 / 50%)`, then `calc(.5)` / `color-mix` / `var()` fallbacks).
+    // These painting verbatim is the contract; the ::before base keeps the
+    // fold opaque underneath them.
+    expect(safePageBackground('rgba(0, 0, 0, 0.4)')).toBe('rgba(0, 0, 0, 0.4)');
+    expect(safePageBackground('transparent')).toBe('transparent');
+    expect(safePageBackground('#ffffff00')).toBe('#ffffff00');
+    expect(safePageBackground('var(--paper, transparent)')).toBe('var(--paper, transparent)');
   });
 
   test('rejects values that could smuggle CSS into cssText', () => {
+    // The safety half is NOT structural and must stay static: this value is
+    // interpolated into a style attribute.
     expect(safePageBackground('url(https://example.com/x.png)')).toBe(DEFAULT_PAGE_BACKGROUND);
     expect(safePageBackground('#fff; position: fixed')).toBe(DEFAULT_PAGE_BACKGROUND);
-    expect(safePageBackground('var(--paper)')).toBe(DEFAULT_PAGE_BACKGROUND);
     expect(safePageBackground('expression(alert(1))')).toBe(DEFAULT_PAGE_BACKGROUND);
+    expect(safePageBackground('red}{')).toBe(DEFAULT_PAGE_BACKGROUND);
     expect(foldFill('#fff; position: fixed')).toBe(DEFAULT_PAGE_BACKGROUND);
+  });
+
+  test('a bare var() is a colour now — an unset property resolves to the opaque base', () => {
+    // The mandatory-fallback rule existed to keep a typo from painting
+    // transparent. Structurally, `--stf-paper: var(--typo)` is
+    // guaranteed-invalid when `--typo` is unset, so the ::before falls back
+    // to its own `#fff` — the typo costs the author their colour, never the
+    // reader their opacity.
+    expect(safePageBackground('var(--paper)')).toBe('var(--paper)');
   });
 });
 

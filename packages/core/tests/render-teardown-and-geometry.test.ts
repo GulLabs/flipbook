@@ -30,6 +30,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import type { PageFlip } from '@gullabs/flipbook-core';
 import { PageFlipError } from '@gullabs/flipbook-core';
 import { intersectLines, limitToCircle } from '../src/Helper';
+import { isGeometryAbort } from '../src/errors';
 import type { Point } from '../src/BasicTypes';
 import { makeHtmlBook, makePages } from './html-book-fixture';
 import { testFlip, testRender } from './engine-access';
@@ -289,18 +290,19 @@ describe('X10 — intersectLines failure reporting', () => {
     expect((err as PageFlipError).code).toBe('DEGENERATE_SEGMENT');
   });
 
-  test('genuinely coincident lines throw a typed, coded collinear error', () => {
+  test('genuinely coincident lines abort the frame, not the turn (B1)', () => {
     const err = thrownBy(() =>
       intersectLines(seg({ x: 0, y: 0 }, { x: 10, y: 0 }), seg({ x: 2, y: 0 }, { x: 7, y: 0 })),
     );
 
-    expect(err).toBeInstanceOf(PageFlipError);
-    expect((err as PageFlipError).code).toBe('COLLINEAR_SEGMENTS');
-
-    // `FlipCalculation.calc` catches this untyped and broadly — that is how a
-    // position with no valid fold skips its frame. A `PageFlipError` is still an
-    // `Error`, so the throw type change skips exactly the frames it always did.
-    expect(err).toBeInstanceOf(Error);
+    // Coincident is a POSE, not an invariant violation: the terminal frame of
+    // every turn lays the flipping page's edges exactly on the borders, and
+    // the instant path runs only that frame. A `PageFlipError` here escaped
+    // `FlipCalculation.calc`'s narrowed catch and killed every instant
+    // `flipNext` as `turnRejected setup/COLLINEAR_SEGMENTS` (P7). The
+    // sentinel keeps the frame-skip behaviour and lets the commit run.
+    expect(isGeometryAbort(err)).toBe(true);
+    expect(err).not.toBeInstanceOf(PageFlipError);
   });
 
   test('parallel lines a hair apart are parallel, not collinear', () => {

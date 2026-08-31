@@ -216,30 +216,29 @@ describe('consumer: turn contract', () => {
   });
 
   /**
-   * P7 — PRODUCT BUG: animated/programmatic flipNext fails with
-   * COLLINEAR_SEGMENTS (reason setup) even on a sized, ready book in jsdom.
-   * turnToPage still works. Pinned so it cannot be "fixed" by weakening tests.
+   * P7, FIXED — contract delta B1. The instant path runs only the terminal
+   * animation frame, whose fold pose lies exactly on the page borders —
+   * coincident segments. That pose is a COMPLETED fold, not an engine
+   * invariant violation: the frame's draw is skipped (`GeometryAbort`) and
+   * the commit runs. Locked rule: on a ready book, `canTurn(d)` true ⇒
+   * `flipNext`/`flipPrev` succeeds.
    */
-  test('BUG: flipNext from page 0 reports setup/COLLINEAR_SEGMENTS instead of turning', () => {
+  test('flipNext turns on the instant path: canTurn true means the turn succeeds', () => {
     const { book, destroy } = loadBook({ pageCount: 4, flippingTime: 0 });
     const rejected: TurnRejected[] = [];
     book.on('turnRejected', (e) => rejected.push(e.data));
 
     expect(book.isReady()).toBe(true);
     expect(book.canTurn('next')).toBe(true);
-    expect(book.flipNext()).toBe(false);
-    expect(book.getCurrentPageIndex()).toBe(0);
-    expect(rejected[0]).toEqual(
-      expect.objectContaining({
-        reason: 'setup',
-        code: 'COLLINEAR_SEGMENTS',
-        direction: 'next',
-      }),
-    );
-
-    // Instant absolute nav still works — the fold path is what is broken.
-    book.turnToPage(1);
+    expect(book.flipNext()).toBe(true);
     expect(book.getCurrentPageIndex()).toBe(1);
+    expect(rejected).toEqual([]);
+
+    // And back — the BACK terminal pose is the same geometry mirrored.
+    expect(book.canTurn('prev')).toBe(true);
+    expect(book.flipPrev()).toBe(true);
+    expect(book.getCurrentPageIndex()).toBe(0);
+    expect(rejected).toEqual([]);
 
     destroy();
   });
@@ -357,7 +356,10 @@ describe('consumer: README claims', () => {
     destroy();
   });
 
-  test('pageBackground translucent fails at construction, not silently', () => {
+  test('pageBackground: translucent is accepted (structural opacity), injection still throws', () => {
+    // B3: opacity holds by construction (the ::before opaque base), so a
+    // translucent token is valid input. What must still fail loudly is a
+    // value that could escape the style attribute it is written into.
     const el = host();
     expect(
       () =>
@@ -365,6 +367,15 @@ describe('consumer: README claims', () => {
           width: 200,
           height: 300,
           pageBackground: 'rgba(255,255,255,0.3)',
+        }),
+    ).not.toThrow();
+
+    expect(
+      () =>
+        new PageFlip(host(), {
+          width: 200,
+          height: 300,
+          pageBackground: 'red;position:fixed',
         }),
     ).toThrow(PageFlipError);
   });

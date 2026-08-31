@@ -150,7 +150,7 @@ describe('runtime-updatable settings reach their collaborator', () => {
     const leaf = document.querySelector('.stf__item');
     expect(leaf).toBeInstanceOf(HTMLElement);
     expect((leaf as HTMLElement).style.cssText.toLowerCase()).toMatch(
-      /background-color:\s*(#f5f0e6|rgb\(245,\s*240,\s*230\))/,
+      /--stf-paper:\s*(#f5f0e6|rgb\(245,\s*240,\s*230\))/,
     );
 
     engine.destroy();

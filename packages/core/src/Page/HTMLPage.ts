@@ -83,15 +83,26 @@ function applyEngineStyle(element: HTMLElement, css: string, background?: string
   // content"; claiming the leaf's own background meant the engine's paper beat
   // a consumer's per-page colour, so styling one chapter differently did
   // nothing. The pseudo-element sits behind the element's own background, so
-  // both hold at once.
+  // both hold at once — and composites the value over an opaque base, so
+  // opacity holds structurally (see `styles.ts`, B3).
   //
-  // `--stf-paper` is also still set on the element, so a bare `<img>` page —
-  // which has no pseudo-element of its own to paint — keeps an opaque backing.
+  // The inline `background-color` survives ONLY for a replaced-element root:
+  // pseudo-elements do not render on `img`/`video`/`canvas`/`iframe`/`embed`,
+  // so the inline write is the one opaque backing such a leaf can have — and
+  // a consumer stylesheet has no meaningful claim on a bare image's
+  // background. For every container root the inline write is gone: inline
+  // paint beat every consumer stylesheet, which contradicted the documented
+  // contract that a per-page background wins over the paper.
   if (background !== undefined) {
     element.style.setProperty('--stf-paper', background);
-    element.style.setProperty('background-color', background);
+    if (REPLACED_TAGS.has(element.tagName)) {
+      element.style.setProperty('background-color', background);
+    }
   }
 }
+
+/** Roots on which `::before` cannot paint — see `applyEngineStyle`. */
+const REPLACED_TAGS = new Set(['IMG', 'VIDEO', 'CANVAS', 'IFRAME', 'EMBED']);
 
 /**
  * Every class this renderer puts on a consumer's leaf element.

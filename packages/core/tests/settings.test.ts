@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { PageFlipError } from '@gullabs/flipbook-core';
 import { DEFAULT_PAGE_BACKGROUND } from '../src/Render/pageBackground';
-import { isOpaquePageBackground } from '../src/Render/pageBackground';
 import { Settings } from '../src/Settings';
 import type { FlipOptions } from '@gullabs/flipbook-core';
 import { foldFill } from '../src/Render/pageBackground';
@@ -50,14 +49,14 @@ describe('Settings.resolve (shipped)', () => {
     expect(next.flippingTime).toBe(1000);
   });
 
-  test('pageBackground defaults to opaque #fff', () => {
+  test('pageBackground defaults to opaque #fff; safety, not opacity, is the gate (B3)', () => {
     const settings = resolve({ width: 100, height: 200 });
     expect(settings.pageBackground).toBe(DEFAULT_PAGE_BACKGROUND);
     expect(foldFill(settings.pageBackground)).toBe('#fff');
-    expect(isOpaquePageBackground(settings.pageBackground)).toBe(true);
-    expect(isOpaquePageBackground('transparent')).toBe(false);
-    // Draw-time sanitiser still substitutes; settings.resolve throws instead.
-    expect(foldFill('transparent')).toBe('#fff');
+    // Translucent values draw verbatim now — the ::before opaque base is what
+    // keeps the fold opaque (structural, not parsed).
+    expect(foldFill('transparent')).toBe('transparent');
+    // Injection is still refused at draw time.
     expect(foldFill('url(javascript:alert(1))')).toBe('#fff');
   });
 
@@ -167,9 +166,9 @@ describe('Settings.resolve (shipped)', () => {
       DEFAULT_PAGE_BACKGROUND,
     );
 
-    // D3: translucent values throw at the boundary (no silent white fold).
-    // CSS-safety (var/url/injection) is still the draw-time `safePageBackground`
-    // job — `isOpaquePageBackground` only sees alpha / see-through keywords.
+    // B3: translucent values are ACCEPTED verbatim — opacity is structural
+    // (the ::before opaque base), so the boundary gates only safety and
+    // is-a-colour. See styling-contract.test.ts for the structural half.
     for (const seeThrough of [
       'transparent',
       'rgba(255,255,255,0)',
@@ -177,13 +176,16 @@ describe('Settings.resolve (shipped)', () => {
       '#fff0',
       '#ffffff00',
     ]) {
-      expect(() => resolve({ width: 100, height: 200, pageBackground: seeThrough })).toThrow(
-        PageFlipError,
-      );
-      expect(settingOf({ width: 100, height: 200, pageBackground: seeThrough })).toBe(
-        'pageBackground',
-      );
+      expect(
+        resolve({ width: 100, height: 200, pageBackground: seeThrough }).pageBackground,
+        seeThrough,
+      ).toBe(seeThrough);
     }
+
+    // Injection still throws with the machine-readable setting key.
+    expect(settingOf({ width: 100, height: 200, pageBackground: 'red;position:fixed' })).toBe(
+      'pageBackground',
+    );
   });
 
   test('responsive bounds are never left inverted by the max fallback', () => {

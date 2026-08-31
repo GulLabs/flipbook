@@ -48,7 +48,9 @@ describe('the guards hold where the platform is odd or the caller misbehaves', (
 
     try {
       expect(safePageBackground('#f4ecd8')).toBe('#f4ecd8');
-      expect(safePageBackground('rgba(0, 0, 0, 0.4)')).toBe(DEFAULT_PAGE_BACKGROUND);
+      // B3: translucent is legitimate input now; only injection/junk falls back.
+      expect(safePageBackground('rgba(0, 0, 0, 0.4)')).toBe('rgba(0, 0, 0, 0.4)');
+      expect(safePageBackground('red;position:fixed')).toBe(DEFAULT_PAGE_BACKGROUND);
     } finally {
       globalThis.CSS = real;
     }
@@ -56,10 +58,12 @@ describe('the guards hold where the platform is odd or the caller misbehaves', (
 
   /**
    * `getSettings()` hands back the live settings object, so assigning to it
-   * skips `Settings.getSettings` entirely. The draw-time guard is what stops a
-   * translucent value reaching the fold that way — the §4.2 bug.
+   * skips validation entirely. The draw-time guard still consults the shared
+   * predicate on that path — under B3 that means injection/junk falls back to
+   * the default, while any real colour (translucent included) flows into
+   * `--stf-paper`, where the ::before opaque base keeps the fold opaque.
    */
-  test('a settings object mutated behind updateSettings still cannot show through', () => {
+  test('a settings object mutated behind updateSettings still cannot inject or throw', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
 
@@ -68,29 +72,39 @@ describe('the guards hold where the platform is odd or the caller misbehaves', (
     book.loadFromHTML(leaves);
 
     // The vector: the getter hands back the live object, so this reaches the
-    // renderer without passing through `Settings.getSettings` at all.
-    book.getSettings().pageBackground = 'rgba(0, 0, 0, 0.4)';
+    // renderer without passing through validation at all.
+    book.getSettings().pageBackground = 'red;position:fixed';
 
     const page = testPage(book, 0);
     page.simpleDraw(1);
-    expect(leaves[0]?.style.backgroundColor).toBe('rgb(255, 255, 255)');
+    // Injection never reaches the style attribute — the guard substitutes the
+    // opaque default. Container roots carry the paper as the custom property.
+    expect(leaves[0]?.style.getPropertyValue('--stf-paper')).toBe('#fff');
+    expect(leaves[0]?.style.cssText).not.toMatch(/position:\s*fixed/);
 
     page.draw();
-    expect(leaves[0]?.style.backgroundColor).toBe('rgb(255, 255, 255)');
+    expect(leaves[0]?.style.getPropertyValue('--stf-paper')).toBe('#fff');
+
+    // A translucent value is legitimate now and flows through verbatim; the
+    // ::before base (styling-contract.test.ts) is what keeps the fold opaque.
+    book.getSettings().pageBackground = 'rgba(0, 0, 0, 0.4)';
+    page.simpleDraw(1);
+    expect(leaves[0]?.style.getPropertyValue('--stf-paper')).toBe('rgba(0, 0, 0, 0.4)');
 
     // The temporary copy is a third, independent path: it stamps the colour on
     // a cloned element rather than on the page's own.
-    book.getSettings().pageBackground = 'rgba(0, 0, 0, 0.4)';
     const copy = page.newTemporaryCopy();
     expect(copy).not.toBe(page);
     expect(
-      (copy as unknown as { getElement(): HTMLElement }).getElement().style.backgroundColor,
-    ).toBe('rgb(255, 255, 255)');
+      (copy as unknown as { getElement(): HTMLElement })
+        .getElement()
+        .style.getPropertyValue('--stf-paper'),
+    ).toBe('rgba(0, 0, 0, 0.4)');
 
-    // A legitimate value is still honoured through the same paths.
+    // A legitimate opaque value is still honoured through the same paths.
     book.getSettings().pageBackground = '#f4ecd8';
     page.simpleDraw(1);
-    expect(leaves[0]?.style.backgroundColor).toBe('rgb(244, 236, 216)');
+    expect(leaves[0]?.style.getPropertyValue('--stf-paper')).toBe('#f4ecd8');
 
     book.destroy();
     host.remove();

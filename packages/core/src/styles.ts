@@ -37,17 +37,25 @@ export const FLIPBOOK_CSS =
   // engine's paper BEAT a consumer's per-page colour, so sepia on one chapter
   // did nothing. A negative z-index inside the leaf's own stacking context puts
   // the paper behind the element's background, so a consumer's colour paints
-  // over it and even a translucent one has opaque paper underneath. The engine
-  // writes only the custom property.
+  // over it. The engine writes only the custom property.
+  //
+  // B3: opacity is STRUCTURAL. The consumer's value is the image layer,
+  // painted over an opaque `background-color` base — so a translucent
+  // `--stf-paper` (`var()` with a transparent fallback, `color-mix`, a
+  // `calc()` alpha, any syntax CSS grows next) composites over white instead
+  // of letting the page underneath read through. There is deliberately no
+  // alpha parser anywhere: a guarantee by construction cannot be bypassed by
+  // a syntax the parser has not met.
   '.stf__item::before{content:"";position:absolute;inset:0;z-index:-1;' +
-  'background:var(--stf-paper,#fff);pointer-events:none}' +
-  // The engine used to stamp `display:block` inline on every frame, which
-  // silently reverted a consumer's `display:flex` on a page — content stuck
-  // to the top-left and the library looked like it did not support flex.
-  // It never needed `block`: an absolutely positioned element is already
-  // block-LEVEL, and `display:flex` on one stays flex. All the engine needs
-  // is 'not none', which a class says without overriding anything.
-  '.stf__item.--shown{display:block}' +
+  'background-color:#fff;' +
+  'background-image:linear-gradient(var(--stf-paper,#fff),var(--stf-paper,#fff));' +
+  'pointer-events:none}' +
+  // NO display rule for shown leaves. `.stf__item.--shown{display:block}` was
+  // (0,2,0), which silently beat a design system's `.page{display:flex}` —
+  // the exact consumer the inline-stamp removal was for, losing to the same
+  // engine one selector later. Show/hide lives on the `visibility` axis
+  // alone; an absolutely positioned leaf is block-level without help, and a
+  // consumer's `display` is theirs at every specificity.
   '.stf__outerShadow,.stf__innerShadow,.stf__hardShadow,.stf__hardInnerShadow{position:absolute;left:0;top:0}' +
   // The book root's focus ring, and the H4 controls' skip-link reveal.
   //

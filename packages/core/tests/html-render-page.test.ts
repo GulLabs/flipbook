@@ -72,10 +72,13 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
     const el = page.getElement();
     const css = el.style.cssText;
-    expect(css.toLowerCase()).toMatch(/background-color:\s*(#f5f0e6|rgb\(245,\s*240,\s*230\))/i);
+    // B3: the paper is the custom property; inline background-color is gone from
+    // container roots so a consumer stylesheet can win the paint axis.
+    expect(css.toLowerCase()).toMatch(/--stf-paper:\s*(#f5f0e6|rgb\(245,\s*240,\s*230\))/i);
+    expect(css.toLowerCase()).not.toMatch(/(?<!-)background-color/);
     expect(el.classList.contains('--simple')).toBe(true);
-    // Visibility is class-based (`.stf__item.--shown{display:block}`), not an
-    // inline `display` — inline block was dropping consumer `display:flex`.
+    // Visibility is class-based on the visibility axis, never display — the
+    // engine claims nothing on the display axis at any specificity (B3).
     expect(el.classList.contains('--shown')).toBe(true);
   });
 
@@ -122,7 +125,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
     const css = page.getElement().style.cssText;
     expect(css).toMatch(/clip-path:\s*polygon/i);
-    expect(css.toLowerCase()).toMatch(/background-color/);
+    expect(css.toLowerCase()).toMatch(/--stf-paper/);
 
     const outer = dist.querySelector<HTMLElement>('.stf__outerShadow');
     expect(outer).toBeTruthy();
@@ -147,7 +150,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
     const css = hard.getElement().style.cssText;
     expect(css).toMatch(/rotateY\(/i);
     expect(css).toMatch(/backface-visibility:\s*hidden/i);
-    expect(css).toMatch(/background-color/i);
+    expect(css.toLowerCase()).toMatch(/--stf-paper/);
     expect(css).not.toMatch(/clip-path:\s*polygon/i);
   });
 
@@ -201,7 +204,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
     page.draw(PageDensity.SOFT);
 
     const css = page.getElement().style.cssText;
-    expect(css.toLowerCase()).toMatch(/background-color:\s*(#eaeaea|rgb\(234,\s*234,\s*234\))/i);
+    expect(css.toLowerCase()).toMatch(/--stf-paper:\s*(#eaeaea|rgb\(234,\s*234,\s*234\))/i);
     expect(css).toMatch(/clip-path:\s*polygon/i);
     expect(css).toMatch(/transform:/i);
   });

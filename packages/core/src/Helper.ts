@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Point, Rect, Segment } from './BasicTypes';
-import { PageFlipError } from './errors';
+import { GeometryAbort, PageFlipError } from './errors';
 
 /** Distance between two points, or Infinity if either is null. */
 export function distanceBetween(a: Point | null, b: Point | null): number {
@@ -141,11 +141,22 @@ export function intersectLines(one: Segment, two: Segment): Point | null {
     );
   }
 
+  // Coincident lines are a POSE, not an invariant violation (B1 / P7). The
+  // terminal frame of every turn lays the flipping page flat on the page
+  // rect, so its edges lie exactly ON the borders they are intersected with —
+  // and the instant path (`flippingTime: 0`, reduced motion, deep links) runs
+  // ONLY that frame. This used to throw `PageFlipError('COLLINEAR_SEGMENTS')`,
+  // which escaped `FlipCalculation.calc`'s narrowed catch and turned every
+  // instant `flipNext` into `turnRejected { reason: 'setup' }` — the core
+  // verb failing on exactly the accessibility path this fork exists to serve.
+  //
+  // `GeometryAbort`, like the other no-valid-fold poses: `calc` returns
+  // false, `Flip.do` skips the frame's draw (there is nothing to draw — the
+  // fold is complete), and the animation's completion callback commits the
+  // turn. The zero-length degenerate case above stays a `PageFlipError`: a
+  // border with no length is a broken invariant, not a pose.
   if (numX === 0 && numY === 0) {
-    throw new PageFlipError(
-      'Segments are collinear: no single intersection point',
-      'COLLINEAR_SEGMENTS',
-    );
+    throw new GeometryAbort('Segments are coincident: the fold lies on the border');
   }
 
   return null;
