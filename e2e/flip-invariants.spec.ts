@@ -45,16 +45,22 @@ async function leaves(page: Page) {
       const style = getComputedStyle(el);
       // The leaf is positioned by `transform`, and clipped by `clip-path`; the
       // bounding box does not move, so read the translation itself.
+      // B3: paper is structural — the leaf root's own background-color may be
+      // transparent; the opaque base is the `::before` layer (`--stf-paper`
+      // composited over #fff).
+      const paper = getComputedStyle(el, '::before');
       return {
         text: (el.textContent ?? '').trim(),
         display: style.display,
         background: style.backgroundColor,
+        paperBackground: paper.backgroundColor,
         clipped: style.clipPath !== 'none',
         // The leaf being animated is the only one carrying a transform.
         moving: style.transform !== 'none',
         x: Math.round(rect.x),
         width: Math.round(rect.width),
-        visible: style.display !== 'none' && rect.width > 0,
+        // B3: show/hide moved from `display` to the visibility axis.
+        visible: style.visibility !== 'hidden' && style.display !== 'none' && rect.width > 0,
       };
     }),
   );
@@ -134,9 +140,11 @@ test.describe('portrait back-curl (StPageFlip #49)', () => {
     expect(moving.length).toBeGreaterThan(1);
 
     // A transparent fold is §4.2: the page underneath reads through the leaf.
+    // B3: opacity is structural — the root's own background-color may be
+    // transparent, but every leaf's `::before` paper layer must paint opaque.
     for (const leaf of moving) {
-      expect(leaf.background).not.toBe('rgba(0, 0, 0, 0)');
-      expect(leaf.background).not.toBe('transparent');
+      expect(leaf.paperBackground).not.toBe('rgba(0, 0, 0, 0)');
+      expect(leaf.paperBackground).not.toBe('transparent');
     }
 
     await page.mouse.up();
