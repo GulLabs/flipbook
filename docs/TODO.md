@@ -53,12 +53,10 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
       a following floor shadow for both ends. The engine knows exactly when
       those states hold. At minimum: a documented recipe with `changeState` +
       `visiblePages`.
-- [ ] **Frame discipline budget** (Puddlebend Issue 3) — one 800 ms landscape
-      turn produces 40–60 style/class writes per frame across a 15-leaf book;
-      a turn should touch the moving leaf, its copy, the leaf beneath, and the
-      shadows. Add a max-writes-per-rAF-tick test, then trim the redraw set.
-      Not user-visible on desktop GPUs, but it scales with page count and
-      burns phone battery.
+- [x] **Frame discipline budget** (Puddlebend Issue 3) — PLAN-3.1 Campaign B
+      (2026-08-31): resting redraw **0** writes; mid-fold measured **48**
+      (was **106**); working-set identity + mid-fold goldens. Memoize
+      applyEngineStyle, delta clear/`lastShown`, zIndex + classList elision.
 - [ ] **Binding-owned leaf hosts** (Puddlebend Issue 2 residue) — the engine
       still stamps classes/inline styles on consumer-rendered roots (two-owner
       DOM). It did not cause the remount flicker, but engine-owned host
@@ -67,12 +65,9 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
 
 ## Internal hygiene (no observable change)
 
-- [ ] **Collapse the three remaining class pairs** — `Page`/`HTMLPage`,
-      `UI`/`HTMLUI`, `Render`/`HTMLRender` — and retire the façade-getter
-      service-locator routing between siblings. Decided in
-      `docs/ABSTRACTION-BOUNDARY.md`; the consumer-visible half already shipped.
-      Do each pair whole or not at all (the reverted first attempt is the
-      cautionary tale).
+- [x] **Collapse the three remaining class pairs** — `Page`/`HTMLPage`,
+      `UI`/`HTMLUI`, `Render`/`HTMLRender` — PLAN-3.1 Campaign A (2026-08-31).
+      Concrete `UI` / `Page` / `Render`; size re-ratcheted after collapse.
 - [ ] **Headless-controller renderer seam** — the real extension point for a
       second (WebGL) renderer, per `docs/WEBGL_RENDERER.md`. Do not publish
       `Render` instead.
