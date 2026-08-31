@@ -13,17 +13,23 @@ import { describe, expect, test } from 'vitest';
 // re-broken by a tsconfig edit — while the package-specifier import below is
 // what proves the PUBLIC surface actually re-exports these.
 import { PageFlipError } from '../src/errors';
-import type { FlipbookEventName, PageFlipErrorCode } from '@gullabs/flipbook-core';
+import type {
+  FlipbookEventName,
+  PageFlipErrorCode,
+  PageFlipErrorKind,
+} from '@gullabs/flipbook-core';
 import { PageFlipError as ExportedPageFlipError } from '@gullabs/flipbook-core';
 
 describe('PageFlipError shape', () => {
-  test('is an Error subclass with a stable name and code', () => {
-    const err = new PageFlipError('boom', 'INVALID_SIZE');
+  test('is an Error subclass with a stable name, code, kind, and setting', () => {
+    const err = new PageFlipError('boom', 'INVALID_SETTING', { setting: 'width' });
 
     expect(err).toBeInstanceOf(Error);
     expect(err).toBeInstanceOf(PageFlipError);
     expect(err.name).toBe('PageFlipError');
-    expect(err.code).toBe('INVALID_SIZE');
+    expect(err.code).toBe('INVALID_SETTING');
+    expect(err.kind).toBe('usage');
+    expect(err.setting).toBe('width');
     expect(err.message).toBe('boom');
 
     // …and the class reached through the public entry point is the same one,
@@ -32,7 +38,9 @@ describe('PageFlipError shape', () => {
   });
 
   test('defaults the code rather than leaving it undefined', () => {
-    expect(new PageFlipError('boom').code).toBe('PAGE_FLIP');
+    const err = new PageFlipError('boom');
+    expect(err.code).toBe('PAGE_FLIP');
+    expect(err.kind).toBe('internal');
   });
 
   test('exposes `cause` on the published type, not only at runtime', () => {
@@ -73,9 +81,10 @@ describe('PageFlipError shape', () => {
       expect(e).toBeInstanceOf(PageFlipError);
       expect((e as PageFlipError).cause).toBe(root);
       expect((e as PageFlipError).code).toBe('NOT_LOADED');
+      expect((e as PageFlipError).kind).toBe('lifecycle');
     }
 
-    expect.assertions(3);
+    expect.assertions(4);
   });
 });
 
@@ -101,34 +110,57 @@ describe('E10 — the event-name union is part of the public surface', () => {
 });
 
 /**
- * S7 — the code is a union, and the two overloaded codes are split.
+ * S7 — the code is a union; D20 collapsed eight INVALID_* settings codes into
+ * one INVALID_SETTING carrying `setting` + a `kind` axis.
  *
  * `code` was typed `string`, which is the whole point of having a code beside
  * the message and was the one thing it could not do: narrow.
  */
-describe('S7 — PageFlipErrorCode', () => {
+describe('S7 — PageFlipErrorCode + kind axis', () => {
   test('a consumer can switch exhaustively on the code', () => {
     // The exhaustiveness proof is the `never` assignment: add a code to the
     // union without adding an arm and this stops compiling. A runtime
     // assertion cannot check that, which is why the shape is a type test.
     const describeCode = (code: PageFlipErrorCode): string => {
       switch (code) {
-        case 'INVALID_SIZE':
-          return 'the size enum';
-        case 'INVALID_DIMENSIONS':
-          return 'width or height';
-        case 'INVALID_BOUNDS':
-          return 'min/max bounds';
+        case 'INVALID_SETTING':
+          return 'a setting was refused';
         case 'INVALID_PAGE':
           return 'page out of range';
         case 'PAGE_NOT_IN_SPREAD':
           return 'page exists, no spread holds it';
-        default:
-          return 'other';
+        case 'INVALID_INDEX':
+          return 'index out of range';
+        case 'WRONG_MODE':
+          return 'wrong mode';
+        case 'DESTROYED':
+          return 'destroyed';
+        case 'NOT_LOADED':
+          return 'not loaded';
+        case 'DETACHED_PAGE':
+          return 'detached page';
+        case 'NO_ANIMATION_FRAME':
+          return 'no animation frame';
+        case 'COLLINEAR_SEGMENTS':
+          return 'collinear segments';
+        case 'DEGENERATE_SEGMENT':
+          return 'degenerate segment';
+        case 'FLIP_SETUP':
+          return 'flip setup';
+        case 'INVALID_SPREAD':
+          return 'invalid spread';
+        case 'RENDER_SETUP':
+          return 'render setup';
+        case 'PAGE_FLIP':
+          return 'page flip';
+        default: {
+          const _exhaustive: never = code;
+          return _exhaustive;
+        }
       }
     };
 
-    expect(describeCode('INVALID_DIMENSIONS')).toBe('width or height');
+    expect(describeCode('INVALID_SETTING')).toBe('a setting was refused');
     expect(describeCode('PAGE_NOT_IN_SPREAD')).toBe('page exists, no spread holds it');
 
     // @ts-expect-error — a code the engine never emits is not assignable.
@@ -136,14 +168,18 @@ describe('S7 — PageFlipErrorCode', () => {
   });
 
   test('a caught error’s own code narrows — the field is the union, not string', () => {
-    const err = new PageFlipError('Invalid min/max width or height', 'INVALID_BOUNDS');
+    const err = new PageFlipError('Invalid min/max width or height', 'INVALID_SETTING', {
+      setting: 'minWidth',
+    });
 
     // THE discriminating line. An earlier version of this block typed only its
     // own helper parameter as `PageFlipErrorCode`, so reverting the CLASS FIELD
     // back to `string` changed nothing and the whole block still compiled — the
     // test proved the union existed, not that the error used it.
     const code: PageFlipErrorCode = err.code;
-    expect(code).toBe('INVALID_BOUNDS');
+    expect(code).toBe('INVALID_SETTING');
+    expect(err.setting).toBe('minWidth');
+    expect(err.kind).toBe('usage');
 
     // And through a catch, which is how a consumer actually gets one.
     try {
@@ -152,15 +188,36 @@ describe('S7 — PageFlipErrorCode', () => {
       if (!(caught instanceof PageFlipError)) throw caught;
       const narrowed: PageFlipErrorCode = caught.code;
       expect(narrowed).toBe('PAGE_NOT_IN_SPREAD');
+      expect(caught.kind).toBe('usage');
     }
   });
 
-  test('the two overloaded codes are actually distinguishable at runtime', () => {
-    // The type split is worthless if the throw sites still emit the old code.
-    const dims = new PageFlipError('Invalid width or height', 'INVALID_DIMENSIONS');
-    const bounds = new PageFlipError('Invalid min/max width or height', 'INVALID_BOUNDS');
+  test('INVALID_SETTING carries the machine-readable setting key that replaced eight codes', () => {
+    // D20: one code + `.setting` is strictly MORE information than
+    // INVALID_SIZE / INVALID_DIMENSIONS / INVALID_BOUNDS / …
+    const width = new PageFlipError('Invalid width', 'INVALID_SETTING', { setting: 'width' });
+    const height = new PageFlipError('Invalid height', 'INVALID_SETTING', { setting: 'height' });
+    const minWidth = new PageFlipError('Invalid minWidth', 'INVALID_SETTING', {
+      setting: 'minWidth',
+    });
 
-    expect(dims.code).not.toBe(bounds.code);
-    expect(dims.code).not.toBe('INVALID_SIZE');
+    expect(width.code).toBe(height.code);
+    expect(width.setting).not.toBe(height.setting);
+    expect(width.setting).toBe('width');
+    expect(height.setting).toBe('height');
+    expect(minWidth.setting).toBe('minWidth');
+    expect(width.kind).toBe('usage');
+  });
+
+  test('kind is derived from the code — usage / lifecycle / internal', () => {
+    const kindOf = (code: PageFlipErrorCode): PageFlipErrorKind =>
+      new PageFlipError('x', code).kind;
+
+    expect(kindOf('INVALID_SETTING')).toBe('usage');
+    expect(kindOf('INVALID_PAGE')).toBe('usage');
+    expect(kindOf('NOT_LOADED')).toBe('lifecycle');
+    expect(kindOf('DESTROYED')).toBe('lifecycle');
+    expect(kindOf('PAGE_FLIP')).toBe('internal');
+    expect(kindOf('COLLINEAR_SEGMENTS')).toBe('internal');
   });
 });
