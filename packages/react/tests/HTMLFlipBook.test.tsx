@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createRef, StrictMode, useState } from 'react';
-import { act, cleanup, render, screen, waitFor, fireEvent } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  fireEvent,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { HTMLFlipBook, usePageFlip } from '@gullabs/react-flipbook';
 import type { FlipBookHandle, TurnRejected } from '@gullabs/react-flipbook';
@@ -592,7 +600,12 @@ describe('usePageFlip before a book is attached', () => {
    * not dead code.
    */
   test('actions are safe no-ops and report failure while ref is unset', () => {
-    const seen: { next?: boolean; prev?: boolean } = {};
+    const seen: {
+      next?: boolean;
+      prev?: boolean;
+      goAnimate?: boolean;
+      goInstant?: boolean;
+    } = {};
 
     function Harness() {
       const book = usePageFlip();
@@ -605,6 +618,11 @@ describe('usePageFlip before a book is attached', () => {
             seen.prev = book.flipPrev();
             book.turnToPage(2);
             book.flipToPage(3);
+            // Both `goToPage` branches (animate → flipToPage, instant →
+            // turnToPage) must hit the `?? false` when `ref.current` is null —
+            // the area-coverage pin for usePageFlip branches 98.
+            seen.goAnimate = book.goToPage(1, 'animate');
+            seen.goInstant = book.goToPage(1, 'instant');
           }}
         >
           act
@@ -619,6 +637,60 @@ describe('usePageFlip before a book is attached', () => {
     // callers branch on this to show "already at the last page" affordances.
     expect(seen.next).toBe(false);
     expect(seen.prev).toBe(false);
+    expect(seen.goAnimate).toBe(false);
+    expect(seen.goInstant).toBe(false);
+  });
+
+  test('hook sync no-ops when a flip listener destroys the engine mid-dispatch', async () => {
+    /**
+     * The effect's `sync` re-reads the engine on every flip. If another
+     * listener destroys first (same emit snapshot), `isDestroyed()` is already
+     * true and sync must return without calling getCurrentPageIndex — that
+     * would throw DESTROYED out of the render/event path.
+     */
+    const { result } = renderHook(() => usePageFlip());
+
+    render(
+      <HTMLFlipBook
+        ref={result.current.ref}
+        width={200}
+        height={300}
+        flippingTime={0}
+        {...result.current.bookProps}
+      >
+        {pages('a', 'b', 'c')}
+      </HTMLFlipBook>,
+    );
+
+    await waitFor(() => {
+      expect(result.current.ref.current?.pageFlip()).toBeTruthy();
+    });
+
+    const engine = result.current.ref.current!.pageFlip()!;
+
+    // Prepend a destroyer so it runs before the hook's sync in the same
+    // trigger snapshot. `destroy()` clears the live map, but trigger already
+    // holds the list it started with — sync still runs, with isDestroyed true.
+    engine.on('flip', () => {
+      engine.destroy();
+    });
+    const events = (
+      engine as unknown as {
+        events: Map<string, Array<(...args: unknown[]) => void>>;
+      }
+    ).events;
+    const flipList = events.get('flip');
+    expect(flipList).toBeDefined();
+    expect(flipList!.length).toBeGreaterThan(1);
+    const destroyer = flipList!.pop()!;
+    flipList!.unshift(destroyer);
+
+    expect(() => {
+      act(() => {
+        result.current.turnToPage(1);
+      });
+    }).not.toThrow();
+    expect(engine.isDestroyed()).toBe(true);
   });
 });
 

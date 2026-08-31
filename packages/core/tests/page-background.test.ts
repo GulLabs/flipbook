@@ -77,3 +77,47 @@ describe('the draw-time guard survives a non-string on the live settings object'
     expect(foldFill('  #0f0  ')).toBe('#0f0');
   });
 });
+
+describe('SSR colour-shape path is linear (CodeQL js/polynomial-redos)', () => {
+  /**
+   * The old COLOUR_SHAPE_RE nested `\s*` / `[^()]*` / `(…)*` and CodeQL
+   * flagged polynomial backtracking on long runs of spaces. The replacement
+   * is a single left-to-right scan with a hard length cap. This pin is the
+   * shape of the attack string, not a wall-clock assertion — if the scan
+   * regressed to backtracking, a multi-megabyte space run would hang the
+   * suite; finishing at all is the proof.
+   *
+   * Force the no-`CSS` branch: vitest's node env has no `CSS.supports`, so
+   * `rejectPageBackground` already takes the shape path here. Re-check that
+   * assumption so a future jsdom shift cannot make this test green while
+   * skipping the code under test.
+   */
+  test('long space runs inside a fake function call are refused without hanging', () => {
+    expect(typeof (globalThis as { CSS?: unknown }).CSS).toBe('undefined');
+
+    const spaces = ' '.repeat(100_000);
+    const attack = `rgb(${spaces}(${spaces})`;
+    const started = Date.now();
+    expect(safePageBackground(attack)).toBe(DEFAULT_PAGE_BACKGROUND);
+    // Generous ceiling so a loaded CI runner cannot flake; the point is
+    // "not seconds of backtracking", not a micro-benchmark.
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+
+  test('over-long values are refused by the length cap, not scanned forever', () => {
+    expect(typeof (globalThis as { CSS?: unknown }).CSS).toBe('undefined');
+    const huge = `a${'b'.repeat(10_000)}`;
+    expect(safePageBackground(huge)).toBe(DEFAULT_PAGE_BACKGROUND);
+  });
+
+  test('one-level nested colour functions still pass the shape path', () => {
+    expect(typeof (globalThis as { CSS?: unknown }).CSS).toBe('undefined');
+    // Same grammar the old regex accepted: outer call + one nested pair.
+    expect(safePageBackground('var(--paper, rgb(0 0 0 / 50%))')).toBe(
+      'var(--paper, rgb(0 0 0 / 50%))',
+    );
+    expect(safePageBackground('color-mix(in srgb, red, blue)')).toBe(
+      'color-mix(in srgb, red, blue)',
+    );
+  });
+});

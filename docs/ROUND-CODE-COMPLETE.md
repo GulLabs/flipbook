@@ -25,16 +25,16 @@ next round.
 | 0   | `3565533` | round start — 793 tests green, brotli 14000/14000                                               |
 | 1   | `0ffec68` | owner raises the size ceilings: 57→62 raw, 14→16 brotli, 16→18 gzip                             |
 | 2   | `7500ffe` | **the design tranche** — D1–D21, H4, C7. Settings model, error model, event map, React binding. |
-| 3 | `c4ecdb1` | three advertised capabilities that were not implemented (Codex) |
-| 4 | `90aa7a9` | the review round — R-1b, D4, five majors |
-| 5 | `3014f00` | R-6 + all minors; re-added maxHeight, landedOn, goToPage |
-| 6 | `d6e92a0` | NF4 — stop destroying consumer inline styles |
-| 7 | `3aa645a` | signoff round — generation stamps, the D4 rule |
-| 8 | `8867106` | GeometryAbort wired; sizing revived; triage of three sources |
-| 9 | `1def931` | pageBackground silently whited out modern colours; engine stops owning display |
-| 10 | `536888e` | **the façade methods** — getVisiblePages/canTurn/getBlockElement/getPageElement/isReady |
-| 11 | `3a51417` | **the barrel prune** — 21 exported names to 12 |
-| 12 | `425bab8` | collapse PageCollection/HTMLPageCollection |
+| 3   | `c4ecdb1` | three advertised capabilities that were not implemented (Codex)                                 |
+| 4   | `90aa7a9` | the review round — R-1b, D4, five majors                                                        |
+| 5   | `3014f00` | R-6 + all minors; re-added maxHeight, landedOn, goToPage                                        |
+| 6   | `d6e92a0` | NF4 — stop destroying consumer inline styles                                                    |
+| 7   | `3aa645a` | signoff round — generation stamps, the D4 rule                                                  |
+| 8   | `8867106` | GeometryAbort wired; sizing revived; triage of three sources                                    |
+| 9   | `1def931` | pageBackground silently whited out modern colours; engine stops owning display                  |
+| 10  | `536888e` | **the façade methods** — getVisiblePages/canTurn/getBlockElement/getPageElement/isReady         |
+| 11  | `3a51417` | **the barrel prune** — 21 exported names to 12                                                  |
+| 12  | `425bab8` | collapse PageCollection/HTMLPageCollection                                                      |
 
 ## Still open at the end of this round
 

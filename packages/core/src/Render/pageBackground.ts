@@ -59,9 +59,50 @@ const INJECTION_RE = /[;{}\\]|\/\*|<|url\s*\(|expression\s*\(|@import/i;
  * "SSR does not paint" but that the value is RE-CHECKED in the browser by
  * `foldFill` before it reaches a pixel — so the permissive path cannot produce
  * a wrong colour, only a late rejection.
+ *
+ * Implemented as a linear scan, not a nested quantifier regex. The previous
+ * shape regex (`\s*` + `[^()]*` + nested `(…)*`) was polynomial in runs of
+ * spaces (CodeQL js/polynomial-redos on library input). Real colour strings
+ * are short; anything longer than the cap is refused rather than scanned.
  */
-const COLOUR_SHAPE_RE =
-  /^(?:#[0-9a-f]{3,8}|[a-z][a-z-]{1,30}|[a-z-]{2,20}\(\s*[^()]*(?:\([^()]*\)[^()]*)*\))$/i;
+const MAX_COLOUR_SHAPE_LEN = 256;
+const HEX_COLOUR_RE = /^#[0-9a-f]{3,8}$/i;
+const NAMED_COLOUR_RE = /^[a-z][a-z-]{1,30}$/i;
+const COLOUR_FN_NAME_RE = /^[a-z-]{2,20}$/i;
+
+/**
+ * Linear-time colour-shape check for the no-`CSS` path.
+ *
+ * Accepts hex, named colours, and `name(…)` with at most one nesting level of
+ * parentheses inside the outer call — the same grammar the old regex encoded,
+ * without backtracking.
+ */
+function isColourShape(value: string): boolean {
+  if (value.length === 0 || value.length > MAX_COLOUR_SHAPE_LEN) return false;
+  if (HEX_COLOUR_RE.test(value) || NAMED_COLOUR_RE.test(value)) return true;
+
+  if (value.charCodeAt(value.length - 1) !== 41 /* ) */) return false;
+  const open = value.indexOf('(');
+  // name is 2–20 chars; `indexOf` miss is -1.
+  if (open < 2 || open > 20) return false;
+  if (!COLOUR_FN_NAME_RE.test(value.slice(0, open))) return false;
+
+  // Walk the interior once. Depth 0 = outer args; depth 1 = one nested call
+  // (`var(--x, rgb(0 0 0))`). Deeper nesting is refused — same as the old
+  // regex's single `(…)` group.
+  let depth = 0;
+  for (let i = open + 1; i < value.length - 1; i++) {
+    const code = value.charCodeAt(i);
+    if (code === 40 /* ( */) {
+      depth += 1;
+      if (depth > 1) return false;
+    } else if (code === 41 /* ) */) {
+      depth -= 1;
+      if (depth < 0) return false;
+    }
+  }
+  return depth === 0;
+}
 
 /** Why a background was refused, or `null` when it is acceptable. */
 export type PageBackgroundRejection = 'unsafe' | 'unparseable';
@@ -84,7 +125,7 @@ export function rejectPageBackground(value: string): PageBackgroundRejection | n
 
   if (hasCssSupports) {
     if (!CSS.supports('color', trimmed)) return 'unparseable';
-  } else if (!COLOUR_SHAPE_RE.test(trimmed)) {
+  } else if (!isColourShape(trimmed)) {
     return 'unparseable';
   }
 

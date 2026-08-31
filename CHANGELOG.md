@@ -4,6 +4,18 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Fixed — CI typecheck on a clean tree; SSR colour-shape ReDoS
+
+- `quality:ci` / `quality:examples` now `pnpm build` before typecheck. React
+  and the examples resolve `@gullabs/flipbook-core` through `node_modules` to
+  `dist` (tsup reads `packages/react/tsconfig.json`, which deliberately has no
+  `paths` mapping), so a fresh checkout with no `dist/` failed `TS2307` before
+  the build step ever ran. Local greenery with a leftover `dist/` hid it.
+- SSR fallback for `pageBackground` no longer uses a nested-quantifier colour
+  shape regex (CodeQL `js/polynomial-redos` on library input). Linear scan +
+  256-char cap; same grammar, no backtracking. Packed HTML engine **61.69 kB**
+  raw / **15.21 kB** brotli (was 61.37 / 15.12) — correctness headroom.
+
 ### Changed — `flip` announces a page change, not a repaint (ADR 0003)
 
 `flip` (React: `onFlip` / `onPageChange`) fired on every spread repaint,
