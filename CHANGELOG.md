@@ -4,6 +4,14 @@ All notable changes to this monorepo will be documented in this file.
 
 ## Unreleased
 
+### Docs / package metadata (OSS polish)
+
+- README: npm version + types badges (packages are on the registry), install
+  one-liners, browser support table (Chromium + WebKit gated; Firefox expected).
+- `engines.node: ">=22.18.0"` on both published packages (matches root / `.nvmrc`).
+- Keywords tightened (react package discoverability; core keeps `html`).
+- `ROADMAP.md` points at the post-3.0 backlog without burying WebGL.
+
 ### Fixed — CI typecheck on a clean tree; SSR colour-shape ReDoS
 
 - `quality:ci` / `quality:examples` now `pnpm build` before typecheck. React
