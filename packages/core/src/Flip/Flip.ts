@@ -4,7 +4,7 @@
 
 import type { Render } from '../Render/Render';
 import { GET_COLLECTION } from '../internal';
-import { EMIT_STATE, SET_SPREAD_INDEX } from '../internal';
+import { COMMIT_TURN, EMIT_STATE, SET_SPREAD_INDEX } from '../internal';
 import { foldSide, Orientation } from '../Render/Render';
 import type { PageFlip } from '../PageFlip';
 import { pointsBetween } from '../Helper';
@@ -818,8 +818,11 @@ export class Flip {
 
         // The SEMANTIC direction, not `calc.getDirection()` — that one is the
         // geometric side and is inverted under `direction: 'rtl'`.
-        if (turnDirection === FlipDirection.BACK) this.app.turnToPrevPage();
-        else this.app.turnToNextPage();
+        //
+        // Through the COMMIT seam, not the public methods: the publics settle
+        // and carry the instant-jump barrier (B5), and this call is the very
+        // commit a settle runs — routed publicly it would refuse itself.
+        this.app[COMMIT_TURN](turnDirection === FlipDirection.BACK ? 'prev' : 'next');
       }
 
       // `turnToNextPage()` above emits `flip` SYNCHRONOUSLY, and a listener is

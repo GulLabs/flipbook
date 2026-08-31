@@ -5,6 +5,7 @@
 import {
   GET_RENDER,
   GET_UI,
+  COMMIT_TURN,
   GET_COLLECTION,
   GET_FLIP,
   VISIBLE_PAGES,
@@ -1059,21 +1060,138 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Turn to the previous page (without animation)
+   * TRUE while an instant jump's synchronous window is open — settle, commit,
+   * and the jump's own event dispatches (B5).
+   *
+   * The barrier is a barrier and not a cleanup because a cleanup cannot work:
+   * settling the outgoing turn emits `flip` synchronously, a listener may
+   * start a nested turn from it, and a nested `flippingTime: 0` turn COMMITS
+   * inside that dispatch — before any cancel-afterwards could catch it. So
+   * for the duration of the window, every turn request is refused instead.
    */
-  public turnToPrevPage(): void {
-    this.pagesOrThrow.showPrev();
+  private turnBarrier = false;
+
+  /** Whether anything was refused by the current barrier — see B5. */
+  private barrierRefused = false;
+
+  /**
+   * The settle-then-commit core of the instant triad (B5).
+   *
+   * The story-book case: a spread dot pressed during an 800 ms curl. The turn
+   * in flight is COMMITTED first — the same finish-then-restart policy the
+   * animated path applies in `Flip.runFlip` — and then `commit()` moves the
+   * book, so a superseded animation can never land afterwards and overwrite
+   * the position the caller asked for. Consumers used to reach this with
+   * `getRender().finishAnimation()`; that getter is internal now, so the
+   * engine owns the settle.
+   *
+   * Lifecycle is revalidated between the settle and the commit: the settle's
+   * `flip` dispatch may destroy the engine, clear it, or replace the
+   * collection, and a jump into a book that no longer exists stops without
+   * effect and without error — that teardown was the caller's own listener
+   * acting on newer information.
+   *
+   * Refusals inside the barrier do not emit (a `turnRejected` listener that
+   * requests a turn would otherwise recurse: refusal → event → request →
+   * refusal). The synchronous `false`/no-op is the nested caller's answer,
+   * and AT MOST ONE `turnRejected { reason: 'superseded' }` is emitted per
+   * jump — while the barrier is still up, so even its own listeners cannot
+   * restart the loop.
+   */
+  private runInstantTurn(commit: () => void): void {
+    const before = this.pages;
+
+    this.turnBarrier = true;
+    try {
+      this.render?.finishAnimation();
+
+      if (this.destroyed || this.pages === null || this.pages !== before) return;
+
+      commit();
+    } finally {
+      const refused = this.barrierRefused;
+      this.barrierRefused = false;
+
+      if (refused && !this.destroyed) {
+        this.dispatch('turnRejected', {
+          reason: 'superseded',
+          direction: null,
+          targetPage: null,
+          landedOn: this.pages === null ? null : this.resolvedPageIndex(this.pages),
+        });
+      }
+
+      this.turnBarrier = false;
+    }
   }
 
   /**
-   * Turn to the next page (without animation)
+   * A finished turn's page step — `Flip`'s commit seam. Deliberately NOT the
+   * public relative turns below: those settle and carry the barrier, and this
+   * call is the very commit a settle runs.
+   *
+   * @internal
    */
-  public turnToNextPage(): void {
-    this.pagesOrThrow.showNext();
+  public [COMMIT_TURN](direction: 'next' | 'prev'): void {
+    const pages = this.pagesOrThrow;
+    if (direction === 'next') pages.showNext();
+    else pages.showPrev();
+  }
+
+  /**
+   * Turn to the previous page (without animation).
+   *
+   * C8: returns whether the turn happened, and reports a boundary through
+   * `turnRejected` — exactly like `flipPrev`; the two triads differ only in
+   * animation. The silent boundary no-op this used to delegate to left a
+   * direct core consumer unable to tell success from refusal.
+   */
+  public turnToPrevPage(): boolean {
+    return this.instantRelativeTurn('prev');
+  }
+
+  /**
+   * Turn to the next page (without animation).
+   *
+   * C8 — see {@link PageFlip.turnToPrevPage}.
+   */
+  public turnToNextPage(): boolean {
+    return this.instantRelativeTurn('next');
+  }
+
+  private instantRelativeTurn(direction: 'next' | 'prev'): boolean {
+    const pages = this.pagesOrThrow;
+
+    // Nested inside an instant jump's window: the jump wins (B5).
+    if (this.turnBarrier) {
+      this.barrierRefused = true;
+      return false;
+    }
+
+    if (!this.canTurn(direction)) {
+      this.dispatch('turnRejected', {
+        reason: 'boundary',
+        direction,
+        targetPage: null,
+        landedOn: this.resolvedPageIndex(pages),
+      });
+      return false;
+    }
+
+    this.runInstantTurn(() => {
+      // Re-checked INSIDE the settle: committing the outgoing turn may have
+      // moved the book onto the boundary this call was still short of.
+      if (this.pages !== null && this.canTurn(direction)) {
+        this[COMMIT_TURN](direction);
+      }
+    });
+    return true;
   }
 
   /**
    * Turn to the specified page number (without animation)
+   *
+   * B5: settles a turn in flight first — see {@link PageFlip.runInstantTurn}.
    *
    * @param {number} page - New page number
    */
@@ -1087,7 +1205,15 @@ export class PageFlip extends EventObject {
       throw new PageFlipError(`Page ${page} not in spread`, 'PAGE_NOT_IN_SPREAD');
     }
 
-    pages.show(page);
+    // Nested inside another jump's window: the outer jump wins (B5).
+    if (this.turnBarrier) {
+      this.barrierRefused = true;
+      return;
+    }
+
+    this.runInstantTurn(() => {
+      this.pages?.show(page);
+    });
   }
 
   /**
@@ -1181,6 +1307,16 @@ export class PageFlip extends EventObject {
     run: (flip: Flip) => boolean,
     context: { direction: 'next' | 'prev' | null; targetPage: number | null },
   ): boolean {
+    // B5: inside an instant jump's synchronous window every turn request is
+    // refused — the jump wins uniformly. No event HERE: refusals inside the
+    // barrier are silent (the boolean is the caller's answer) and the jump
+    // emits at most one aggregate `superseded` when it settles, or a
+    // `turnRejected` listener that turns could recurse forever.
+    if (this.turnBarrier) {
+      this.barrierRefused = true;
+      return false;
+    }
+
     const flip = this.flipController;
 
     if (flip === null) {

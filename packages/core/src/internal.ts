@@ -51,6 +51,19 @@ export const INHERIT_PAGE_INDEX = Symbol('flipbook.inheritPageIndex');
 export const EMIT_PAGE_INDEX = Symbol('flipbook.emitPageIndex');
 
 /**
+ * Commits a finished turn's page step. `Flip.animateFlippingTo`'s completion
+ * seam (B5).
+ *
+ * The commit used to ride the PUBLIC `turnToNextPage`/`turnToPrevPage`, which
+ * became impossible once those gained the instant-jump barrier: the barrier
+ * refuses every turn request inside a jump's dispatch, and the settle's own
+ * commit IS such a request — the public route would have refused the very
+ * turn the settle exists to land. Meets the stopping rule: only `Flip` calls
+ * it, and an outside call fabricates a `flip` event for a turn that never ran.
+ */
+export const COMMIT_TURN = Symbol('flipbook.commitTurn');
+
+/**
  * Announces a flipping-state change. `Flip.setState`'s seam.
  *
  * Public, it let a consumer announce a state the engine is not in — and

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { EMIT_STATE, SET_SPREAD_INDEX, GET_COLLECTION } from '../src/internal';
+import { COMMIT_TURN, EMIT_STATE, SET_SPREAD_INDEX, GET_COLLECTION } from '../src/internal';
 import { FlipCorner } from '@gullabs/flipbook-core';
 import { Flip } from '../src/Flip/Flip';
 import { FlipDirection } from '../src/Flip/Flip';
@@ -89,6 +89,7 @@ function makeFlip(options?: Options) {
     getPageCount: () => options?.spreadCount ?? 8,
     turnToPrevPage() {},
     turnToNextPage() {},
+    [COMMIT_TURN]() {},
     [EMIT_STATE]() {},
   };
 
