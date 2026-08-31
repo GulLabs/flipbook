@@ -13,7 +13,7 @@
  *   - mid-fold update frame: **106** writes
  */
 // @vitest-environment jsdom
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PageDensity } from '@gullabs/flipbook-core';
 import type { PageFlip } from '@gullabs/flipbook-core';
 import type { Page } from '../src/Page/Page';
@@ -379,6 +379,164 @@ describe('applyEngineStyle memoization (B3.1)', () => {
     expect(leaf.dataset.page?.startsWith('new-')).toBe(true);
     expect(leaf.style.width).not.toBe('');
     expect(leaf.style.getPropertyValue('--stf-paper').trim()).not.toBe('');
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * B3.2 — delta clear() / lastShown / temporary-copy ownership
+ * ------------------------------------------------------------------ */
+
+describe('delta clear (B3.2)', () => {
+  /** Portrait soft book — temporary copies only exist on this path. */
+  function portraitSoft(): { book: PageFlip; pages: HTMLElement[]; destroy: () => void } {
+    const made = makeHtmlBook({
+      pageCount: 6,
+      flippingTime: 0,
+      usePortrait: true,
+      hostWidth: 200,
+      hostHeight: 300,
+      width: 200,
+      height: 300,
+      drawShadow: true,
+    });
+    books.push(made);
+    return made;
+  }
+
+  function restingLeafElements(book: PageFlip): Set<Element> {
+    const render = renderOf(book);
+    const resting = new Set<Element>();
+    if (render.leftPage) resting.add(render.leftPage.getElement());
+    if (render.rightPage) resting.add(render.rightPage.getElement());
+    return resting;
+  }
+
+  function shownLeaves(book: PageFlip): HTMLElement[] {
+    return [...book.getBlockElement().querySelectorAll<HTMLElement>('.stf__item.--shown')];
+  }
+
+  /**
+   * Frame cleanup must never query the live collection. Spy getPages and assert
+   * zero calls from a steady-state drawFrame (after one settle frame).
+   */
+  test('steady-state drawFrame does not call collection.getPages', () => {
+    const { book } = landscape10();
+    const collection = testCollection(book);
+    drawFrame(book);
+
+    const spy = vi.spyOn(collection, 'getPages');
+    drawFrame(book);
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  test('soft-turn cancellation mid-fold removes the clone and resting-only --shown', () => {
+    const { book } = portraitSoft();
+
+    book.startUserTouch({ x: 180, y: 150 });
+    book.userMove({ x: 100, y: 150 }, false);
+    drawFrame(book);
+
+    const block = book.getBlockElement();
+    expect(
+      block.querySelector('[data-stf-clone]'),
+      'mid-fold should have mounted a temporary copy',
+    ).not.toBeNull();
+    expect(renderOf(book).flippingPage).not.toBeNull();
+
+    // Assert IMMEDIATELY after cancelAnimation — before any drawFrame. A delta
+    // clear alone only cleans on the next frame; the B3.2 sweep must run here
+    // so a cancelled fold does not leave an orphaned clone until rAF.
+    testRender(book).cancelAnimation();
+
+    expect(
+      block.querySelector('[data-stf-clone]'),
+      'clone must leave the DOM on cancel',
+    ).toBeNull();
+    expect(renderOf(book).flippingPage).toBeNull();
+
+    // Repaint the resting spread, then no leaf outside it may still be --shown
+    // (including a leftover mover class on a detached clone's former sibling).
+    drawFrame(book);
+    const resting = restingLeafElements(book);
+    const extras = shownLeaves(book).filter((el) => !resting.has(el));
+    expect(
+      extras,
+      extras.length
+        ? `stale --shown outside resting spread: ${extras.map(describeEl).join(', ')}`
+        : '',
+    ).toEqual([]);
+  });
+
+  test('PageFlip.clear() leaves no --shown leaves and no orphaned clones', () => {
+    const { book } = portraitSoft();
+
+    book.startUserTouch({ x: 180, y: 150 });
+    book.userMove({ x: 100, y: 150 }, false);
+    drawFrame(book);
+    expect(book.getBlockElement().querySelector('[data-stf-clone]')).not.toBeNull();
+
+    // Collection is destroyed BEFORE releasePages → cancelAnimation; the sweep
+    // must use retained lastShown, not getPages() on the emptied collection.
+    book.clear();
+
+    expect(document.querySelector('[data-stf-clone]')).toBeNull();
+    expect(document.querySelectorAll('.stf__item.--shown').length).toBe(0);
+  });
+
+  test('updateFromHtml same nodes: no stale --shown, no orphaned clone', () => {
+    const { book, pages } = portraitSoft();
+
+    book.startUserTouch({ x: 180, y: 150 });
+    book.userMove({ x: 100, y: 150 }, false);
+    drawFrame(book);
+    expect(book.getBlockElement().querySelector('[data-stf-clone]')).not.toBeNull();
+
+    book.updateFromHtml(pages);
+    // No drawFrame yet: reload/cancel sweep must have dropped the mid-fold
+    // clone; a deferred delta-clear would still leave it until the next frame.
+    expect(book.getBlockElement().querySelector('[data-stf-clone]')).toBeNull();
+
+    drawFrame(book);
+
+    const resting = restingLeafElements(book);
+    expect(resting.size).toBeGreaterThan(0);
+    const extras = shownLeaves(book).filter((el) => !resting.has(el));
+    expect(
+      extras,
+      extras.length
+        ? `stale --shown after updateFromHtml: ${extras.map(describeEl).join(', ')}`
+        : '',
+    ).toEqual([]);
+  });
+
+  /**
+   * Owner back-ref trap (PLAN-3.1 B3.2): drop the mover via setFlippingPage(null)
+   * and the NEXT drawFrame's delta clear must hideTemporaryCopy on the OWNER.
+   * Calling hideTemporaryCopy on the clone itself is a no-op (the clone has no
+   * temporaryCopy state), so a missing copyOwner leaves an orphaned [data-stf-clone].
+   */
+  test('temporary copy is hidden via the owner, not the clone', () => {
+    const { book } = portraitSoft();
+
+    book.startUserTouch({ x: 180, y: 150 });
+    book.userMove({ x: 100, y: 150 }, false);
+    drawFrame(book);
+
+    const owner = testCollection(book).getPage(book.getCurrentPageIndex());
+    const copy = owner.getTemporaryCopy();
+    expect(copy).not.toBeNull();
+    expect(copy!.getCopyOwner()).toBe(owner);
+    expect(copy!.getElement().isConnected).toBe(true);
+
+    // Delta-clear path only — not cancelAnimation's full sweep.
+    const render = testRender(book);
+    render.setFlippingPage(null);
+    render.setBottomPage(null);
+    drawFrame(book);
+
+    expect(owner.getTemporaryCopy()).toBeNull();
+    expect(book.getBlockElement().querySelector('[data-stf-clone]')).toBeNull();
   });
 });
 

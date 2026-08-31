@@ -142,6 +142,15 @@ export class Render {
   protected bottomPage: Page | null = null;
 
   /**
+   * Pages that carried `--shown` (and copy-owners of temporary movers) after
+   * the previous `drawFrame`. PLAN-3.1 B3.2: `clear()` is a delta against this
+   * set rather than a walk of the live collection. Held as `Page` references
+   * so a sweep still works after `PageFlip.clear()` destroys the collection
+   * (that path empties the collection BEFORE `releasePages` → `cancelAnimation`).
+   */
+  private lastShown: Set<Page> = new Set();
+
+  /**
    * The **geometric side** the current fold lives on, not the semantic turn
    * direction. Restamped by `setDirection` before every turn, which applies the
    * `direction: 'rtl'` mirror exactly once — see {@link foldSide}.
@@ -309,6 +318,11 @@ export class Render {
    * Reload the render area, after update pages
    */
   public reload(): void {
+    // B3.2: drop stale `--shown` / orphaned clones from the previous collection
+    // generation before the new leaves draw. Sweep the retained set — never the
+    // live collection (which may already be empty or replaced).
+    this.sweepShownSet();
+
     // B3.1: new or replaced leaves must not inherit a stale style memo from a
     // prior collection generation (same DOM node reused after updateFromHtml).
     this.bustPageDrawCaches();
@@ -1005,6 +1019,12 @@ export class Render {
     // some later turn happened to end.
     this.clearShadow();
 
+    // B3.2: sweep BEFORE nulling the mover slots so a clone that never entered
+    // `lastShown` (cancelled before its first frame) is still cleaned. The
+    // sweep never asks the live collection — required because `PageFlip.clear()`
+    // destroys the collection before `releasePages` → here.
+    this.sweepShownSet();
+
     this.flippingPage = null;
     this.bottomPage = null;
 
@@ -1578,24 +1598,85 @@ export class Render {
     }
   }
 
-  private clear(): void {
-    for (const page of this.app[GET_COLLECTION]().getPages()) {
-      if (
-        page !== this.leftPage &&
-        page !== this.rightPage &&
-        page !== this.flippingPage &&
-        page !== this.bottomPage
-      ) {
-        // Hide by REMOVING the shown class, not by writing `display:none`
-        // inline — and certainly not by wiping cssText, which took the
-        // consumer's own inline styles with it every frame.
-        page.getElement().classList.remove('--shown');
-      }
+  /**
+   * Working set for the current frame: left / right / flipping / bottom, plus
+   * the owner of any temporary-copy mover (so the owner stays booked while the
+   * clone is drawn and `hideTemporaryCopy` runs when the clone leaves).
+   */
+  private collectWorkingSet(): Set<Page> {
+    const set = new Set<Page>();
+    for (const page of [this.leftPage, this.rightPage, this.flippingPage, this.bottomPage]) {
+      if (page === null) continue;
+      set.add(page);
+      const owner = page.getCopyOwner();
+      if (owner !== null) set.add(owner);
+    }
+    return set;
+  }
 
-      if (page.getTemporaryCopy() !== this.flippingPage) {
+  /**
+   * Delta clear (PLAN-3.1 B3.2). Only pages that left the working set since the
+   * last frame lose `--shown` / have their temporary copy hidden. Never walks
+   * the live collection — a steady-state `drawFrame` must not touch `getPages`.
+   */
+  private clear(): void {
+    const current = this.collectWorkingSet();
+
+    for (const page of this.lastShown) {
+      if (current.has(page)) continue;
+
+      // Hide by REMOVING the shown class, not by writing `display:none`
+      // inline — and certainly not by wiping cssText, which took the
+      // consumer's own inline styles with it every frame.
+      page.getElement().classList.remove('--shown');
+
+      // Temporary-copy trap: the mover is the CLONE; cleanup runs on the owner.
+      const owner = page.getCopyOwner();
+      if (owner !== null) {
+        owner.hideTemporaryCopy();
+      } else if (
+        page.getTemporaryCopy() !== null &&
+        page.getTemporaryCopy() !== this.flippingPage
+      ) {
+        // Owner left the set while still holding a clone that is not the
+        // current mover (stale after a slot swap). Same hide the full-scan
+        // clear used to perform per page.
         page.hideTemporaryCopy();
       }
     }
+
+    this.lastShown = current;
+  }
+
+  /**
+   * Full cleanup of the retained shown-set before discarding it (`reload`,
+   * `cancelAnimation`, collection replacement via `releasePages`). Iterates
+   * `lastShown` plus the current page slots — never the live collection.
+   * Not per-frame.
+   */
+  private sweepShownSet(): void {
+    const victims = new Set(this.lastShown);
+    for (const page of [this.leftPage, this.rightPage, this.flippingPage, this.bottomPage]) {
+      if (page === null) continue;
+      victims.add(page);
+      const owner = page.getCopyOwner();
+      if (owner !== null) victims.add(owner);
+    }
+
+    for (const page of victims) {
+      page.getElement().classList.remove('--shown');
+      const owner = page.getCopyOwner();
+      if (owner !== null) {
+        owner.hideTemporaryCopy();
+      } else {
+        // Real leaf: drop any clone it still owns. The clone half is handled
+        // via copyOwner above; this covers an owner present without its clone
+        // still sitting in `victims` (clone already detached).
+        page.hideTemporaryCopy();
+      }
+    }
+
+    this.lastShown.clear();
   }
 }
 

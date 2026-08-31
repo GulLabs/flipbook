@@ -98,8 +98,8 @@ Measured from the published artifacts, both terser-minified, zero runtime depend
 
 Larger than upstream because of RTL, reduced motion, typed errors, validation,
 and the portrait back-curl fix. This is not a smaller drop-in replacement; it is
-a maintained one. CI ceilings on the packed HTML engine are **62 kB raw /
-15.3 kB brotli / 17.2 kB gzip** (re-ratcheted after PLAN-3.1 B3.1).
+a maintained one. CI ceilings on the packed HTML engine are **62.75 kB raw /
+15.4 kB brotli / 17.4 kB gzip** (re-ratcheted after PLAN-3.1 B3.2).
 
 Reproduce with `npm pack page-flip@2.0.7` and `pnpm build && pnpm size`.
 

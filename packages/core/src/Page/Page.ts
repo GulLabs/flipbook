@@ -143,6 +143,17 @@ export class Page {
    */
   private isTemporaryCopy = false;
 
+  /**
+   * Back-reference from a temporary copy to the leaf that owns it (PLAN-3.1
+   * B3.2). `null` on every real leaf. The renderer only ever holds the clone
+   * (`setFlippingPage`), and `hideTemporaryCopy()` must run on the OWNER —
+   * ownership used to exist only owner→clone, so a delta clear that saw the
+   * clone leave the working set had no constant-time path to the owner.
+   * Set by `newTemporaryCopy` on the clone (same per-class private access as
+   * `isTemporaryCopy`).
+   */
+  private copyOwner: Page | null = null;
+
   constructor(render: Render, element: HTMLElement, density: PageDensity) {
     this.state = {
       angle: 0,
@@ -221,6 +232,7 @@ export class Page {
 
       const copy = new Page(this.render, this.copiedElement, this.nowDrawingDensity);
       copy.isTemporaryCopy = true;
+      copy.copyOwner = this;
 
       this.temporaryCopy = copy;
     }
@@ -230,6 +242,14 @@ export class Page {
 
   public getTemporaryCopy(): Page | null {
     return this.temporaryCopy;
+  }
+
+  /**
+   * Owner leaf of a temporary copy, or `null` when this is not a copy.
+   * @internal Render delta-clear (B3.2) — not part of the published surface.
+   */
+  public getCopyOwner(): Page | null {
+    return this.copyOwner;
   }
 
   public hideTemporaryCopy(): void {
