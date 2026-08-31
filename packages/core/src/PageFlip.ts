@@ -24,11 +24,10 @@ import type { PageCollection } from './Collection/PageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
 import type { PageRect, Point } from './BasicTypes';
 import { Flip, FlipCorner, FlippingState } from './Flip/Flip';
-import type { Orientation, Render } from './Render/Render';
+import { Render, type Orientation } from './Render/Render';
 import { distanceBetween } from './Helper';
 import { EventObject } from './Event/EventObject';
 import type { BookSnapshot, FlipbookEventMap } from './Event/EventObject';
-import { HTMLRender } from './Render/HTMLRender';
 import type { FlipOptions, FlipSetting, LiveSetting } from './Settings';
 import { Settings } from './Settings';
 import { UI } from './UI/UI';
@@ -703,7 +702,7 @@ export class PageFlip extends EventObject {
     this.nextGeneration();
 
     const ui = new UI(this.block, this, this.setting, items);
-    const render = new HTMLRender(this, this.setting, ui.getDistElement());
+    const render = new Render(this, this.setting, ui.getDistElement());
     const pages = new HTMLPageCollection(this, render, ui.getDistElement(), items);
     this[ATTACH_MODE](ui, render, pages);
   }

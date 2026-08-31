@@ -426,8 +426,8 @@ describe('R8 — a stopped loop stays stopped', () => {
 class ProbeRender extends Render {
   public frameDraws = 0;
 
-  public constructor(app: PageFlipType, setting: FlipSetting) {
-    super(app, setting);
+  public constructor(app: PageFlipType, setting: FlipSetting, element: HTMLElement) {
+    super(app, setting, element);
   }
 
   protected drawFrame(): void {
@@ -450,7 +450,7 @@ function probeOn(dist: HTMLElement): ProbeRender {
     [ADOPT_ORIENTATION]: () => undefined,
   } as unknown as PageFlipType;
 
-  return new ProbeRender(app, setting);
+  return new ProbeRender(app, setting, dist);
 }
 
 describe('R8 — an idle HTML renderer parks', () => {

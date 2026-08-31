@@ -3,17 +3,18 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { at } from '../arrayAccess';
-import { GET_UI } from '../internal';
-import { ADOPT_ORIENTATION } from '../internal';
+import { GET_UI, GET_COLLECTION, ADOPT_ORIENTATION } from '../internal';
 import type { PageFlip } from '../PageFlip';
 import type { Point, PageRect, RectPoints } from '../BasicTypes';
 import { FlipDirection } from '../Flip/Flip';
 import type { Page } from '../Page/Page';
-import { PageOrientation } from '../Page/Page';
+import { PageDensity, PageOrientation } from '../Page/Page';
 import type { FlipSetting } from '../Settings';
 import { SizeMode } from '../Settings';
 import { convertPageToGlobal } from '../geometry';
+import { rotatePoint } from '../Helper';
 import { PageFlipError } from '../errors';
+import { shouldDrawBottomPage } from './bottomPage';
 
 type FrameAction = () => void;
 type AnimationSuccessAction = () => void;
@@ -110,11 +111,25 @@ export function foldSide(direction: FlipDirection, rtl: boolean): FlipDirection 
 }
 
 /**
- * Class responsible for rendering the book
+ * Class responsible for rendering the book.
+ *
+ * COLLAPSED from an abstract `Render` plus a single `HTMLRender` subclass. The
+ * subclass held drawFrame/shadow DOM paint; the base already held the rAF loop,
+ * layout, and orientation — and was itself DOM-bound (`offsetWidth`, Safari
+ * sniff). That is not a renderer seam — it is one class split at an arbitrary
+ * line. See `docs/ABSTRACTION-BOUNDARY.md`.
  */
-export abstract class Render {
+export class Render {
   protected readonly setting: FlipSetting;
   protected readonly app: PageFlip;
+
+  /** Parent HTML Element (the engine's `.stf__block`) */
+  private readonly element: HTMLElement;
+
+  private outerShadow!: HTMLElement;
+  private innerShadow!: HTMLElement;
+  private hardShadow!: HTMLElement;
+  private hardInnerShadow!: HTMLElement;
 
   /** Left static book page */
   protected leftPage: Page | null = null;
@@ -133,7 +148,7 @@ export abstract class Render {
    *
    * Everything downstream of this field is geometry: local↔global conversion,
    * `PageOrientation` for the mover and the page under it, shadow gradient
-   * sense, and the hard-page z-order in `HTMLRender`. None of them care which
+   * sense, and the hard-page z-order in `drawFrame`. None of them care which
    * page index the book is heading for; all of them care which half of the book
    * the leaf is being pulled off.
    */
@@ -252,23 +267,54 @@ export abstract class Render {
    */
   private safari = false;
 
-  protected constructor(app: PageFlip, setting: FlipSetting) {
+  /**
+   * @param app - PageFlip object
+   * @param setting - Configuration object
+   * @param element - Parent HTML Element (the engine's `.stf__block`)
+   */
+  public constructor(app: PageFlip, setting: FlipSetting, element: HTMLElement) {
     this.setting = setting;
     this.app = app;
+    this.element = element;
 
     // detect safari — never touch window at module scope; guard for Node/SSR
     this.safari = isSafariUserAgent();
+
+    this.createShadows();
   }
 
-  /**
-   * Rendering action on each requestAnimationFrame call. The entire rendering process is performed only in this method
-   */
-  protected abstract drawFrame(): void;
+  private createShadows(): void {
+    this.element.insertAdjacentHTML(
+      'beforeend',
+      '<div class="stf__outerShadow"></div><div class="stf__innerShadow"></div>' +
+        '<div class="stf__hardShadow"></div><div class="stf__hardInnerShadow"></div>',
+    );
+
+    const outer = this.element.querySelector<HTMLElement>('.stf__outerShadow');
+    const inner = this.element.querySelector<HTMLElement>('.stf__innerShadow');
+    const hard = this.element.querySelector<HTMLElement>('.stf__hardShadow');
+    const hardInner = this.element.querySelector<HTMLElement>('.stf__hardInnerShadow');
+
+    if (!outer || !inner || !hard || !hardInner) {
+      throw new PageFlipError('Shadow setup failed', 'RENDER_SETUP');
+    }
+
+    this.outerShadow = outer;
+    this.innerShadow = inner;
+    this.hardShadow = hard;
+    this.hardInnerShadow = hardInner;
+  }
 
   /**
    * Reload the render area, after update pages
    */
-  public abstract reload(): void;
+  public reload(): void {
+    const testShadow = this.element.querySelector('.stf__outerShadow');
+
+    if (!testShadow) {
+      this.createShadows();
+    }
+  }
 
   /**
    * Executed when requestAnimationFrame is called. Performs the current animation process and call drawFrame()
@@ -390,7 +436,7 @@ export abstract class Render {
     //
     //  - `destroy()` — teardown ran `stop()`, then this method re-armed. One
     //    frame ran AFTER the destroy and threw `DESTROYED` out of
-    //    `HTMLRender.clear()`. That is X4 exactly, on the load path instead of
+    //    `clear()`. That is X4 exactly, on the load path instead of
     //    the turn path, and X4's own guard cannot help: the generation is
     //    bumped below, i.e. AFTER the destroy, so the zombie loop's generation
     //    is legitimately current.
@@ -509,12 +555,11 @@ export abstract class Render {
   /**
    * Does this renderer paint something that changes without anyone telling it?
    *
-   * HTML mode has nothing of the kind — an idle book parks. `protected` so a
-   * future renderer can override without touching this file. Canvas mode used
+   * HTML mode has nothing of the kind — an idle book parks. Canvas mode used
    * to force continuous frames for its loader spinner; that path is gone
    * (ADR 0002).
    */
-  protected needsContinuousFrames(): boolean {
+  private needsContinuousFrames(): boolean {
     return false;
   }
 
@@ -717,13 +762,25 @@ export abstract class Render {
     // its own defect (it would leave the book landscape-by-default and rebuild
     // the collection on first paint). So the first pass still establishes one,
     // and only subsequent zero measurements are ignored.
-    if (!observed && this.orientation !== null) return;
+    //
+    // Collapse note: under the old inheritance, `super.update()`'s early return
+    // still let the subclass run the left/right `setOrientation` stamps below.
+    // Bounds/orientation adopt are gated; the stamps always run.
+    if (observed || this.orientation === null) {
+      this.boundsRect = rect;
 
-    this.boundsRect = rect;
+      if (this.orientation !== orientation) {
+        this.orientation = orientation;
+        this.app[ADOPT_ORIENTATION](orientation);
+      }
+    }
 
-    if (this.orientation !== orientation) {
-      this.orientation = orientation;
-      this.app[ADOPT_ORIENTATION](orientation);
+    if (this.rightPage !== null) {
+      this.rightPage.setOrientation(PageOrientation.RIGHT);
+    }
+
+    if (this.leftPage !== null) {
+      this.leftPage.setOrientation(PageOrientation.LEFT);
     }
   }
 
@@ -831,18 +888,16 @@ export abstract class Render {
   ): void {
     if (!this.app.getSettings().drawShadow) {
       // X3: turning `drawShadow` off mid-fold has to take the shadow that is
-      // already on screen with it. `HTMLRender.drawFrame` draws
-      // whatever `this.shadow` holds, so a bare `return` here froze the last
-      // computed shadow over the moving leaf until the turn ended and
-      // `clearShadow()` ran. The asymmetry is this method's, not the HTML
-      // renderer's: the setting is read here, so the state it guards is
-      // cleared here, and both renderers get the fix from one line.
+      // already on screen with it. `drawFrame` draws whatever `this.shadow`
+      // holds, so a bare `return` here froze the last computed shadow over the
+      // moving leaf until the turn ended and `clearShadow()` ran. The setting is
+      // read here, so the state it guards is cleared here.
       //
-      // `clearShadow()`, not `this.shadow = null`: the HTML renderer overrides
-      // it to hide the four shadow ELEMENTS as well, and nothing else in
-      // `drawFrame` ever resets them — dropping the field alone would stop the
-      // shadow being recomputed while leaving the last one painted, which is
-      // the reported defect with an extra step.
+      // `clearShadow()`, not `this.shadow = null`: `clearShadow` also hides the
+      // four shadow ELEMENTS, and nothing else in `drawFrame` ever resets them
+      // — dropping the field alone would stop the shadow being recomputed while
+      // leaving the last one painted, which is the reported defect with an
+      // extra step.
       this.clearShadow();
       return;
     }
@@ -868,9 +923,18 @@ export abstract class Render {
    * Clear shadow
    */
   public clearShadow(): void {
+    // Order is load-bearing: requestFrame first (wake the parked loop), then
+    // drop the field, then hide the four DOM nodes. `drawFrame` only *writes*
+    // shadows from a non-null `this.shadow`; without the cssText hide the last
+    // painted shadow would stay on screen (X3 / RD1).
     this.requestFrame();
 
     this.shadow = null;
+
+    this.outerShadow.style.cssText = 'display: none';
+    this.innerShadow.style.cssText = 'display: none';
+    this.hardShadow.style.cssText = 'display: none';
+    this.hardInnerShadow.style.cssText = 'display: none';
   }
 
   /**
@@ -909,23 +973,23 @@ export abstract class Render {
     this.animation = null;
 
     // RD1: `clearShadow()`, not `this.shadow = null` — the X3 defect at a second
-    // site. `HTMLRender` overrides `clearShadow()` to hide the four shadow
-    // ELEMENTS as well, and nothing in `drawFrame` ever resets them: it only
-    // *writes* them, from a non-null `this.shadow`. Dropping the field alone
-    // therefore stops the shadow being recomputed while leaving the last one
-    // painted — so abandoning a turn because the collection is being replaced
-    // (React's `updateFromHtml`, `replacePages`) left a stale fold shadow lying
-    // over the new book until some later turn happened to end.
+    // site. `clearShadow` hides the four shadow ELEMENTS as well, and nothing
+    // in `drawFrame` ever resets them: it only *writes* them, from a non-null
+    // `this.shadow`. Dropping the field alone therefore stops the shadow being
+    // recomputed while leaving the last one painted — so abandoning a turn
+    // because the collection is being replaced (React's `updateFromHtml`,
+    // `replacePages`) left a stale fold shadow lying over the new book until
+    // some later turn happened to end.
     this.clearShadow();
 
     this.flippingPage = null;
     this.bottomPage = null;
 
     // RD2: the fold rect belongs to the turn, not to the renderer. It is the
-    // clip `HTMLRender.drawInnerShadow` cuts the inner shadow against, so a rect
-    // left over from a collection that no longer exists can clip the first frame
-    // of the NEXT fold. Every other piece of per-turn state is dropped here;
-    // this one was simply missed.
+    // clip `drawInnerShadow` cuts the inner shadow against, so a rect left over
+    // from a collection that no longer exists can clip the first frame of the
+    // NEXT fold. Every other piece of per-turn state is dropped here; this one
+    // was simply missed.
     this.pageRect = null;
   }
 
@@ -1242,6 +1306,273 @@ export abstract class Render {
       bottomLeft: this.convertPointToGlobal(rect.bottomLeft, dir),
       bottomRight: this.convertPointToGlobal(rect.bottomRight, dir),
     };
+  }
+
+  /**
+   * Draw inner shadow to the hard page
+   */
+  private drawHardInnerShadow(shadow: Shadow): void {
+    const rect = this.getRect();
+
+    const progress = shadow.progress > 100 ? 200 - shadow.progress : shadow.progress;
+
+    let innerShadowSize = ((100 - progress) * (2.5 * rect.pageWidth)) / 100 + 20;
+    if (innerShadowSize > rect.pageWidth) innerShadowSize = rect.pageWidth;
+
+    let newStyle =
+      `display:block;z-index:${this.getSettings().startZIndex + 5};` +
+      `width:${innerShadowSize}px;height:${rect.height}px;` +
+      `background:linear-gradient(to right,rgba(0,0,0,${(shadow.opacity * progress) / 100}) 5%,rgba(0,0,0,0) 100%);` +
+      `left:${rect.left + rect.width / 2}px;transform-origin:0 0;`;
+
+    newStyle +=
+      (this.getDirection() === FlipDirection.FORWARD && shadow.progress > 100) ||
+      (this.getDirection() === FlipDirection.BACK && shadow.progress <= 100)
+        ? 'transform:translate3d(0,0,0);'
+        : 'transform:translate3d(0,0,0) rotateY(180deg);';
+
+    this.hardInnerShadow.style.cssText = newStyle;
+  }
+
+  /**
+   * Draw outer shadow to the hard page
+   */
+  private drawHardOuterShadow(shadow: Shadow): void {
+    const rect = this.getRect();
+
+    const progress = shadow.progress > 100 ? 200 - shadow.progress : shadow.progress;
+
+    let shadowSize = ((100 - progress) * (2.5 * rect.pageWidth)) / 100 + 20;
+    if (shadowSize > rect.pageWidth) shadowSize = rect.pageWidth;
+
+    let newStyle =
+      `display:block;z-index:${this.getSettings().startZIndex + 4};` +
+      `width:${shadowSize}px;height:${rect.height}px;` +
+      `background:linear-gradient(to left,rgba(0,0,0,${shadow.opacity}) 5%,rgba(0,0,0,0) 100%);` +
+      `left:${rect.left + rect.width / 2}px;transform-origin:0 0;`;
+
+    newStyle +=
+      (this.getDirection() === FlipDirection.FORWARD && shadow.progress > 100) ||
+      (this.getDirection() === FlipDirection.BACK && shadow.progress <= 100)
+        ? 'transform:translate3d(0,0,0) rotateY(180deg);'
+        : 'transform:translate3d(0,0,0);';
+
+    this.hardShadow.style.cssText = newStyle;
+  }
+
+  /**
+   * Draw inner shadow to the soft page
+   */
+  private drawInnerShadow(shadow: Shadow): void {
+    const pageRect = this.pageRect;
+    if (pageRect === null) return;
+
+    const rect = this.getRect();
+
+    const innerShadowSize = (shadow.width * 3) / 4;
+    const shadowTranslate = this.getDirection() === FlipDirection.FORWARD ? innerShadowSize : 0;
+
+    const shadowDirection = this.getDirection() === FlipDirection.FORWARD ? 'to left' : 'to right';
+
+    const shadowPos = this.convertPointToGlobal(shadow.pos);
+
+    const angle = shadow.angle + (3 * Math.PI) / 2;
+
+    const clip = [pageRect.topLeft, pageRect.topRight, pageRect.bottomRight, pageRect.bottomLeft];
+
+    let polygon = 'polygon( ';
+    for (const p of clip) {
+      let g =
+        this.getDirection() === FlipDirection.BACK
+          ? {
+              x: -p.x + shadow.pos.x,
+              y: p.y - shadow.pos.y,
+            }
+          : {
+              x: p.x - shadow.pos.x,
+              y: p.y - shadow.pos.y,
+            };
+
+      g = rotatePoint(g, { x: shadowTranslate, y: 100 }, angle);
+
+      polygon += `${g.x}px ${g.y}px, `;
+    }
+    polygon = polygon.slice(0, -2);
+    polygon += ')';
+
+    this.innerShadow.style.cssText =
+      `display:block;z-index:${this.getSettings().startZIndex + 10};` +
+      `width:${innerShadowSize}px;height:${rect.height * 2}px;` +
+      `background:linear-gradient(${shadowDirection},rgba(0,0,0,${shadow.opacity}) 5%,rgba(0,0,0,0.05) 15%,rgba(0,0,0,${shadow.opacity}) 35%,rgba(0,0,0,0) 100%);` +
+      `transform-origin:${shadowTranslate}px 100px;` +
+      `transform:translate3d(${shadowPos.x - shadowTranslate}px,${shadowPos.y - 100}px,0) rotate(${angle}rad);` +
+      `clip-path:${polygon};-webkit-clip-path:${polygon};`;
+  }
+
+  /**
+   * Draw outer shadow to the soft page
+   */
+  private drawOuterShadow(shadow: Shadow): void {
+    const rect = this.getRect();
+
+    const shadowPos = this.convertPointToGlobal({ x: shadow.pos.x, y: shadow.pos.y });
+
+    const angle = shadow.angle + (3 * Math.PI) / 2;
+    const shadowTranslate = this.getDirection() === FlipDirection.BACK ? shadow.width : 0;
+
+    const shadowDirection = this.getDirection() === FlipDirection.FORWARD ? 'to right' : 'to left';
+
+    const clip = [
+      { x: 0, y: 0 },
+      { x: rect.pageWidth, y: 0 },
+      { x: rect.pageWidth, y: rect.height },
+      { x: 0, y: rect.height },
+    ];
+
+    let polygon = 'polygon( ';
+    for (const p of clip) {
+      let g =
+        this.getDirection() === FlipDirection.BACK
+          ? {
+              x: -p.x + shadow.pos.x,
+              y: p.y - shadow.pos.y,
+            }
+          : {
+              x: p.x - shadow.pos.x,
+              y: p.y - shadow.pos.y,
+            };
+
+      g = rotatePoint(g, { x: shadowTranslate, y: 100 }, angle);
+
+      polygon += `${g.x}px ${g.y}px, `;
+    }
+
+    polygon = polygon.slice(0, -2);
+    polygon += ')';
+
+    this.outerShadow.style.cssText =
+      `display:block;z-index:${this.getSettings().startZIndex + 10};` +
+      `width:${shadow.width}px;height:${rect.height * 2}px;` +
+      `background:linear-gradient(${shadowDirection},rgba(0,0,0,${shadow.opacity}),rgba(0,0,0,0));` +
+      `transform-origin:${shadowTranslate}px 100px;` +
+      `transform:translate3d(${shadowPos.x - shadowTranslate}px,${shadowPos.y - 100}px,0) rotate(${angle}rad);` +
+      `clip-path:${polygon};-webkit-clip-path:${polygon};`;
+  }
+
+  /**
+   * Draw left static page
+   */
+  private drawLeftPage(): void {
+    if (this.orientation === Orientation.PORTRAIT || this.leftPage === null) return;
+
+    if (
+      this.direction === FlipDirection.BACK &&
+      this.flippingPage !== null &&
+      this.flippingPage.getDrawingDensity() === PageDensity.HARD
+    ) {
+      this.leftPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 5);
+
+      this.leftPage.setHardDrawingAngle(180 + this.flippingPage.getHardAngle());
+      this.leftPage.draw(this.flippingPage.getDrawingDensity());
+    } else {
+      this.leftPage.simpleDraw(PageOrientation.LEFT);
+    }
+  }
+
+  /**
+   * Draw right static page
+   */
+  private drawRightPage(): void {
+    if (this.rightPage === null) return;
+
+    if (
+      this.direction === FlipDirection.FORWARD &&
+      this.flippingPage !== null &&
+      this.flippingPage.getDrawingDensity() === PageDensity.HARD
+    ) {
+      this.rightPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 5);
+
+      this.rightPage.setHardDrawingAngle(180 + this.flippingPage.getHardAngle());
+      this.rightPage.draw(this.flippingPage.getDrawingDensity());
+    } else {
+      this.rightPage.simpleDraw(PageOrientation.RIGHT);
+    }
+  }
+
+  /**
+   * Draw the next page at the time of flipping.
+   * Skip only when the mover is the bottom page (hard-cover), never on
+   * portrait BACK as a direction — that skip is the duplicate-current-page bug.
+   */
+  private drawBottomPage(): void {
+    const bottomPage = this.bottomPage;
+
+    if (bottomPage === null) return;
+    if (!shouldDrawBottomPage(this.flippingPage, bottomPage)) return;
+
+    const tempDensity =
+      this.flippingPage !== null ? this.flippingPage.getDrawingDensity() : undefined;
+
+    bottomPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 3);
+
+    bottomPage.draw(tempDensity);
+  }
+
+  /**
+   * Rendering action on each requestAnimationFrame call. The entire rendering
+   * process is performed only in this method.
+   *
+   * Body order is load-bearing: clear → left → right → bottom → flipping
+   * zIndex+draw → shadows. `protected` so test harnesses can override it.
+   */
+  protected drawFrame(): void {
+    this.clear();
+
+    this.drawLeftPage();
+
+    this.drawRightPage();
+
+    this.drawBottomPage();
+
+    const flippingPage = this.flippingPage;
+
+    if (flippingPage !== null) {
+      flippingPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 5);
+
+      flippingPage.draw();
+    }
+
+    const shadow = this.shadow;
+
+    if (shadow !== null && flippingPage !== null) {
+      if (flippingPage.getDrawingDensity() === PageDensity.SOFT) {
+        this.drawOuterShadow(shadow);
+        this.drawInnerShadow(shadow);
+      } else {
+        this.drawHardOuterShadow(shadow);
+        this.drawHardInnerShadow(shadow);
+      }
+    }
+  }
+
+  private clear(): void {
+    for (const page of this.app[GET_COLLECTION]().getPages()) {
+      if (
+        page !== this.leftPage &&
+        page !== this.rightPage &&
+        page !== this.flippingPage &&
+        page !== this.bottomPage
+      ) {
+        // Hide by REMOVING the shown class, not by writing `display:none`
+        // inline — and certainly not by wiping cssText, which took the
+        // consumer's own inline styles with it every frame.
+        page.getElement().classList.remove('--shown');
+      }
+
+      if (page.getTemporaryCopy() !== this.flippingPage) {
+        page.hideTemporaryCopy();
+      }
+    }
   }
 }
 
