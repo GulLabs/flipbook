@@ -10,10 +10,10 @@ import { HTMLFlipBook, usePageFlip, type PageState } from '@gullabs/react-flipbo
  *   - `readingDirection` for RTL
  *   - controlled `page` + `onPageChange` for a URL / resume position
  *
- * Engine owns each page ROOT (`style.cssText` every frame). Put color, padding,
- * and images on an INNER node. Children must be host elements (`div`, …) so
- * the binding can attach a ref — a custom component without `forwardRef`
- * silently empties the book.
+ * Engine writes position/size/clip/`background-color` (paper) on the page ROOT.
+ * Put chapter colour, padding, and images on an INNER node — or accept paper
+ * as the face. Children must be host elements (`div`, …) that forward a ref;
+ * otherwise the binding throws.
  */
 
 const leafRoot: CSSProperties = {

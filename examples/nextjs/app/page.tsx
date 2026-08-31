@@ -7,8 +7,9 @@ import { HTMLFlipBook, usePageFlip } from '@gullabs/react-flipbook';
  * App Router: SSR emits `data-flipbook-placeholder`; after hydration the engine
  * builds `.stf__*` and portals leaves into `.stf__block`.
  *
- * Page ROOT styles are engine-owned — colors live on an inner wrapper.
- * Children must be host elements so the binding can ref them into the engine.
+ * Engine writes paper onto the page ROOT (`background-color` / `--stf-paper`).
+ * Chapter colour and padding live on an inner wrapper. Children must be host
+ * elements so the binding can ref them — a missing host throws.
  */
 
 const leafRoot: CSSProperties = { boxSizing: 'border-box', height: '100%' };

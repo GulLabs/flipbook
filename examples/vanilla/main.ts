@@ -36,8 +36,6 @@ const book = new PageFlip(root, {
   flipOnClick: params.get('disableFlipByClick') === '1' ? 'corners' : 'anywhere',
 });
 
-book.loadFromHTML([...root.querySelectorAll<HTMLElement>('.page')]);
-
 (window as unknown as { flipbook: PageFlip }).flipbook = book;
 
 const status = document.getElementById('status');
@@ -75,6 +73,9 @@ book.on('turnRejected', (event) => {
       .join('–')} of ${book.getPageCount()}`;
   }
 });
+
+// `loaded` is synchronous inside loadFromHTML — bind first or data-ready never sets.
+book.loadFromHTML([...root.querySelectorAll<HTMLElement>('.page')]);
 
 prevBtn?.addEventListener('click', () => {
   book.flipPrev();
