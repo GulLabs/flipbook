@@ -43,12 +43,14 @@ rounds have been most stale about:
 
 - **The engine no longer owns `display`** and no longer wipes inline styles.
   Hiding is `visibility`-based, so a consumer's `display:flex` on a page
-  survives. Two residues still contradict this promise at HEAD —
-  `.stf__item.--shown { display: block }` out-specificities a consumer's
-  class rule, and `HTMLPage` still stamps inline `background-color` on the
-  leaf root; **delta B3 removes both** (Codex signoff #2).
+  survives. (Delta B3 shipped the `display` half; its second half — deleting
+  the inline root `background-color` — was REVERSED by the 2026-08-31
+  correction above: the inline structural pair is the opacity guarantee.)
 - **The engine owns exactly** `position/left/top/width/height/clip-path` (+
-  `z-index`, transforms during a fold) **on the leaf root**, and nothing else.
+  `z-index`, transforms during a fold) **and the paper pair**
+  (`background-color` + `background-image`, always the structural
+  `#fff` + `var(--stf-paper)` gradient) **on the leaf root**, and nothing
+  else.
 
 **LOCKED contract (amended 2026-08-31, see the correction above):** the engine
 owns leaf-root _layout and paper_ (the inline structural pair); the consumer
@@ -244,22 +246,25 @@ behavior bugs, C-items are contract conformance.**
      `background-image:linear-gradient(var(--stf-paper), var(--stf-paper))` —
      or equivalent). Delete `isOpaquePageBackground` and the `translucent`
      rejection; keep injection-safety and is-a-color validation.
-  2. **Delete the inline `background-color` write on container leaf roots**
-     (`HTMLPage.ts` sets both `--stf-paper` and `background-color` today) —
-     inline paint beats every consumer stylesheet, contradicting the Job 1
-     promise that per-page backgrounds win over the paper. **Exception,
-     stated because `::before` does not render on replaced elements** (Codex
-     round-2 #1): a leaf whose root IS a replaced element (`img`, `video`,
-     `canvas`, `iframe`, `embed`) keeps the inline `background-color` — it is
-     the only opaque backing such a root can have, and a consumer stylesheet
-     has no meaningful claim on a bare image's background. A bare-`<img>`
-     book gets its own opacity test.
+  2. ~~Delete the inline `background-color` write on container leaf roots~~
+     **REVERSED 2026-08-31 (see the §1 Job 1 correction).** This item shipped
+     and was then found to be the landscape release blocker: hanging all
+     opacity on the `z-index:-1` pseudo left the element that carries the
+     fold's `transform`+`clip-path` transparent, and the "per-page root
+     background wins" premise it served was never physically true (drawn
+     leaves are stacking contexts; the pseudo paints above the root's own
+     background). Current rule: EVERY drawn leaf root — container and
+     replaced alike — carries the inline structural pair
+     (`background-color:#fff` + `linear-gradient(var(--stf-paper,#fff),…)`).
+     Do not re-delete it to satisfy this ledger entry; the pins are
+     `styling-contract.test.ts` B3.2/B3.3 and the landscape e2e opacity test.
   3. **Delete `.stf__item.--shown { display: block }`** — at (0,2,0) it beats
      a consumer's `.page { display: flex }`, contradicting Job 1's display
      promise. `visibility` already carries show/hide; an absolutely
      positioned leaf is block-level without help.
   4. Tests pin the contract from the consumer's side: a class-styled flex
-     page stays flex; a per-page `background` wins over the paper; a
+     page stays flex; per-page paper goes through `--stf-paper` (the
+     root-`background`-wins clause is reversed with item 2 above); a
      translucent `pageBackground` still yields an opaque leaf.
      Kills the verified hole for `var()` fallbacks, `color-mix`, `calc()`
      alphas, and every future syntax, while _accepting_ strictly more valid

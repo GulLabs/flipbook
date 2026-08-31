@@ -138,3 +138,38 @@ test('a hardCovers remount right after a turn stays silent (only initialPage is 
     console.warn = original;
   }
 });
+
+test('the footgun remount stays silent without an explicit dev NODE_ENV', () => {
+  // Codex re-review finding 2: an unbundled production browser has no
+  // `process` at all, and the old `nodeEnv !== 'production'` gate warned
+  // there. The gate is opt-in (development/test only), pinned by removing
+  // `process` around the exact positive scenario.
+  const warned: string[] = [];
+  const original = console.warn;
+  console.warn = (msg: unknown) => warned.push(String(msg));
+  const g = globalThis as { process?: unknown };
+  const realProcess = g.process;
+
+  try {
+    const ref = createRef<FlipBookHandle>();
+    const view = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} initialPage={0} ref={ref}>
+        {pages}
+      </HTMLFlipBook>,
+    );
+
+    expect(ref.current?.pageFlip()?.flipNext()).toBe(true);
+
+    delete g.process;
+    view.rerender(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} initialPage={1} ref={ref}>
+        {pages}
+      </HTMLFlipBook>,
+    );
+
+    expect(warned.join(' ')).not.toMatch(/within 1s of a page turn/);
+  } finally {
+    (globalThis as { process?: unknown }).process = realProcess;
+    console.warn = original;
+  }
+});
