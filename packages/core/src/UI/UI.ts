@@ -79,11 +79,11 @@ type AdoptedLeaf = {
 const hostEngineCount = new WeakMap<HTMLElement, number>();
 
 export class UI {
-  protected readonly parentElement: HTMLElement;
+  private readonly parentElement: HTMLElement;
 
-  protected readonly app: PageFlip;
-  protected readonly wrapper: HTMLElement;
-  protected distElement!: HTMLElement;
+  private readonly app: PageFlip;
+  private readonly wrapper: HTMLElement;
+  private distElement!: HTMLElement;
 
   private items: NodeListOf<HTMLElement> | HTMLElement[];
 
@@ -562,7 +562,7 @@ export class UI {
     this.update();
   }
 
-  protected removeHandlers(): void {
+  private removeHandlers(): void {
     // Unbinding can happen in the middle of a gesture — `refreshHandlers` from
     // `updateSettings({ useMouseEvents })`, and `updateItems`. The real
     // `pointerup` then lands on nothing, so the gesture has to be ended here
@@ -579,7 +579,7 @@ export class UI {
     this.distElement.removeEventListener('dragstart', this.onDragStart);
   }
 
-  protected setHandlers(): void {
+  private setHandlers(): void {
     // X7. Suppressing the native drag ghost is NOT a mouse-input feature, and
     // it used to sit behind this early return: with `useMouseEvents: false` the
     // engine turns off page turning by pointer, but the browser still starts
