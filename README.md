@@ -94,12 +94,12 @@ Measured from the published artifacts, both terser-minified, zero runtime depend
 |                                            | raw (min) |    gzip |  brotli |
 | ------------------------------------------ | --------: | ------: | ------: |
 | `page-flip@2.0.7` (upstream)               |   44.1 kB | 10.4 kB |  9.3 kB |
-| `@gullabs/flipbook-core` HTML engine (3.0) |   62.8 kB | 17.4 kB | 15.4 kB |
+| `@gullabs/flipbook-core` HTML engine (3.1) |   63.3 kB | 17.6 kB | 15.5 kB |
 
 Larger than upstream because of RTL, reduced motion, typed errors, validation,
 and the portrait back-curl fix. This is not a smaller drop-in replacement; it is
-a maintained one. CI ceilings on the packed HTML engine are **63 kB raw /
-15.5 kB brotli / 17.4 kB gzip** (re-ratcheted after PLAN-3.1 B3.2).
+a maintained one. CI ceilings on the packed HTML engine are **63.5 kB raw /
+15.6 kB brotli / 17.6 kB gzip** (re-ratcheted after PLAN-3.1 Campaign C).
 
 Reproduce with `npm pack page-flip@2.0.7` and `pnpm build && pnpm size`.
 
@@ -284,6 +284,48 @@ liveRegionText={(page, pageCount) =>
   page < 4 ? `Page ${['i', 'ii', 'iii', 'iv'][page]}` : `Page ${page - 3} of ${pageCount - 4}`
 }
 ```
+
+**Turn progress / scrubber thumb.** Subscribe to `turnProgress` (React:
+`onTurnProgress`) instead of rAF-polling `getState()`. Progress is geometric
+completion in `[0, 1]`; `direction` is semantic page-index order (`'next'`
+still means higher indices under RTL). Instant turns and hover peels emit
+nothing — treat `flip` / `changeState` as completion, never the last progress
+tick.
+
+```ts
+// Core
+book.on('turnProgress', ({ data }) => {
+  scrubber.value = data.progress; // 0…1 while the fold moves
+});
+book.on('flip', () => {
+  scrubber.value = 1; // committed — progress does not synthesise a final 1.0
+});
+```
+
+```tsx
+// React
+<HTMLFlipBook
+  width={300}
+  height={500}
+  onTurnProgress={({ progress }) => setThumb(progress)}
+  onPageChange={() => setThumb(1)}
+>
+  …
+</HTMLFlipBook>
+```
+
+### Events
+
+| Core event          | React prop            | Payload                                              | Notes                                                                               |
+| ------------------- | --------------------- | ---------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `flip`              | `onPageChange`        | `BookSnapshot`                                       | Real page change only (never a repaint)                                             |
+| `changeOrientation` | `onChangeOrientation` | `{ orientation }`                                    | Portrait / landscape                                                                |
+| `changeState`       | `onChangeState`       | `{ state }`                                          | `read` / `user_fold` / `fold_corner` / `flipping`                                   |
+| `ready`             | `onReady`             | `BookSnapshot`                                       | Once per engine                                                                     |
+| `loaded`            | `onLoaded`            | `BookSnapshot`                                       | Every load, including the first                                                     |
+| `pagesChanged`      | `onPagesChanged`      | `BookSnapshot`                                       | Collection replaced                                                                 |
+| `turnRejected`      | `onTurnRejected`      | `{ reason, direction, targetPage, landedOn, code? }` | Turn did not start                                                                  |
+| `turnProgress`      | `onTurnProgress`      | `{ progress: number; direction: 'next' \| 'prev' }`  | Fold position stream; silent on instant turns / hover peel; not a completion signal |
 
 **Mistakes the API catches loudly:**
 

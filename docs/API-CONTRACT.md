@@ -78,7 +78,7 @@ static: injection safety and "is this a color at all".
 
 ### Job 3 — "Draw my own chrome" ✅ after payload addition
 
-The event map is clean and locks: seven events, one snapshot shape.
+The event map is clean and locks: eight events, one snapshot shape.
 `ready`/`loaded` distinguish first load from reload; `pagesChanged` replaced the
 always-fired-together pair; `turnRejected` carries `direction`, `targetPage`,
 `landedOn`, `code`. `flip` never fires for a repaint (ADR 0003).
@@ -90,6 +90,16 @@ in the snapshot, "Page 3–4 of 12" is renderable from any event payload alone,
 and the hook stops assembling state from two sources (closes Codex #7 in the
 cheap direction — the expensive `getSnapshot()` redesign is rejected, the events
 _are_ the snapshot channel).
+
+**ADDITIVE 2026-08-31 (PLAN-3.1 Campaign C):** `turnProgress` joins
+`FlipbookEventMap` as `{ progress: number; direction: 'next' | 'prev' }`, with
+React `onTurnProgress` receiving the unwrapped payload. Fires while a turn or
+user fold is in flight (value stream from fold position updates — not a frame
+clock); never for instant turns (`flippingTime: 0` / reduced motion) or hover
+corner peels. Direction is semantic page-index order (still `'next'` under
+RTL). No synthetic terminal `1.0` / `0` — completion is `flip` / `changeState`.
+Locked surface statement gains this event; removals and shape changes remain
+forbidden.
 
 ### Job 4 — "Control the book" ✅ after one rename + one rule
 
@@ -406,7 +416,7 @@ bar: a real consumer mis-renders, locks, crashes, or is lied to in 3.0.
 | P8 `validateFlipOptions` preflight                   | **TODO** — additive, safe in 3.1; construction throw covers 3.0                                                                 |
 | Controls styling seam (render prop / classNames)     | **TODO** — 3.0 answer is `controls="visible"` + stable attributes                                                               |
 | `getSpreadCount`/spread index for scrubbers          | **TODO**                                                                                                                        |
-| `onProgress` frame tick                              | **TODO**                                                                                                                        |
+| `onProgress` frame tick                              | **Shipped 2026-08-31** as `turnProgress` / `onTurnProgress` (PLAN-3.1 C) — additive ledger entry under Job 3                    |
 | `<FlipPage>` wrapper (B2's optional half)            | **TODO**                                                                                                                        |
 | H7 Next example `flippingTime={0}`                   | **TODO** (do with the docs round)                                                                                               |
 | B8/H9 vanilla demo vs e2e harness split              | **TODO** (low)                                                                                                                  |

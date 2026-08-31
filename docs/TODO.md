@@ -23,8 +23,9 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
 - [ ] **Spread-space position** — `getSpreadCount()` / current spread index on
       the façade, for scrubbers and PDF-style pagers that need position in
       spread space rather than leaf space.
-- [ ] **`onProgress` / turn frame tick** — drive a scrubber thumb during an
-      animated turn without rAF-polling `getState()`.
+- [x] **`turnProgress` / `onTurnProgress`** — drive a scrubber thumb during an
+      animated turn without rAF-polling `getState()` (PLAN-3.1 Campaign C,
+      2026-08-31).
 - [ ] **`<FlipPage>` wrapper component** (B2's optional half) — an inner-slot
       page primitive so consumers never learn the leaf-root layout rule the
       hard way.

@@ -74,14 +74,15 @@ strict CSP and ship the exported `style.css` / `FLIPBOOK_CSS` yourself),
 
 Every payload is now an object; no handler receives a bare number.
 
-| Upstream event                   | 3.0                                                                                                 |
-| -------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `init` (fired once per **load**) | `ready` (once per engine) + `loaded` (every load, including the first)                              |
-| `flip` (number payload)          | `flip` (`BookSnapshot`) — fires only when the page actually changes, never for a repaint (ADR 0003) |
-| `update` + `collectionRebuild`   | `pagesChanged` (`BookSnapshot`) — they always fired together with the same data                     |
-| `changeOrientation` (string)     | `changeOrientation` (`{ orientation }`)                                                             |
-| `changeState` (string)           | `changeState` (`{ state }`)                                                                         |
-| —                                | `turnRejected` (`{ reason, direction, targetPage, landedOn, code? }`)                               |
+| Upstream event                   | 3.0                                                                                                        |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `init` (fired once per **load**) | `ready` (once per engine) + `loaded` (every load, including the first)                                     |
+| `flip` (number payload)          | `flip` (`BookSnapshot`) — fires only when the page actually changes, never for a repaint (ADR 0003)        |
+| `update` + `collectionRebuild`   | `pagesChanged` (`BookSnapshot`) — they always fired together with the same data                            |
+| `changeOrientation` (string)     | `changeOrientation` (`{ orientation }`)                                                                    |
+| `changeState` (string)           | `changeState` (`{ state }`)                                                                                |
+| —                                | `turnRejected` (`{ reason, direction, targetPage, landedOn, code? }`)                                      |
+| —                                | `turnProgress` (`{ progress, direction }`) — fold stream while a turn/drag is live; React `onTurnProgress` |
 
 `BookSnapshot` is `{ page, pageCount, orientation, visiblePages }`. `page` is
 the spread **head** — the first leaf on screen; `visiblePages` is every leaf on
