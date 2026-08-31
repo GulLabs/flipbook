@@ -143,9 +143,10 @@ tears the book down mid-animation.
 
 ## Known gaps in the current state
 
-- **Bundle size.** The packed HTML engine is **56.02 kB raw / 13.73 kB brotli /
-  15.39 kB gzip** against ceilings of **57 / 14 / 16 kB** (lowered after canvas
-  removal, ADR 0002). Re-measure with `pnpm size` before quoting these — the
+- **Bundle size.** The packed HTML engine is **61.23 kB raw / 15.15 kB brotli /
+  16.95 kB gzip** against ceilings of **62 / 16 / 18 kB** (raised for the 3.0
+  contract delta — B2/B3/B5, C1–C8 — which spent correctness headroom per
+  AGENTS.md §2). Re-measure with `pnpm size` before quoting these — the
   figures here have twice been left behind by the code they describe. The §5 target of 35 kB minified is **retired**: upstream
   `page-flip@2.0.7` is itself 44,058 B minified (measured from its published
   tarball), so that target asked this fork to be ~20% smaller than the thing it

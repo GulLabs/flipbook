@@ -76,7 +76,8 @@ function PictureBook() {
         sizing="fixed"
         flippingTime={500}
         controls="visible"
-        pageBackground="#f4ecd8"
+        controlLabels={{ previous: 'Previous page', next: 'Next page' }}
+        pageBackground="var(--paper, #f4ecd8)"
         {...book.bookProps}
         style={{ maxWidth: 560 }}
         aria-label="Picture book"
@@ -99,41 +100,49 @@ function InteractiveBook() {
   const book = usePageFlip(0);
   const [state, setState] = useState<PageState>('read');
   const [rtl, setRtl] = useState(false);
+  const [locked, setLocked] = useState(false);
+  const [plays, setPlays] = useState(0);
 
   const onChangeState = useCallback((info: { state: PageState }) => {
     setState(info.state);
   }, []);
 
+  const turning = locked || state !== 'read';
+
   return (
     <section style={{ marginBottom: 48 }}>
-      <h2 style={{ margin: '0 0 8px' }}>Your own chrome — RTL, goToPage</h2>
+      <h2 style={{ margin: '0 0 8px' }}>Your own chrome — RTL, hotspot, lock</h2>
       <p style={{ margin: '0 0 12px', color: '#555', maxWidth: 520 }}>
-        <code>usePageFlip</code> is uncontrolled. Spread <code>bookProps</code>, never pass{' '}
-        <code>page={'{book.page}'}</code>. RTL inverts turn direction only — the fold still follows
-        the finger.
+        <code>usePageFlip</code> is uncontrolled — never pass <code>page={'{book.page}'}</code>. A{' '}
+        <code>&lt;button&gt;</code> on the leaf does not start a fold; a native{' '}
+        <code>&lt;video controls&gt;</code> still would (selector gap). Lock is three live knobs,
+        not a freeze of <code>page</code>.
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <button type="button" onClick={() => book.flipPrev()} disabled={!book.canGoPrev}>
+        <button type="button" onClick={() => book.flipPrev()} disabled={turning || !book.canGoPrev}>
           Prev
         </button>
-        <button type="button" onClick={() => book.flipNext()} disabled={!book.canGoNext}>
+        <button type="button" onClick={() => book.flipNext()} disabled={turning || !book.canGoNext}>
           Next
         </button>
-        <button type="button" onClick={() => book.goToPage(0, 'instant')}>
+        <button type="button" onClick={() => book.goToPage(0, 'instant')} disabled={locked}>
           First
         </button>
-        <button type="button" onClick={() => book.goToPage(2)}>
+        <button type="button" onClick={() => book.goToPage(2)} disabled={locked}>
           Go to leaf 3
         </button>
         <button type="button" onClick={() => setRtl((v) => !v)} aria-pressed={rtl}>
           RTL: {rtl ? 'on' : 'off'}
+        </button>
+        <button type="button" onClick={() => setLocked((v) => !v)} aria-pressed={locked}>
+          Lock: {locked ? 'on' : 'off'}
         </button>
       </div>
       <p
         data-demo-status=""
         style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: '#333' }}
       >
-        pages {pagesLabel(book.visiblePages, book.pageCount)} · {state} · rejected{' '}
+        pages {pagesLabel(book.visiblePages, book.pageCount)} · {state} · plays {plays} · rejected{' '}
         {book.lastRejection ? book.lastRejection.reason : '—'}
       </p>
       <HTMLFlipBook
@@ -143,8 +152,11 @@ function InteractiveBook() {
         sizing="fixed"
         flippingTime={400}
         readingDirection={rtl ? 'rtl' : 'ltr'}
-        controls="none"
         {...book.bookProps}
+        controls="none"
+        useKeyboard={!locked}
+        flipOnClick={locked ? 'never' : 'anywhere'}
+        pointerInput={locked ? [] : ['mouse', 'touch', 'pen']}
         onChangeState={onChangeState}
         style={{ maxWidth: 560 }}
         aria-label="Interactive HTML flipbook"
@@ -153,7 +165,14 @@ function InteractiveBook() {
           <div style={leafInner('#ffe4e1')}>One</div>
         </div>
         <div style={leafRoot}>
-          <div style={leafInner('#e0f0ff')}>Two</div>
+          <div style={leafInner('#e0f0ff')}>
+            Two
+            <div style={{ marginTop: 12 }}>
+              <button type="button" onClick={() => setPlays((n) => n + 1)}>
+                Play (must not fold)
+              </button>
+            </div>
+          </div>
         </div>
         <div style={leafRoot}>
           <div style={leafInner('#e6ffe6')}>Three</div>
@@ -168,18 +187,25 @@ function InteractiveBook() {
 
 function ControlledBook() {
   const [page, setPage] = useState(0);
+  const [visible, setVisible] = useState<number[]>([]);
   const [pageCount, setPageCount] = useState(0);
+  const [instant, setInstant] = useState(true);
 
   return (
     <section>
       <h2 style={{ margin: '0 0 8px' }}>Controlled page — resume / deep link</h2>
       <p style={{ margin: '0 0 12px', color: '#555', maxWidth: 520 }}>
         Own <code>page</code> and <code>onPageChange</code>. Do not use <code>usePageFlip</code>{' '}
-        here. <code>pageTransition=&quot;instant&quot;</code> is the deep-link path; omit it to
-        animate.
+        here. Instant is <code>popstate</code> / a shared URL; animate is an in-app turn.{' '}
+        <code>page</code> is the spread head — chrome uses <code>visiblePages</code>.
       </p>
+      <div style={{ marginBottom: 12 }}>
+        <button type="button" onClick={() => setInstant((v) => !v)} aria-pressed={instant}>
+          pageTransition: {instant ? 'instant' : 'animate'}
+        </button>
+      </div>
       <p style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: '#333' }}>
-        controlled leaf {page + 1} of {pageCount}
+        {pagesLabel(visible, pageCount)} · head {page}
       </p>
       <HTMLFlipBook
         width={280}
@@ -187,14 +213,16 @@ function ControlledBook() {
         sizing="fixed"
         flippingTime={400}
         page={page}
-        pageTransition="instant"
+        pageTransition={instant ? 'instant' : 'animate'}
         onPageChange={(snapshot) => {
           setPage(snapshot.page);
           setPageCount(snapshot.pageCount);
+          setVisible(snapshot.visiblePages);
         }}
         onLoaded={(snapshot) => {
           setPage(snapshot.page);
           setPageCount(snapshot.pageCount);
+          setVisible(snapshot.visiblePages);
         }}
         controls="visible"
         style={{ maxWidth: 560 }}

@@ -6,9 +6,9 @@
     <title>@gullabs/flipbook-core vanilla</title>
     <style>
       /*
-       * The engine owns the page ROOT styles: every draw rewrites the leaf's
-       * `style.cssText` (position, size, pageBackground). Put colors and
-       * padding on an INNER element — never on `.page` itself.
+       * Engine writes position, size, clip, and paper (`background-color` /
+       * `--stf-paper`) on the page ROOT. Chapter colour and padding go on
+       * `.page-inner`. A class `background` on `.page` loses to paper.
        */
       html,
       body {

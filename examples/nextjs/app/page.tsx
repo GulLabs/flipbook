@@ -44,8 +44,8 @@ export default function Page() {
     >
       <h1 style={{ marginTop: 0 }}>Next.js App Router</h1>
       <p style={{ color: '#555', maxWidth: 520 }}>
-        View source / disable JS to see <code>data-flipbook-placeholder</code> on the SSR HTML.
-        After hydration the book curls — this is a real <code>flippingTime</code>, not instant.
+        SSR emits <code>data-flipbook-placeholder</code> with <strong>no leaves</strong>. You own
+        no-JS content. After hydration the book curls — real <code>flippingTime</code>, not instant.
       </p>
       <p style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13 }}>
         {hydrated ? 'hydrated' : 'ssr'} · pages {shown} of {book.pageCount} · {book.orientation}

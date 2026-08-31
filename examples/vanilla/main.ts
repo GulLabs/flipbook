@@ -41,6 +41,7 @@ const book = new PageFlip(root, {
 const status = document.getElementById('status');
 const prevBtn = document.getElementById('prev');
 const nextBtn = document.getElementById('next');
+const firstBtn = document.getElementById('first');
 
 const writeChrome = () => {
   const visible = book.getVisiblePages().map((i) => i + 1);
@@ -50,6 +51,7 @@ const writeChrome = () => {
   }
   if (prevBtn instanceof HTMLButtonElement) prevBtn.disabled = !book.canTurn('prev');
   if (nextBtn instanceof HTMLButtonElement) nextBtn.disabled = !book.canTurn('next');
+  if (firstBtn instanceof HTMLButtonElement) firstBtn.disabled = !book.canTurn('prev');
 };
 
 book.on('flip', (event) => {
@@ -83,7 +85,7 @@ prevBtn?.addEventListener('click', () => {
 nextBtn?.addEventListener('click', () => {
   book.flipNext();
 });
-document.getElementById('first')?.addEventListener('click', () => {
+firstBtn?.addEventListener('click', () => {
   try {
     book.turnToPage(0);
     writeChrome();

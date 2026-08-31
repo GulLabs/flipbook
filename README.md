@@ -78,12 +78,12 @@ Measured from the published artifacts, both terser-minified, zero runtime depend
 |                                            | raw (min) |    gzip |  brotli |
 | ------------------------------------------ | --------: | ------: | ------: |
 | `page-flip@2.0.7` (upstream)               |   44.1 kB | 10.4 kB |  9.3 kB |
-| `@gullabs/flipbook-core` HTML engine (3.0) |   56.2 kB | 15.4 kB | 13.8 kB |
+| `@gullabs/flipbook-core` HTML engine (3.0) |   61.2 kB | 17.0 kB | 15.2 kB |
 
 Larger than upstream because of RTL, reduced motion, typed errors, validation,
 and the portrait back-curl fix. This is not a smaller drop-in replacement; it is
-a maintained one. CI ceilings on the packed HTML engine are **57 kB raw / 14 kB
-brotli / 16 kB gzip**.
+a maintained one. CI ceilings on the packed HTML engine are **62 kB raw / 16 kB
+brotli / 18 kB gzip**.
 
 Reproduce with `npm pack page-flip@2.0.7` and `pnpm build && pnpm size`.
 
@@ -120,20 +120,41 @@ pageFlip.loadFromHTML(pages);
 **React**
 
 ```tsx
-import HTMLFlipBook, { usePageFlip } from '@gullabs/react-flipbook';
+import { useState } from 'react';
+import HTMLFlipBook, { type BookSnapshot } from '@gullabs/react-flipbook';
 
 export function Book() {
+  // Seed the counter from onLoaded — it carries the real pageCount and the
+  // resolved page, so the label never renders "Page 1 of 0". onPageChange
+  // fires only for real turns, never on mount.
+  const [book, setBook] = useState({ page: 0, pageCount: 0 });
+  const sync = (s: BookSnapshot) => setBook({ page: s.page, pageCount: s.pageCount });
+
   return (
-    <HTMLFlipBook width={300} height={500}>
-      <div>Page 1</div>
-      <div>
-        <img
-          src="/pages/2.jpg"
-          alt="Title page"
-          style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-        />
-      </div>
-    </HTMLFlipBook>
+    <>
+      <p>
+        Page {book.page + 1} of {book.pageCount}
+      </p>
+      <HTMLFlipBook
+        width={300}
+        height={500}
+        pageBackground="var(--paper, #fff)"
+        onLoaded={sync}
+        onPageChange={sync}
+      >
+        {/* Host element required. Paper is on this root; face colour lives inside. */}
+        <div>
+          <div style={{ height: '100%', padding: 16 }}>Page 1</div>
+        </div>
+        <div>
+          <img
+            src="/pages/2.jpg"
+            alt="Title page"
+            style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+          />
+        </div>
+      </HTMLFlipBook>
+    </>
   );
 }
 ```
@@ -148,6 +169,122 @@ export function Book() {
 
 ---
 
+## Styling
+
+The engine owns the page **root**; you own everything inside it. Every draw
+writes position, size, clip and the paper layer onto the leaf element itself,
+so colors, padding and typography belong on an **inner wrapper** — a
+`background` on the root loses to the engine's paper.
+
+```html
+<div class="my-page">
+  <!-- root: the engine's -->
+  <div class="my-page-inner">…yours…</div>
+</div>
+```
+
+**Paper.** `pageBackground` (default `#fff`) paints every leaf and the fold of
+a turning page. Any CSS color works — including `var(--paper, #fff)` and
+translucent values: opacity is structural (your color composites over an
+opaque base), so a see-through fold cannot ship by accident. The value lands
+on the leaf as the `--stf-paper` custom property.
+
+**Stable selectors** — these class names are API and safe to target:
+
+| Selector                | What it is                                                       |
+| ----------------------- | ---------------------------------------------------------------- |
+| `.stf__parent`          | The host you (or the binding) passed in                          |
+| `.stf__wrapper`         | Aspect-ratio wrapper                                             |
+| `.stf__block`           | Page container — the node `getBlockElement()` returns            |
+| `.stf__item`            | A leaf root (your page element, adopted)                         |
+| `.stf__item.--shown`    | A leaf currently on screen (visibility axis — no `display` rule) |
+| `.--left` / `.--right`  | Which half of a landscape spread the leaf sits in                |
+| `.--hard` / `.--simple` | Hard (cover) vs paper leaf                                       |
+
+Your own `className` / `style` on a page element are preserved — the engine
+adds its classes next to yours and never wipes the node.
+
+**Branding the built-in controls.** With `controls="visible"`, the previous /
+next buttons carry `data-flipbook-control="prev|next"` inside a
+`[data-flipbook-controls]` container, and the keyboard-focusable book root
+carries `[data-flipbook-kb]`. Style them by attribute; label them via
+`controlLabels={{ previous: '…', next: '…' }}`.
+
+**Center seam / gutter** (the shadow where two pages meet on a desk): overlay
+it — the book's stacking is stable under `startZIndex`, so an absolutely
+positioned element down the horizontal center of the host with
+`mix-blend-mode: multiply` and a symmetric gradient reads as the spine and
+never intercepts input (`pointer-events: none`). A built-in `--stf-gutter` is
+on the 3.1 list.
+
+```css
+.spine {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  background: linear-gradient(to right, transparent, rgb(0 0 0 / 0.18), transparent);
+}
+```
+
+---
+
+## Recipes and common mistakes
+
+**Deep link / resume.** Controlled `page` + `pageTransition="instant"` is the
+URL path; animate is an in-app turn:
+
+```tsx
+<HTMLFlipBook
+  page={pageFromUrl}
+  pageTransition="instant"
+  onPageChange={(s) => history.replaceState(null, '', `#page-${s.page}`)}
+  width={300}
+  height={500}
+>
+  …
+</HTMLFlipBook>
+```
+
+**Hard covers with visible controls.**
+
+```tsx
+<HTMLFlipBook width={300} height={500} hardCovers controls="visible">
+  <div>{/* front cover — shown alone, turns rigidly */}</div>
+  <div>…</div>
+  <div>{/* back cover — also shown alone */}</div>
+</HTMLFlipBook>
+```
+
+**Front-matter page labels.** `liveRegionText` renders the screen-reader
+announcement, so roman-numeral front matter announces correctly:
+
+```tsx
+liveRegionText={(page, pageCount) =>
+  page < 4 ? `Page ${['i', 'ii', 'iii', 'iv'][page]}` : `Page ${page - 3} of ${pageCount - 4}`
+}
+```
+
+**Mistakes the API catches loudly:**
+
+- **Settings are validated strictly.** `'false'` strings, `NaN` dimensions,
+  negative times all throw `PageFlipError` with `code: 'INVALID_SETTING'` and
+  the offending key on `err.setting` — a book that cannot work fails at
+  construction, not as an invisible `NaNpx` box.
+- **`page` without `onPageChange` is a locked book.** The engine turns, your
+  prop snaps it back. Controlled means both halves.
+- **`sizing: 'fixed'` plus authored bounds throws.** Under fixed, min/max
+  derive from `width`/`height`; delete the bounds.
+- **Don't seed page state from `onPageChange`.** It fires only for real turns
+  — use `onLoaded`, which carries the resolved page and count.
+- **Style an inner wrapper, not the leaf root.** See Styling above.
+
+---
+
 ## Accessibility
 
 - **`useKeyboard`** — ArrowLeft/Right, Home, End. Default is on for copy-paste demos; set `false` if you ship your own labeled controls.
@@ -157,6 +294,27 @@ export function Book() {
 - **`readingDirection: 'rtl'`** inverts turn direction only, never pointer coordinates.
 - **`controls`** — `'auto'` (skip-link, default), `'visible'`, or `'none'` if you render your own.
 - Vanilla: wire `flipNext` / `flipPrev` to your own buttons; listen for `turnRejected` when a turn does not start.
+
+---
+
+## SSR, CSP, RTL
+
+- **SSR.** Imports are side-effect-safe (no `window`/`document` at module
+  scope). The React binding renders a `data-flipbook-placeholder` shell on the
+  server with **no leaves** — you own the no-JS content — and builds the real
+  book after hydration.
+- **CSP.** The engine injects its stylesheet at runtime by default. Under a
+  strict `style-src`, pass `injectStyles={false}` and ship the exported
+  stylesheet yourself: `import '@gullabs/flipbook-core/style.css'` (or inline
+  the exported `FLIPBOOK_CSS` string with your nonce).
+- **RTL.** `readingDirection: 'rtl'` inverts _turn direction_ only — click,
+  corner, swipe, and keyboard all move backwards through page order — but the
+  fold always follows the finger; pointer coordinates are never mirrored.
+
+The full public surface, and the map from upstream's getters to it, is in
+[`MIGRATION.md`](./MIGRATION.md#the-supported-façade). One rule worth repeating:
+a React host portals its page elements into `getBlockElement()`, always — that
+node is the only supported mount target.
 
 ---
 
