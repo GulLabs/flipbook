@@ -149,6 +149,19 @@ export class PageFlip extends EventObject {
    * `ready` is once per ENGINE, `loaded` once per load. See {@link FlipbookEventMap}.
    */
   private readyAnnounced = false;
+
+  /**
+   * A load that reached the announcement point and did not get to say `loaded`.
+   *
+   * Two things can steal it. An EMPTY load has nothing to announce yet — the
+   * React binding's `loadFromHTML([])` portal shell. And a `ready` listener can
+   * synchronously replace the pages, superseding the outer announcement; the
+   * book then has pages and was never announced at all.
+   *
+   * Whoever completes the load takes over the announcement. `null` means there
+   * is nothing outstanding.
+   */
+  private pendingLoad = false;
   private destroyed = false;
 
   /**
@@ -619,6 +632,9 @@ export class PageFlip extends EventObject {
     // So an empty load defers, and `updateFromHtml` announces when the pages
     // actually arrive (see `openingFresh` there). A genuinely empty book never
     // announces, which is honest: there is nothing to be ready with.
+    // An EMPTY load is a shell, not a book. `updateFromHtml` announces when the
+    // pages actually arrive — see `pendingLoad`.
+    this.pendingLoad = true;
     if (snapshot.pageCount > 0) this.announceLoad(generation, snapshot);
   }
 
@@ -627,6 +643,8 @@ export class PageFlip extends EventObject {
    * listener has already superseded this load.
    */
   private announceLoad(generation: number, snapshot: BookSnapshot): void {
+    if (snapshot.pageCount === 0) return;
+
     // Read through a method, not the field: `dispatch` runs consumer code that
     // can destroy or reload the engine, and TypeScript narrows `this.destroyed`
     // from the first check and then reports the second as always-false. The
@@ -643,6 +661,7 @@ export class PageFlip extends EventObject {
       if (superseded()) return;
     }
 
+    this.pendingLoad = false;
     this.dispatch('loaded', snapshot);
   }
 
@@ -799,10 +818,15 @@ export class PageFlip extends EventObject {
 
       pages.show(target);
 
-      // The deferred announcement from an empty `loadFromHTML([])`. This is the
-      // moment the book first has pages, which is what `ready` / `loaded` are
-      // supposed to describe.
-      if (openingFresh && !this.readyAnnounced) {
+      // Take over an outstanding load announcement.
+      //
+      // Two cases, and the second was missed: the empty `loadFromHTML([])`
+      // portal shell, which has nothing to announce until pages arrive; and a
+      // `ready` listener that synchronously replaces the pages, which
+      // SUPERSEDES the outer `loaded` — leaving a book that has pages and was
+      // never announced at all. `pendingLoad` covers both, because both are
+      // "a load reached the announcement point and did not get to finish".
+      if (this.pendingLoad) {
         this.announceLoad(this.loadGeneration, {
           page: this.resolvedPageIndex(pages),
           pageCount,

@@ -402,10 +402,15 @@ export class Settings {
     if (!Array.isArray(pointers)) {
       reject('pointerInput', pointers, `an array of 'mouse' | 'touch' | 'pen'`);
     }
+    const seen = new Set<string>();
     for (const kind of pointers as readonly unknown[]) {
       if (typeof kind !== 'string' || !ALL_POINTERS.includes(kind as PointerKind)) {
         reject('pointerInput', kind, `only 'mouse', 'touch' or 'pen'`);
       }
+      if (seen.has(kind)) {
+        reject('pointerInput', kind, 'each pointer kind at most once');
+      }
+      seen.add(kind);
     }
 
     if (!Number.isInteger(result.initialPage) || result.initialPage < 0) {

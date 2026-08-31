@@ -486,9 +486,25 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       }
 
       try {
-        if (animate) engine.flip(page);
-        else engine.turnToPage(page);
-        return true;
+        if (!animate) {
+          engine.turnToPage(page);
+          return true;
+        }
+
+        // The core returns `false` only when a NEWER turn overtook this one.
+        // Discarding it made the handle report success for a request the engine
+        // had dropped — contradicting `FlipBookHandle.flipToPage`'s own boolean
+        // contract, and with no rejection to compensate. The controlled path
+        // already handles this; the imperative one did not.
+        if (engine.flip(page)) return true;
+
+        eventHandlersRef.current.onTurnRejected?.({
+          reason: 'superseded',
+          direction: null,
+          targetPage: page,
+          landedOn: engine.getPageCount() > 0 ? engine.getCurrentPageIndex() : null,
+        });
+        return false;
       } catch (error: unknown) {
         if (!(error instanceof PageFlipError)) throw error;
         eventHandlersRef.current.onTurnRejected?.({

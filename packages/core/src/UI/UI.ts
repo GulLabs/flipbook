@@ -648,7 +648,10 @@ export abstract class UI {
 
     if (kind === 'mouse' || kind === 'touch' || kind === 'pen') return allowed.includes(kind);
 
-    return allowed.length === ALL_POINTERS.length;
+    // SET membership, not array length. `['touch','touch','touch']` has
+    // length 3, so a length test read a deliberately narrowed policy as "all
+    // pointers" and admitted an unrecognised device the consumer had excluded.
+    return ALL_POINTERS.every((kind) => allowed.includes(kind));
   }
 
   private onPointerDown = (e: PointerEvent): void => {
