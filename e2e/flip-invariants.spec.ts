@@ -255,6 +255,40 @@ test.describe('landscape', () => {
   });
 });
 
+test.describe('programmatic turns (buttons, not gestures)', () => {
+  // Every other e2e drives the book through pointer gestures, which wake the
+  // renderer per input event — so a broken animated `flipNext` (no input
+  // stream, pure rAF) had NO real-browser coverage. This is the path every
+  // consumer's own chevrons use (the Puddlebend reader's Prev/Next), and the
+  // exact path a hidden-tab rAF stall imitates; a test that fails here and
+  // passes in gestures.spec points at the scheduler, not the geometry.
+  test('the Next and Prev buttons complete animated turns', async ({ page }) => {
+    await openBook(page, LANDSCAPE);
+
+    await page.locator('#next').click();
+    await expect(page.locator('body[data-page="2"]')).toBeAttached();
+
+    // 4 pages = 2 landscape spreads, so head 2 is the end: the boundary is
+    // reported (canTurn → chrome disables) rather than a dead click.
+    await expect(page.locator('#next')).toBeDisabled();
+
+    await page.locator('#prev').click();
+    await expect(page.locator('body[data-page="0"]')).toBeAttached();
+    await expect(page.locator('#prev')).toBeDisabled();
+  });
+
+  test('First is an instant jump, not a fan of turns', async ({ page }) => {
+    await openBook(page, LANDSCAPE);
+
+    await page.locator('#next').click();
+    await expect(page.locator('body[data-page="2"]')).toBeAttached();
+
+    // turnToPage(0): commits without an animation frame in between.
+    await page.locator('#first').click();
+    await expect(page.locator('body[data-page="0"]')).toBeAttached();
+  });
+});
+
 test.describe('reading direction', () => {
   test('rtl turns forward from the left edge', async ({ page }) => {
     await openBook(page, PORTRAIT, '?rtl=1');
