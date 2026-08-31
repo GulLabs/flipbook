@@ -257,7 +257,10 @@ export class Flip {
 
     calc.calc(curl.from);
 
-    this.animateFlippingTo(curl.from, curl.to, true);
+    // A programmatic turn IS the full turn by construction, so it gets the
+    // configured `flippingTime` exactly — not a fraction of it derived from
+    // where the corner point happens to sit (Puddlebend Issue 4).
+    this.animateFlippingTo(curl.from, curl.to, true, true, 'full');
     return true;
   }
 
@@ -782,15 +785,30 @@ export class Flip {
    * @param {Point} dest - animation end point
    * @param {boolean} isTurned - will the page turn over, or just bring it back
    * @param {boolean} needReset - reset the flipping process at the end of the animation
+   * @param {'full' | 'partial'} extent - `'full'` is a whole programmatic turn
+   *   and runs for exactly the configured `flippingTime`; `'partial'` (a drag
+   *   release, a hover peel) settles in proportion to the distance left.
    */
-  private animateFlippingTo(start: Point, dest: Point, isTurned: boolean, needReset = true): void {
+  private animateFlippingTo(
+    start: Point,
+    dest: Point,
+    isTurned: boolean,
+    needReset = true,
+    extent: 'full' | 'partial' = 'partial',
+  ): void {
     const points = pointsBetween(start, dest);
 
     // Create frames
     const frames = [];
     for (const p of points) frames.push(() => this.do(p));
 
-    const duration = this.getAnimationDuration(points.length);
+    // Max-axis distance, the same measure `pointsBetween` steps by — NOT
+    // `points.length`, which is capped at 4097 (see getAnimationDuration).
+    const travel = Math.max(Math.abs(dest.x - start.x), Math.abs(dest.y - start.y));
+    const duration =
+      extent === 'full'
+        ? this.getAnimationDuration(Number.POSITIVE_INFINITY)
+        : this.getAnimationDuration(travel);
 
     const generation = this.turnGeneration;
 
@@ -963,15 +981,37 @@ export class Flip {
     return direction;
   }
 
-  private getAnimationDuration(size: number): number {
+  /**
+   * How long an animation travelling `travel` px (max-axis, matching
+   * `pointsBetween`'s step count) should run.
+   *
+   * Puddlebend Issue 4: `flippingTime` must mean what it says on every page
+   * size. Upstream normalized to a magic 1000 px — duration was
+   * `(points / 1000) × flippingTime` below that — so `flippingTime: 800` ran
+   * 800 ms on a ≥500 px desktop page and ~560 ms on a 350 px phone leaf: the
+   * one setting silently meant different things per device, and a consumer
+   * had to reverse-engineer the constant to compensate.
+   *
+   * The reference is now the book's OWN full turn (`2 × pageWidth`, the
+   * corner-to-corner x travel): a full turn takes exactly `flippingTime`
+   * everywhere, and a drag released mid-fold settles in proportion to the
+   * distance it has left — near the edge it still snaps rather than crawling.
+   *
+   * Derived from geometric TRAVEL, not `points.length`: `pointsBetween` caps
+   * its output at 4097 points, so a count-based formula silently shortened
+   * (or would now shorten) turns on very large books.
+   */
+  private getAnimationDuration(travel: number): number {
     const settings = this.app.getSettings();
     const defaultTime = effectiveFlippingTime(settings.flippingTime, settings.respectReducedMotion);
 
     if (defaultTime <= 0) return 0;
 
-    if (size >= 1000) return defaultTime;
+    const fullTurn = 2 * this.getBoundsRect().pageWidth;
 
-    return (size / 1000) * defaultTime;
+    if (fullTurn <= 0 || travel >= fullTurn) return defaultTime;
+
+    return (travel / fullTurn) * defaultTime;
   }
 
   /**

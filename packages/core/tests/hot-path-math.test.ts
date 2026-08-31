@@ -109,11 +109,11 @@ describe('pointsBetween is bounded for every input', () => {
   });
 
   test('the cap is duration-neutral: it never engages below `getAnimationDuration`s threshold', () => {
-    // The cap is only safe because `Flip.getAnimationDuration` returns the full
-    // flipping time for every count >= 1000, so capping ABOVE 1000 changes no
-    // turn's duration. A cap that crept below that threshold would silently
-    // shorten every large book's animation, which no other test here would
-    // catch — the counts would still be "bounded".
+    // Duration no longer depends on `points.length` at all —
+    // `getAnimationDuration` takes the geometric travel (Puddlebend Issue 4),
+    // so the cap is unconditionally duration-neutral. The counts below still
+    // pin the cap's floor: capping under ~1000 would coarsen the frame
+    // sampling of ordinary turns, which no other test here would catch.
     expect(pointsBetween({ x: 0, y: 0 }, { x: 999, y: 0 })).toHaveLength(1000);
     expect(pointsBetween({ x: 0, y: 0 }, { x: 2000, y: 0 }).length).toBeGreaterThanOrEqual(1000);
   });

@@ -9,13 +9,17 @@
  *     `color-mix`, `calc()` alphas, whatever CSS grows next — cannot produce a
  *     see-through fold. Opacity is structural; there is no alpha parser to
  *     bypass.
- *  2. The engine writes no inline `background-color` on a CONTAINER leaf root
- *     (inline paint beats every consumer stylesheet), and no
- *     `display`-forcing rule beats a consumer's `.page { display: flex }`.
+ *  2. Every DRAWN leaf root carries the same structural pair INLINE —
+ *     `background-color:#fff` + a `var(--stf-paper)` gradient — because the
+ *     fold puts `transform` + `clip-path` on that root, and opacity living
+ *     only on a `z-index:-1` pseudo proved fragile against compositor
+ *     behavior (Puddlebend Issue 1: a translucent band at the fold line in
+ *     landscape). The consumer's value still travels only through
+ *     `--stf-paper`; no `display`-forcing rule beats a consumer's
+ *     `.page { display: flex }`.
  *  3. A REPLACED-element leaf root (`img`, `video`, `canvas`, `iframe`,
- *     `embed`) keeps the inline `background-color`: pseudo-elements do not
- *     render on replaced elements, so it is the only opaque backing such a
- *     root can have.
+ *     `embed`) gets the same pair: pseudo-elements do not render on replaced
+ *     elements, so the inline write is the only opaque backing it can have.
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
@@ -54,8 +58,8 @@ describe('B3.1 — opacity is structural, not parsed', () => {
   });
 });
 
-describe('B3.2 — the engine claims no paint or display on a container leaf root', () => {
-  test('a container leaf carries --stf-paper and NO inline background-color', () => {
+describe('B3.2 — a drawn leaf root paints its own opaque paper', () => {
+  test('a container leaf carries --stf-paper AND the inline structural pair', () => {
     const { book, pages } = tracked(makeHtmlBook({ pageBackground: '#f5f0e6' }));
     expect(book.getPageCount()).toBeGreaterThan(0);
     drawFrame(book);
@@ -68,8 +72,44 @@ describe('B3.2 — the engine claims no paint or display on a container leaf roo
     for (const index of visible) {
       const el = pages[index]!;
       expect(el.style.getPropertyValue('--stf-paper')).toBe('#f5f0e6');
-      expect(el.style.getPropertyValue('background-color')).toBe('');
+      // Puddlebend Issue 1 revert-blocker: the element that receives the fold
+      // transform/clip must itself be opaque — base + consumer paint as an
+      // image layer, referencing the custom property (no interpolated value).
+      expect(el.style.getPropertyValue('background-color')).toMatch(
+        /^(#fff|rgb\(255,\s*255,\s*255\))$/,
+      );
+      expect(el.style.getPropertyValue('background-image')).toMatch(
+        /linear-gradient\(var\(--stf-paper[,)]/,
+      );
     }
+  });
+
+  test('a mid-fold soft leaf keeps the pair on the transformed, clipped root', () => {
+    // The landscape band: transform + clip-path on an otherwise-transparent
+    // root. The drawn (folding) state is the one that alpha-blended, so the
+    // pin targets it directly rather than only the resting spread.
+    const { book, pages } = tracked(
+      makeHtmlBook({ pageCount: 6, pageBackground: '#f5f0e6', hostWidth: 900, hostHeight: 300 }),
+    );
+
+    book.startUserTouch({ x: 850, y: 150 });
+    book.userMove({ x: 500, y: 150 }, false);
+    drawFrame(book);
+
+    const folding = pages.filter(
+      (el) => el.style.getPropertyValue('clip-path') !== '' && el.classList.contains('--shown'),
+    );
+    expect(folding.length).toBeGreaterThan(0);
+
+    for (const el of folding) {
+      expect(el.style.getPropertyValue('background-color')).toMatch(
+        /^(#fff|rgb\(255,\s*255,\s*255\))$/,
+      );
+      expect(el.style.getPropertyValue('background-image')).toMatch(
+        /linear-gradient\(var\(--stf-paper[,)]/,
+      );
+    }
+    book.userStop({ x: 500, y: 150 });
   });
 
   test('no stylesheet rule forces display on a shown leaf', () => {
@@ -107,7 +147,15 @@ describe('B3.3 — a replaced-element leaf root keeps its opaque backing', () =>
     const paper = /^(#f5f0e6|rgb\(245,\s*240,\s*230\))$/;
     for (const index of book.getVisiblePages()) {
       const img = imgs[index]!;
-      expect(img.style.getPropertyValue('background-color')).toMatch(paper);
+      // The same structural pair as a container root: base + --stf-paper
+      // image layer. On a replaced root this inline pair is the ONLY paint —
+      // pseudo-elements never render here.
+      expect(img.style.getPropertyValue('background-color')).toMatch(
+        /^(#fff|rgb\(255,\s*255,\s*255\))$/,
+      );
+      expect(img.style.getPropertyValue('background-image')).toMatch(
+        /linear-gradient\(var\(--stf-paper[,)]/,
+      );
       expect(img.style.getPropertyValue('--stf-paper')).toMatch(paper);
     }
   });

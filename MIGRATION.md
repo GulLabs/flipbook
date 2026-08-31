@@ -56,6 +56,14 @@ absolute forms (`*ToPage`) throw `PageFlipError` on an invalid target; the
 relative forms return `boolean` and emit `turnRejected` instead — calling
 "next" at the end of the book is normal UI, not an exception.
 
+**`flippingTime` now means what it says on every page size.** Upstream scaled
+the duration by pixel path length against a magic 1000 px reference, so
+`flippingTime: 800` ran ~560 ms on a 350 px phone leaf — phone flips were
+silently faster than desktop. A full turn now runs for exactly the configured
+time everywhere; a drag released mid-fold still settles in proportion to the
+distance it has left. If you were compensating (scaling the setting up by
+`1000 / (2 × pageWidth)`), delete the compensation.
+
 New settings, all optional: `pageBackground` (paper color, default `#fff`),
 `respectReducedMotion` (default `true` — turns become instant under
 `prefers-reduced-motion`), `injectStyles` (default `true` — set `false` under a
@@ -222,7 +230,21 @@ zero afterwards. Branch on `pageCount === 0` if your handler assumed
 ### Construction-time settings
 
 `hardCovers`, `initialPage` and `injectStyles` are consumed while the book is
-built. `updateSettings` refuses a changed value for them — the value is kept
+built, **and in the React binding they are remount keys — changing one
+rebuilds the engine.**
+
+**The URL-sync footgun (read this if your reader is deep-linkable):** do NOT
+feed `initialPage` from live route state (`useSearchParams`, `location`).
+Every turn that writes the URL hands back a new `initialPage`, and a changed
+`initialPage` remounts the engine — so every turn tears the book down at
+exactly animation end, which presents as "the destination page flickers".
+Freeze the deep link once at mount (`useRef(initialSpreadFromUrl)`), or drive
+position with the controlled `page` + `onPageChange` pair, which is live and
+never remounts. The binding emits a dev-mode `console.warn` when the engine
+remounts within one second of a turn, because that pattern is almost always
+this bug.
+
+`updateSettings` refuses a changed value for them — the value is kept
 out of the live settings so `getSettings()` stays honest, and a
 `console.warn` reports it; echoing back the current value (spreading a whole
 settings object) stays silent. Compile-time too: they are absent from the
@@ -259,7 +281,10 @@ notes:
 
 - A `background` you set on the leaf root itself now loses to the engine's
   paper layer. Move it to an inner wrapper (correct on 2.x too — the engine
-  rewrote root styles there as well, just less predictably).
+  rewrote root styles there as well, just less predictably). Every drawn leaf
+  root carries the paper inline — an opaque base plus your `pageBackground`
+  as a `var(--stf-paper)` image layer — so the element the fold transforms
+  and clips is opaque on every compositor, not only its pseudo-element.
 - `pageBackground` accepts any CSS color, including `var()` and translucent
   values — opacity of the fold is structural (an opaque base layer under your
   paper color), no longer a parser gate.

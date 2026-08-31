@@ -105,6 +105,9 @@ export default defineConfig(
       '**/playwright-report/**',
       '**/test-results/**',
       '.craftsman/**',
+      // Consumer-report evidence: standalone Playwright scripts whose page
+      // functions run in the browser; not part of the lint surface.
+      'docs/consumer-report-assets/**',
       '.remember/**',
       '.claude/**',
       'fixtures/**',

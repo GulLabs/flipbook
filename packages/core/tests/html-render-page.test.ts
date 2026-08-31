@@ -72,10 +72,17 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
     const el = page.getElement();
     const css = el.style.cssText;
-    // B3: the paper is the custom property; inline background-color is gone from
-    // container roots so a consumer stylesheet can win the paint axis.
+    // B3 (amended, Puddlebend Issue 1): the consumer's value travels through
+    // the custom property, and the drawn root itself carries the structural
+    // pair — an opaque base plus the --stf-paper image layer — so the element
+    // the fold transforms/clips is opaque on every compositor.
     expect(css.toLowerCase()).toMatch(/--stf-paper:\s*(#f5f0e6|rgb\(245,\s*240,\s*230\))/i);
-    expect(css.toLowerCase()).not.toMatch(/(?<!-)background-color/);
+    expect(el.style.getPropertyValue('background-color')).toMatch(
+      /^(#fff|rgb\(255,\s*255,\s*255\))$/,
+    );
+    expect(el.style.getPropertyValue('background-image')).toMatch(
+      /linear-gradient\(var\(--stf-paper[,)]/,
+    );
     expect(el.classList.contains('--simple')).toBe(true);
     // Visibility is class-based on the visibility axis, never display — the
     // engine claims nothing on the display axis at any specificity (B3).

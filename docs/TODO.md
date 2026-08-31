@@ -40,6 +40,23 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
       for drag correctness, which is right for picture books and wrong for
       full-HTML text pages a reader may want to copy from. Needs design (drag
       vs. selection arbitration), so 3.1.
+- [ ] **`centerClosedBook` option** (Puddlebend contract ask §6) — the engine
+      parks a closed book in the right half of the stage and a lone hard back
+      cover in the left half; the consumer hand-builds the slide-to-center and
+      a following floor shadow for both ends. The engine knows exactly when
+      those states hold. At minimum: a documented recipe with `changeState` +
+      `visiblePages`.
+- [ ] **Frame discipline budget** (Puddlebend Issue 3) — one 800 ms landscape
+      turn produces 40–60 style/class writes per frame across a 15-leaf book;
+      a turn should touch the moving leaf, its copy, the leaf beneath, and the
+      shadows. Add a max-writes-per-rAF-tick test, then trim the redraw set.
+      Not user-visible on desktop GPUs, but it scales with page count and
+      burns phone battery.
+- [ ] **Binding-owned leaf hosts** (Puddlebend Issue 2 residue) — the engine
+      still stamps classes/inline styles on consumer-rendered roots (two-owner
+      DOM). It did not cause the remount flicker, but engine-owned host
+      elements wrapping consumer content remain the cleaner ownership story.
+      Breaking for DOM-selector consumers, so 4.0-shaped; design first.
 
 ## Internal hygiene (no observable change)
 

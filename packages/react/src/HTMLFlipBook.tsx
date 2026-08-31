@@ -671,6 +671,16 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
      * animate through to it from page 0.
      */
     const firstControlledApply = useRef(true);
+    /**
+     * When the last real page turn happened, and how many engines this
+     * component has built — together they detect the URL-sync footgun: a
+     * consumer feeding `searchParams` into `initialPage` remounts the engine
+     * on every turn (the turn writes the URL, the URL changes `initialPage`,
+     * `initialPage` is remount-keyed). It looks like "the book flickers at
+     * turn end" and cost the first integration a day (Puddlebend Issue 2).
+     */
+    const lastFlipAt = useRef(0);
+    const engineBuilds = useRef(0);
     const bindHandlers = useCallback((flip: PageFlip) => {
       if (handlersBoundRef.current) return;
       handlersBoundRef.current = true;
@@ -680,6 +690,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // one prop, which is the asymmetry ADR 0003 blamed for consumers binding
       // the wrong event.
       flip.on('flip', (e: WidgetEvent<FlipbookEventMap['flip']>) => {
+        lastFlipAt.current = Date.now();
         setEnginePage(e.data.page);
         setPageCount(e.data.pageCount);
         eventHandlersRef.current.onPageChange?.(e.data);
@@ -721,6 +732,25 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     useEffect(() => {
       const root = rootRef.current;
       if (!root) return;
+
+      // Dev-only: bundlers substitute NODE_ENV; the typed globalThis access
+      // keeps this a browser library (no @types/node) and a plain-ESM no-op.
+      const nodeEnv = (globalThis as { process?: { env?: { NODE_ENV?: string } } }).process?.env
+        ?.NODE_ENV;
+      if (
+        engineBuilds.current > 0 &&
+        Date.now() - lastFlipAt.current < 1000 &&
+        nodeEnv !== 'production'
+      ) {
+        console.warn(
+          '[flipbook] The engine remounted within 1s of a page turn. This usually means ' +
+            'a remount-keyed prop (initialPage, hardCovers, injectStyles) changed as a ' +
+            'RESULT of the turn — most often initialPage fed from the URL while ' +
+            'onPageChange writes the URL. Freeze the deep link at mount, or drive ' +
+            'position with the controlled `page` prop instead.',
+        );
+      }
+      engineBuilds.current += 1;
 
       const engine = new PageFlip(root, settings);
       engineRef.current = engine;

@@ -30,14 +30,20 @@ export const FLIPBOOK_CSS =
   // `display:none` bought.
   '.stf__item{visibility:hidden;position:absolute;transform-style:preserve-3d}' +
   '.stf__item.--shown{visibility:visible}' +
-  // THE PAPER, on a pseudo-element behind the leaf's own background.
+  // THE PAPER's backstop layer. The primary paint is the SAME structural pair
+  // stamped inline on every drawn leaf by `applyEngineStyle` (HTMLPage.ts) —
+  // the fold puts `transform` + `clip-path` on the leaf root, and opacity
+  // that lives only on a `z-index:-1` pseudo proved fragile against
+  // compositor behavior (Puddlebend Issue 1: a translucent band at the fold
+  // line in landscape). The pseudo remains for any state the engine has not
+  // drawn, and as the belt to the element's braces.
   //
-  // The invariant is "something opaque behind the content", not "this element's
-  // background is opaque" — and writing `background-color` on the leaf meant the
-  // engine's paper BEAT a consumer's per-page colour, so sepia on one chapter
-  // did nothing. A negative z-index inside the leaf's own stacking context puts
-  // the paper behind the element's background, so a consumer's colour paints
-  // over it. The engine writes only the custom property.
+  // NOTE the negative z-index is NOT "behind the element's own background":
+  // a drawn leaf carries an inline z-index and `preserve-3d`, so it is a
+  // stacking context and negative-z children paint ABOVE the root's own
+  // background. Per-page colour therefore goes through `pageBackground` /
+  // `--stf-paper` or an inner element, never the root's background — which is
+  // what the README documents.
   //
   // B3: opacity is STRUCTURAL. The consumer's value is the image layer,
   // painted over an opaque `background-color` base — so a translucent

@@ -33,6 +33,7 @@ const ENGINE_STYLE_PROPS = [
   'width',
   'height',
   'background-color',
+  'background-image',
   '--stf-paper',
   'pointer-events',
   'transform',
@@ -78,31 +79,40 @@ function applyEngineStyle(element: HTMLElement, css: string, background?: string
   // holds only because two other checks happen to be right is the wrong shape
   // for the one value an attacker controls. Passing it as its own argument
   // removes the class of bug rather than guarding it.
-  // Written as a CUSTOM PROPERTY consumed by `.stf__item::before`, not as this
-  // element's `background-color`. The invariant is "something opaque behind the
-  // content"; claiming the leaf's own background meant the engine's paper beat
-  // a consumer's per-page colour, so styling one chapter differently did
-  // nothing. The pseudo-element sits behind the element's own background, so
-  // both hold at once — and composites the value over an opaque base, so
-  // opacity holds structurally (see `styles.ts`, B3).
+  // The paper is stamped ON THE ELEMENT ITSELF, as the same structural pair
+  // the `::before` layer uses: an opaque `#fff` base with the consumer's
+  // `--stf-paper` composited over it as an image layer. The value still
+  // travels only through the custom property — the gradient references
+  // `var(--stf-paper)`, so no consumer input is ever interpolated into a
+  // declaration string.
   //
-  // The inline `background-color` survives ONLY for a replaced-element root:
-  // pseudo-elements do not render on `img`/`video`/`canvas`/`iframe`/`embed`,
-  // so the inline write is the one opaque backing such a leaf can have — and
-  // a consumer stylesheet has no meaningful claim on a bare image's
-  // background. For every container root the inline write is gone: inline
-  // paint beat every consumer stylesheet, which contradicted the documented
-  // contract that a per-page background wins over the paper.
+  // Why the element and not only the pseudo (consumer report, Puddlebend
+  // Issue 1): the fold puts `transform` + `clip-path` on this element, and a
+  // root whose only opacity lives on a `z-index:-1` pseudo is fragile against
+  // compositor behavior — measured in landscape as a band at the fold line
+  // where the turning page alpha-blended with the leaf beneath. Painting the
+  // transformed element itself is the guarantee; the pseudo stays as the
+  // backstop (and as the paint for any state the engine has not drawn).
+  //
+  // This does NOT change which colour a consumer sees: every drawn leaf
+  // carries an inline z-index (and the stylesheet's `preserve-3d`), so the
+  // leaf is a stacking context and the negative-z pseudo already painted
+  // ABOVE the root's own background. Per-page colour goes through
+  // `pageBackground` / `--stf-paper`, or on an inner element — the root's
+  // background has always lost to the paper in a drawn state.
+  //
+  // The same pair also covers replaced-element roots (`img`, `video`,
+  // `canvas`, `iframe`, `embed`), where pseudo-elements never render — the
+  // inline write is the only opaque backing such a root can have.
   if (background !== undefined) {
     element.style.setProperty('--stf-paper', background);
-    if (REPLACED_TAGS.has(element.tagName)) {
-      element.style.setProperty('background-color', background);
-    }
+    element.style.setProperty('background-color', '#fff');
+    element.style.setProperty(
+      'background-image',
+      'linear-gradient(var(--stf-paper,#fff),var(--stf-paper,#fff))',
+    );
   }
 }
-
-/** Roots on which `::before` cannot paint — see `applyEngineStyle`. */
-const REPLACED_TAGS = new Set(['IMG', 'VIDEO', 'CANVAS', 'IFRAME', 'EMBED']);
 
 /**
  * Every class this renderer puts on a consumer's leaf element.

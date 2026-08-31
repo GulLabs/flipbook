@@ -281,6 +281,11 @@ liveRegionText={(page, pageCount) =>
   derive from `width`/`height`; delete the bounds.
 - **Don't seed page state from `onPageChange`.** It fires only for real turns
   — use `onLoaded`, which carries the resolved page and count.
+- **Don't feed `initialPage` from live URL state.** It is a remount key: a
+  turn that writes the URL hands back a new `initialPage`, which rebuilds the
+  engine at exactly animation end — a flicker on every turn. Freeze the deep
+  link at mount, or use controlled `page` + `onPageChange` (live, never
+  remounts). The binding warns in dev when it sees this pattern.
 - **Style an inner wrapper, not the leaf root.** See Styling above.
 
 ---

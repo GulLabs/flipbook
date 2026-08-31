@@ -50,3 +50,62 @@ test('toggling hardCovers mid-life rebuilds the engine without NotFoundError', (
   // The rebuilt book still turns — the leaves survived two portal moves.
   expect(ref.current?.flipNext()).toBe(true);
 });
+
+test('remounting right after a turn warns about the URL-sync footgun (dev only)', () => {
+  // Puddlebend Issue 2: initialPage fed from searchParams + onPageChange
+  // writing the URL remounts the engine on every turn. The library cannot fix
+  // the consumer's data flow, but it can name it the moment it happens.
+  const warned: string[] = [];
+  const original = console.warn;
+  console.warn = (msg: unknown) => warned.push(String(msg));
+
+  try {
+    const ref = createRef<FlipBookHandle>();
+    const view = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} initialPage={0} ref={ref}>
+        {pages}
+      </HTMLFlipBook>,
+    );
+
+    expect(ref.current?.pageFlip()?.flipNext()).toBe(true);
+
+    // The turn "wrote the URL", the URL handed back a new initialPage.
+    view.rerender(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} initialPage={1} ref={ref}>
+        {pages}
+      </HTMLFlipBook>,
+    );
+
+    expect(warned.join(' ')).toMatch(/remounted within 1s of a page turn/);
+    expect(warned.join(' ')).toMatch(/initialPage/);
+  } finally {
+    console.warn = original;
+  }
+});
+
+test('an ordinary remount long after any turn stays silent', () => {
+  const warned: string[] = [];
+  const original = console.warn;
+  console.warn = (msg: unknown) => warned.push(String(msg));
+
+  try {
+    const ref = createRef<FlipBookHandle>();
+    const view = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} ref={ref}>
+        {pages}
+      </HTMLFlipBook>,
+    );
+
+    // No turn at all — a layout-driven remount (key change, hardCovers) is
+    // legitimate and must not nag.
+    view.rerender(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} hardCovers ref={ref}>
+        {pages}
+      </HTMLFlipBook>,
+    );
+
+    expect(warned.join(' ')).not.toMatch(/remounted within 1s/);
+  } finally {
+    console.warn = original;
+  }
+});
