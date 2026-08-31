@@ -1255,7 +1255,7 @@ function isSafariUserAgent(): boolean {
 /**
  * R6: does this user agent identify a **WebKit** engine?
  *
- * The thing `isSafari()` gates (`HTMLPage`) is the workaround for
+ * The thing `isSafari()` gates (`Page`) is the workaround for
  * webkit#126207, a WebKit rendering bug — so the question is the engine, not
  * the brand. The old test, `/Version\/[\d.]+.*Safari/`, answered neither:
  *

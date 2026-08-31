@@ -31,7 +31,7 @@ import { PageOrientation } from '../src/Page/Page';
 import type { Point } from '@gullabs/flipbook-core';
 import { installPointerCaptureShims, makeHtmlBook } from './html-book-fixture';
 import { testFlip, testRender, testUI, testPage } from './engine-access';
-import { HTMLPage } from '../src/Page/HTMLPage';
+import { Page } from '../src/Page/Page';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -421,7 +421,7 @@ function wrote(writes: Array<[string, string]>, property: string, value?: string
 describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
   test('a leaf with no inline z-index gets no z-index declaration at all', () => {
     const app = landscapeBook();
-    const page = testPage(app, 2) as HTMLPage;
+    const page = testPage(app, 2) as Page;
     const el = page.getElement();
 
     el.style.removeProperty('z-index');
@@ -445,7 +445,7 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
     // what `HTMLRender` just stamped. Removing the declaration unconditionally
     // would be the obvious wrong fix; under setProperty the same contract holds.
     const app = landscapeBook();
-    const page = testPage(app, 2) as HTMLPage;
+    const page = testPage(app, 2) as Page;
     const el = page.getElement();
 
     el.style.zIndex = '17';
@@ -461,11 +461,11 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
     // inherits the original's inline style, so a page that never carried a
     // z-index produces a clone that never carries one either.
     const app = landscapeBook();
-    const page = testPage(app, 2) as HTMLPage;
+    const page = testPage(app, 2) as Page;
 
     page.getElement().style.removeProperty('z-index');
 
-    const copy = page.newTemporaryCopy() as HTMLPage;
+    const copy = page.newTemporaryCopy() as Page;
     expect(copy).not.toBe(page);
     expect(copy.getElement().style.zIndex).toBe('');
 
@@ -504,7 +504,7 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
 describe('drawn leaves state their own position (Y4)', () => {
   test('a static leaf states it inline — the parity this fix restores (precondition)', () => {
     const app = landscapeBook();
-    const page = testPage(app, 2) as HTMLPage;
+    const page = testPage(app, 2) as Page;
     const el = page.getElement();
 
     const writes = captureStyleWrites(el);
@@ -516,7 +516,7 @@ describe('drawn leaves state their own position (Y4)', () => {
 
   test('a soft (folding) leaf states it too', () => {
     const app = landscapeBook();
-    const page = testPage(app, 2) as HTMLPage;
+    const page = testPage(app, 2) as Page;
     const el = page.getElement();
 
     // Start from a leaf a consumer rule could have un-positioned: nothing
@@ -538,7 +538,7 @@ describe('drawn leaves state their own position (Y4)', () => {
 
   test('a hard leaf states it too — fixing only drawSoft leaves the cover behind', () => {
     const app = landscapeBook();
-    const page = testPage(app, 2) as HTMLPage;
+    const page = testPage(app, 2) as Page;
     const el = page.getElement();
 
     el.style.removeProperty('position');
@@ -554,9 +554,9 @@ describe('drawn leaves state their own position (Y4)', () => {
 
   test('the temporary fold copy — the leaf that actually drops out — states it', () => {
     const app = landscapeBook();
-    const page = testPage(app, 2) as HTMLPage;
+    const page = testPage(app, 2) as Page;
 
-    const copy = page.newTemporaryCopy() as HTMLPage;
+    const copy = page.newTemporaryCopy() as Page;
     expect(copy).not.toBe(page);
 
     const el = copy.getElement();

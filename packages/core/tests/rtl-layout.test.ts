@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest';
 import { FlippingState } from '@gullabs/flipbook-core';
-import { PageOrientation } from '../src/Page/Page';
 import type { Page } from '../src/Page/Page';
 import { makeHtmlBook } from './html-book-fixture';
 import { testRender, testPage } from './engine-access';
@@ -13,10 +12,9 @@ import type { Render } from '../src/Render/Render';
  * inline styles these assertions read. Same casts the existing
  * `spread-construction` and `lifecycle` suites use.
  */
-type Sided = Page & { orientation: PageOrientation };
 type Internals = Render & {
-  leftPage: Sided | null;
-  rightPage: Sided | null;
+  leftPage: Page | null;
+  rightPage: Page | null;
   drawFrame: () => void;
 };
 
@@ -101,9 +99,11 @@ describe('RTL spread layout is mirrored', () => {
     const rtl = makeHtmlBook({ ...landscape, readingDirection: 'rtl' });
     const render = drawn(rtl);
 
-    // `orientation` is protected with no getter, like `leftPage`/`rightPage`.
-    expect(render.rightPage?.orientation).toBe(PageOrientation.RIGHT);
-    expect(render.leftPage?.orientation).toBe(PageOrientation.LEFT);
+    // Orientation is private after the Page collapse; the public signal is the
+    // `--left`/`--right` class `setOrientation` stamps (and `drawHard` reads
+    // via the same field). Assert the class, not the field.
+    expect(render.rightPage?.getElement().classList.contains('--right')).toBe(true);
+    expect(render.leftPage?.getElement().classList.contains('--left')).toBe(true);
     // The head (index 0) must be the RIGHT page under rtl.
     expect(render.rightPage).toBe(testPage(rtl.book, 0));
     expect(render.leftPage).toBe(testPage(rtl.book, 1));

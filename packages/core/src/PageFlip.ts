@@ -22,7 +22,6 @@ import {
 } from './internal';
 import type { PageCollection } from './Collection/PageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
-import { HTMLPage } from './Page/HTMLPage';
 import type { PageRect, Point } from './BasicTypes';
 import { Flip, FlipCorner, FlippingState } from './Flip/Flip';
 import type { Orientation, Render } from './Render/Render';
@@ -763,7 +762,7 @@ export class PageFlip extends EventObject {
     // `UI.adopt` snapshots which engine classes a leaf ALREADY carried, so
     // that `destroy()` hands back a node the consumer authored rather than
     // stripping a `--hard` they wrote themselves. `pages.load()` constructs the
-    // `HTMLPage`s, and their constructor stamps `stf__item` and `--soft` /
+    // `Page`s, and their constructor stamps `stf__item` and `--soft` /
     // `--hard` onto each element — so running it first meant `adopt` recorded
     // the engine's OWN classes as pre-existing, and release then refused to
     // remove them.
@@ -1539,7 +1538,7 @@ export class PageFlip extends EventObject {
 
     const page = this.pages.getPage(pageIndex);
 
-    return page instanceof HTMLPage ? page.getElement() : null;
+    return page.getElement();
   }
 
   /**

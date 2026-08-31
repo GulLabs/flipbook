@@ -7,7 +7,6 @@ import { GET_COLLECTION } from '../internal';
 import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { PageDensity, PageOrientation } from '../Page/Page';
-import type { HTMLPage } from '../Page/HTMLPage';
 import { rotatePoint } from '../Helper';
 import type { FlipSetting } from '../Settings';
 import { shouldDrawBottomPage } from './bottomPage';
@@ -241,9 +240,7 @@ export class HTMLRender extends Render {
       this.flippingPage !== null &&
       this.flippingPage.getDrawingDensity() === PageDensity.HARD
     ) {
-      (this.leftPage as HTMLPage).getElement().style.zIndex = String(
-        this.getSettings().startZIndex + 5,
-      );
+      this.leftPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 5);
 
       this.leftPage.setHardDrawingAngle(180 + this.flippingPage.getHardAngle());
       this.leftPage.draw(this.flippingPage.getDrawingDensity());
@@ -263,9 +260,7 @@ export class HTMLRender extends Render {
       this.flippingPage !== null &&
       this.flippingPage.getDrawingDensity() === PageDensity.HARD
     ) {
-      (this.rightPage as HTMLPage).getElement().style.zIndex = String(
-        this.getSettings().startZIndex + 5,
-      );
+      this.rightPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 5);
 
       this.rightPage.setHardDrawingAngle(180 + this.flippingPage.getHardAngle());
       this.rightPage.draw(this.flippingPage.getDrawingDensity());
@@ -288,7 +283,7 @@ export class HTMLRender extends Render {
     const tempDensity =
       this.flippingPage !== null ? this.flippingPage.getDrawingDensity() : undefined;
 
-    (bottomPage as HTMLPage).getElement().style.zIndex = String(this.getSettings().startZIndex + 3);
+    bottomPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 3);
 
     bottomPage.draw(tempDensity);
   }
@@ -305,9 +300,7 @@ export class HTMLRender extends Render {
     const flippingPage = this.flippingPage;
 
     if (flippingPage !== null) {
-      (flippingPage as HTMLPage).getElement().style.zIndex = String(
-        this.getSettings().startZIndex + 5,
-      );
+      flippingPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 5);
 
       flippingPage.draw();
     }
@@ -336,7 +329,7 @@ export class HTMLRender extends Render {
         // Hide by REMOVING the shown class, not by writing `display:none`
         // inline — and certainly not by wiping cssText, which took the
         // consumer's own inline styles with it every frame.
-        (page as HTMLPage).getElement().classList.remove('--shown');
+        page.getElement().classList.remove('--shown');
       }
 
       if (page.getTemporaryCopy() !== this.flippingPage) {

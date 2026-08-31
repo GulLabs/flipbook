@@ -436,7 +436,7 @@ export class Settings {
     // colour (`oklch(...)`, `color-mix(...)`, modern `rgb(... / ...)`) produced
     // a white fold with no diagnostic whatsoever.
     //
-    // The draw-time fallback in `HTMLPage` STAYS. It guards the untyped path
+    // The draw-time fallback in `Page` STAYS. It guards the untyped path
     // and the fold-opacity invariant, which outranks syntactic convenience;
     // this check is about telling the author, not about the pixel.
     const background: unknown = result.pageBackground;

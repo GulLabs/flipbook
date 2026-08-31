@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { PageDensity, PageFlip } from '@gullabs/flipbook-core';
 import { installPointerCaptureShims, makeHtmlBook } from './html-book-fixture';
-import { HTMLPage } from '../src/Page/HTMLPage';
+import { Page } from '../src/Page/Page';
 import { testPage } from './engine-access';
 
 const books: Array<{ destroy: () => void }> = [];
@@ -122,8 +122,8 @@ describe('RB6 — the temporary fold copy is out of the a11y tree and out of foc
   test('`draw()` re-emits pointer-events on every frame (cssText is rewritten wholesale)', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
 
-    const page = testPage(app, 1) as HTMLPage;
-    const copy = page.newTemporaryCopy() as HTMLPage;
+    const page = testPage(app, 1) as Page;
+    const copy = page.newTemporaryCopy() as Page;
     expect(copy).not.toBe(page);
 
     const el = copy.getElement();
@@ -153,8 +153,8 @@ describe('RB6 — the temporary fold copy is out of the a11y tree and out of foc
     pages[1]!.id = 'chapter-1';
     app.updateFromHtml(pages);
 
-    const page = testPage(app, 1) as HTMLPage;
-    const copy = page.newTemporaryCopy() as HTMLPage;
+    const page = testPage(app, 1) as Page;
+    const copy = page.newTemporaryCopy() as Page;
 
     expect(copy.getElement().id).toBe('chapter-1');
     expect(document.getElementById('chapter-1')).toBe(pages[1]);
@@ -173,7 +173,7 @@ describe('RB6 — the temporary fold copy is out of the a11y tree and out of foc
 describe('H7 — HTMLPage has no field that pretends to gate drawing', () => {
   test('load() adds no state; `isLoad` is not an own property', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
 
     // TypeScript `private` is a compile-time notion — a class field is an own
     // property at runtime, so this is a real check that the field is gone and

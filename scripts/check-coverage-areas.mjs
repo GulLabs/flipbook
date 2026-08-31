@@ -23,7 +23,7 @@ const AREAS = [
   },
   { label: 'UI.ts', match: /[/\\]UI[/\\]UI\.ts$/, lines: 86, branches: 66 },
   { label: 'HTMLRender.ts', match: /[/\\]Render[/\\]HTMLRender\.ts$/, lines: 89, branches: 63 },
-  { label: 'HTMLPage.ts', match: /[/\\]Page[/\\]HTMLPage\.ts$/, lines: 98, branches: 73 },
+  { label: 'Page.ts', match: /[/\\]Page[/\\]Page\.ts$/, lines: 98, branches: 85 },
   { label: 'Flip.ts', match: /[/\\]Flip[/\\]Flip\.ts$/, lines: 86, branches: 78 },
   // Lines eased 92 -> 91 for the `instanceof PageFlipError` rethrows added
   // when explicit navigation stopped swallowing non-engine errors: those

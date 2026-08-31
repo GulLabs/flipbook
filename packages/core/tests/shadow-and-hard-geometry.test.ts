@@ -13,7 +13,7 @@ import { PageDensity } from '@gullabs/flipbook-core';
 import { PageOrientation } from '../src/Page/Page';
 import { makeHtmlBook } from './html-book-fixture';
 import { testRender, testPage } from './engine-access';
-import { HTMLPage } from '../src/Page/HTMLPage';
+import { Page } from '../src/Page/Page';
 
 /* ------------------------------------------------------------------ *
  * H6 — hard pages honour rect.top
@@ -89,13 +89,13 @@ describe('H6 — hard pages sit at rect.top, like every soft page', () => {
     pages[1]!.dataset.density = 'hard';
     app.updateFromHtml(pages);
 
-    const right = testPage(app, 0) as HTMLPage;
+    const right = testPage(app, 0) as Page;
     right.setDrawingDensity(PageDensity.HARD);
     right.setOrientation(PageOrientation.RIGHT);
     right.setHardDrawingAngle(30);
     right.draw(PageDensity.HARD);
 
-    const left = testPage(app, 1) as HTMLPage;
+    const left = testPage(app, 1) as Page;
     left.setDrawingDensity(PageDensity.HARD);
     left.setOrientation(PageOrientation.LEFT);
     left.setHardDrawingAngle(-30);
@@ -106,7 +106,7 @@ describe('H6 — hard pages sit at rect.top, like every soft page', () => {
 
     // …and that is the same top a static soft leaf gets, which is the whole
     // point: no vertical jump when the cover starts turning.
-    const soft = testPage(app, 2) as HTMLPage;
+    const soft = testPage(app, 2) as Page;
     soft.simpleDraw(PageOrientation.RIGHT);
     expect(cssTop(soft.getElement().style.cssText)).toBe(rect.top);
   });
@@ -136,7 +136,7 @@ describe('H6 — hard pages sit at rect.top, like every soft page', () => {
     pages[0]!.dataset.density = 'hard';
     app.updateFromHtml(pages);
 
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
     page.setDrawingDensity(PageDensity.HARD);
     page.setOrientation(PageOrientation.RIGHT);
     page.setHardDrawingAngle(0);
@@ -171,7 +171,7 @@ describe('H6 — hard pages sit at rect.top, like every soft page', () => {
     pages[0]!.dataset.density = 'hard';
     app.updateFromHtml(pages);
 
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
     page.setDrawingDensity(PageDensity.HARD);
     page.setOrientation(PageOrientation.LEFT);
     page.setHardDrawingAngle(0);

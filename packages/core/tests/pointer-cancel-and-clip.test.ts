@@ -36,7 +36,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { FlippingState, PageDensity, PageFlip, PageFlipError } from '@gullabs/flipbook-core';
 import { testFlip, testPage } from './engine-access';
-import { HTMLPage } from '../src/Page/HTMLPage';
+import { Page } from '../src/Page/Page';
 import {
   installPointerCaptureShims,
   makeHtmlBook,
@@ -256,7 +256,7 @@ function polygonArea(points: Array<[number, number]>): number {
 describe('U7 drawSoft never emits an invalid clip-path', () => {
   test('a real fold area produces a polygon enclosing area (fixture precondition)', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
 
     page.setArea([
       { x: 0, y: 0 },
@@ -281,7 +281,7 @@ describe('U7 drawSoft never emits an invalid clip-path', () => {
 
   test('an empty area clips the leaf to nothing, not to the whole rectangle', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
 
     page.setArea([]);
     page.setPosition({ x: 20, y: 0 });
@@ -311,7 +311,7 @@ describe('U7 drawSoft never emits an invalid clip-path', () => {
 
   test('an area of only null points is the same case', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
 
     // PRECONDITION: these are the entries the renderers skip, so the loop
     // really does produce zero vertices from a non-empty array.
@@ -333,13 +333,13 @@ describe('U7 drawSoft never emits an invalid clip-path', () => {
 describe('U8 newTemporaryCopy refuses a detached page element', () => {
   test('an attached leaf clones next to itself (fixture precondition)', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, initialPage: 2 });
-    const page = testPage(app, 2) as HTMLPage;
+    const page = testPage(app, 2) as Page;
 
     // The HARD branch returns `this` and never appends; this must be the SOFT
     // path or the test proves nothing about the append.
     expect(page.getDensity()).toBe(PageDensity.SOFT);
 
-    const copy = page.newTemporaryCopy() as HTMLPage;
+    const copy = page.newTemporaryCopy() as Page;
     expect(copy).not.toBe(page);
     expect(copy.getElement().parentElement).toBe(page.getElement().parentElement);
     expect(copy.getElement().isConnected).toBe(true);
@@ -350,7 +350,7 @@ describe('U8 newTemporaryCopy refuses a detached page element', () => {
 
   test('a detached leaf throws PageFlipError instead of animating nothing', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, initialPage: 2 });
-    const page = testPage(app, 2) as HTMLPage;
+    const page = testPage(app, 2) as Page;
     const el = page.getElement();
 
     // A React unmount racing the turn: the node leaves the block while the

@@ -31,7 +31,7 @@ export const FLIPBOOK_CSS =
   '.stf__item{visibility:hidden;position:absolute;transform-style:preserve-3d}' +
   '.stf__item.--shown{visibility:visible}' +
   // THE PAPER's backstop layer. The primary paint is the SAME structural pair
-  // stamped inline on every drawn leaf by `applyEngineStyle` (HTMLPage.ts) —
+  // stamped inline on every drawn leaf by `applyEngineStyle` (Page.ts) —
   // the fold puts `transform` + `clip-path` on the leaf root, and opacity
   // that lives only on a `z-index:-1` pseudo proved fragile against
   // compositor behavior (Puddlebend Issue 1: a translucent band at the fold

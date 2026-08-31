@@ -7,7 +7,7 @@ import { FlippingState, PageDensity, PageFlip } from '@gullabs/flipbook-core';
 import { PageOrientation } from '../src/Page/Page';
 import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
 import { testFlip, testRender, testPage } from './engine-access';
-import { HTMLPage } from '../src/Page/HTMLPage';
+import { Page } from '../src/Page/Page';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -67,7 +67,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
     });
 
     app.update();
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
     page.simpleDraw(PageOrientation.RIGHT);
 
     const el = page.getElement();
@@ -96,10 +96,10 @@ describe('HTMLRender + HTMLPage fold paint', () => {
       initialPage: 2,
       pageBackground: '#fff',
     });
-    const current = testPage(app, 2) as HTMLPage;
+    const current = testPage(app, 2) as Page;
     expect(current.getDensity()).toBe(PageDensity.SOFT);
 
-    const copy = current.newTemporaryCopy() as HTMLPage;
+    const copy = current.newTemporaryCopy() as Page;
     expect(copy).not.toBe(current);
     expect(copy.getElement().style.backgroundColor).toMatch(/rgb\(255,\s*255,\s*255\)|#fff/i);
 
@@ -119,7 +119,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
     expect(flip.getCalculation()).not.toBeNull();
 
     // drawFrame only runs on rAF; paint the current leaf directly and assert cssText.
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
     page.setArea([
       { x: 0, y: 0 },
       { x: 180, y: 10 },
@@ -148,7 +148,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
     pages[0]!.dataset.density = 'hard';
     // Rebuild so density is HARD.
     app.updateFromHtml(pages);
-    const hard = testPage(app, 0) as HTMLPage;
+    const hard = testPage(app, 0) as Page;
     hard.setDrawingDensity(PageDensity.HARD);
     hard.setOrientation(PageOrientation.RIGHT);
     hard.setHardDrawingAngle(45);
@@ -164,7 +164,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
   test('drawBottomPage skips only when flippingPage === bottomPage (hard cover)', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, hardCovers: true });
     const render = testRender(app);
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
 
     // Same reference → shouldDrawBottomPage false → no draw crash.
     render.setFlippingPage(page);
@@ -190,7 +190,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
   test('setDrawingDensity toggles --soft / --hard classes', () => {
     const { book: app } = book({ pageCount: 2, flippingTime: 0 });
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
     page.setDrawingDensity(PageDensity.HARD);
     expect(page.getElement().classList.contains('--hard')).toBe(true);
     page.setDrawingDensity(PageDensity.SOFT);
@@ -199,7 +199,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
   test('soft draw includes foldFillCss and transform for a prepared area', () => {
     const { book: app } = book({ pageCount: 3, flippingTime: 0, pageBackground: '#eaeaea' });
-    const page = testPage(app, 0) as HTMLPage;
+    const page = testPage(app, 0) as Page;
     page.setArea([
       { x: 0, y: 0 },
       { x: 200, y: 0 },

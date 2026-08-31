@@ -13,7 +13,7 @@ import { ensureFlipbookStyles } from '../styles';
 import { ALL_POINTERS } from '../Settings';
 import { FLIPBOOK_INTERACTIVE_SELECTOR } from '../interactive';
 import { DROP_POINTER_GESTURE, SET_ORIENTATION_STYLE } from '../internal';
-import { ENGINE_LEAF_CLASSES } from '../Page/HTMLPage';
+import { ENGINE_LEAF_CLASSES } from '../Page/Page';
 
 type SwipeData = {
   point: Point;

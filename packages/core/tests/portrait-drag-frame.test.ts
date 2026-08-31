@@ -41,7 +41,7 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import { Orientation, PageDensity } from '@gullabs/flipbook-core';
 import type { PageFlip } from '@gullabs/flipbook-core';
-import { HTMLPage } from '../src/Page/HTMLPage';
+import { Page } from '../src/Page/Page';
 import { makeHtmlBook } from './html-book-fixture';
 import { testFlip, testRender, testPage } from './engine-access';
 import { FlipDirection } from '../src/Flip/Flip';
@@ -160,7 +160,7 @@ describe('the fixtures are what the assertions assume', () => {
       // fix rests on: the visible leaf is the RIGHT half of the bounds rect,
       // so a BACK fold's spine is its right edge and not `left + width / 2`.
       drawOneFrame(book);
-      const el = (testPage(book, 2) as HTMLPage | null)?.getElement();
+      const el = (testPage(book, 2) as Page | null)?.getElement();
       expect(el?.style.left, reading).toBe('90px');
       expect(el?.style.width, reading).toBe('200px');
       expect(leafEdges(book), reading).toEqual({ left: 90, right: 290 });
@@ -366,7 +366,7 @@ describe('X1 — the frame is re-anchored for DRAWING too, not only measuring', 
     drag(book, [edges.left + 10, edges.left + 60]);
     drawOneFrame(book);
 
-    const under = (testPage(book, 1) as HTMLPage | null)?.getElement();
+    const under = (testPage(book, 1) as Page | null)?.getElement();
     expect(under?.classList.contains('--shown')).toBe(true);
     expect(under?.style.transform).toContain(`translate3d(${edges.left}px,0px,0)`);
   });
