@@ -18,13 +18,31 @@ import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { getPortraitFlippingPage } from './flippingPage';
 import { at } from '../arrayAccess';
+import { HTMLPage } from '../Page/HTMLPage';
 
 type NumberArray = number[];
 
 /**
  * Сlass representing a collection of pages
  */
-export abstract class PageCollection {
+/**
+ * The book's page and spread model.
+ *
+ * COLLAPSED from an abstract `PageCollection` plus a single `HTMLPageCollection`
+ * subclass whose only variation was which page class it constructed. That is
+ * not a renderer seam — it is one class split at the constructor.
+ *
+ * The MODEL here is genuinely renderer-agnostic and worth keeping cohesive:
+ * spreads, indices, spread-bounded navigation, the RTL mirror, the ADR 0003
+ * announcement guard. `docs/WEBGL_RENDERER.md` identifies exactly this — the
+ * spread model plus a progress signal — as what a second renderer would
+ * consume. What it does NOT identify is `load()` as the override point.
+ *
+ * So the inheritance goes and the model stays. When a second renderer is real,
+ * the seam to extract is a headless controller shaped by that consumer, not a
+ * subclass hook shaped by guesswork.
+ */
+export class PageCollection {
   protected readonly app: PageFlip;
   protected readonly render: Render;
   protected readonly isShowCover: boolean;
@@ -41,9 +59,17 @@ export abstract class PageCollection {
   /**  One-page spread in portrait mode */
   protected portraitSpread: NumberArray[] = [];
 
-  protected constructor(app: PageFlip, render: Render) {
+  private readonly pagesElement: NodeListOf<HTMLElement> | HTMLElement[];
+
+  constructor(
+    app: PageFlip,
+    render: Render,
+    _element: HTMLElement,
+    items: NodeListOf<HTMLElement> | HTMLElement[],
+  ) {
     this.render = render;
     this.app = app;
+    this.pagesElement = items;
 
     this.currentPageIndex = 0;
     this.isShowCover = this.app.getSettings().hardCovers;
@@ -101,7 +127,20 @@ export abstract class PageCollection {
   /**
    * Load pages
    */
-  public abstract load(): void;
+  public load(): void {
+    for (const pageElement of this.pagesElement) {
+      const page = new HTMLPage(
+        this.render,
+        pageElement,
+        pageElement.dataset['density'] === 'hard' ? PageDensity.HARD : PageDensity.SOFT,
+      );
+
+      page.load();
+      this.pages.push(page);
+    }
+
+    this.createSpread();
+  }
 
   /**
    * Clear pages list
