@@ -121,6 +121,15 @@ const GUARD = [
   "github.event.workflow_run.head_branch == 'main'",
 ].join(' &&\n      ');
 
+/** changesets/action@v2 contract — required so fixtures exercise the real guards. */
+const CHANGESETS_V2_STEP = `- uses: changesets/action@v2
+        with:
+          version-script: pnpm version-packages
+          publish-script: pnpm release
+          github-token: \${{ secrets.GITHUB_TOKEN }}
+        env:
+          NPM_TOKEN: \${{ secrets.NPM_TOKEN }}`;
+
 /** A minimal but genuinely safe release workflow, used as the mutation base. */
 const safeWorkflow = (overrides: { topPermissions?: string; jobIf?: string } = {}): string => `
 name: Release
@@ -141,9 +150,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
-      - uses: changesets/action@v1
-        env:
-          NPM_TOKEN: \${{ secrets.NPM_TOKEN }}
+      ${CHANGESETS_V2_STEP}
 `;
 
 describe('scripts/check-workflow-guards.mjs', () => {
@@ -170,9 +177,7 @@ jobs:
     runs-on: ubuntu-latest
     # ${GUARD.split('\n').join('\n    # ')}
     steps:
-      - uses: changesets/action@v1
-        env:
-          NPM_TOKEN: \${{ secrets.NPM_TOKEN }}
+      ${CHANGESETS_V2_STEP}
 `;
     expect(exitCodeOf([WORKFLOW_GATE, writeWorkflow('comment-only', body)])).not.toBe(0);
   });
@@ -197,9 +202,7 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: changesets/action@v1
-        env:
-          NPM_TOKEN: \${{ secrets.NPM_TOKEN }}
+      ${CHANGESETS_V2_STEP}
 `;
     expect(exitCodeOf([WORKFLOW_GATE, writeWorkflow('other-job', body)])).not.toBe(0);
   });
@@ -219,9 +222,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: changesets/action@v1
+      - uses: changesets/action@v2
         if: >-
           ${GUARD.split('\n').join('\n    ')}
+        with:
+          version-script: pnpm version-packages
+          publish-script: pnpm release
+          github-token: \${{ secrets.GITHUB_TOKEN }}
         env:
           NPM_TOKEN: \${{ secrets.NPM_TOKEN }}
 `;
@@ -346,11 +353,44 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: changesets/action@v1
-        env:
-          NPM_TOKEN: \${{ secrets.NPM_TOKEN }}
+      ${CHANGESETS_V2_STEP}
 `;
     expect(exitCodeOf([WORKFLOW_GATE, writeWorkflow('needs-gate', body)])).toBe(0);
+  });
+
+  // Dependabot #16 style: pin bumped to v2, inputs left on v1 names. The action
+  // ignores unknown keys, so the next publish would no-op the version/publish
+  // scripts. The gate must fail closed on this, not only on missing trigger guards.
+  test('REJECTS changesets/action steps still using v1 input names', () => {
+    const body = `
+name: Release
+on:
+  workflow_run:
+    workflows: ['CI']
+    types: [completed]
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: >-
+      ${GUARD}
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: changesets/action@v2
+        with:
+          version: pnpm version-packages
+          publish: pnpm release
+          title: 'chore: version packages'
+          commit: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: \${{ secrets.NPM_TOKEN }}
+`;
+    expect(exitCodeOf([WORKFLOW_GATE, writeWorkflow('changesets-v1-inputs', body)])).not.toBe(0);
   });
 });
 

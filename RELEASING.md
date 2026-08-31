@@ -88,7 +88,9 @@ All packages are published to the `@gullabs` scope with `publishConfig.access = 
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `NPM_TOKEN` | npm automation token with publish access to the `@gullabs` scope. Same token used to publish the other `@gullabs/*` packages. Generate at https://www.npmjs.com/settings → Access Tokens → Generate New Token → Automation. |
 
-`GITHUB_TOKEN` is provided by GitHub Actions.
+`GITHUB_TOKEN` is provided by GitHub Actions. `release.yml` passes it to
+`changesets/action@v2` as the **`github-token` input** (v2 no longer reads
+`GITHUB_TOKEN` from the environment). The publish scripts still need npm auth:
 
 The workflow sets both `NODE_AUTH_TOKEN` (which the `.npmrc` written by `setup-node` expands) and `NPM_TOKEN` (which changesets reads). Setting only one fails publish with `ENEEDAUTH`.
 
