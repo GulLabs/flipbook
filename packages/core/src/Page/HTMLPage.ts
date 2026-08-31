@@ -33,6 +33,7 @@ const ENGINE_STYLE_PROPS = [
   'width',
   'height',
   'background-color',
+  '--stf-paper',
   'pointer-events',
   'transform',
   'transform-origin',
@@ -77,7 +78,19 @@ function applyEngineStyle(element: HTMLElement, css: string, background?: string
   // holds only because two other checks happen to be right is the wrong shape
   // for the one value an attacker controls. Passing it as its own argument
   // removes the class of bug rather than guarding it.
-  if (background !== undefined) element.style.setProperty('background-color', background);
+  // Written as a CUSTOM PROPERTY consumed by `.stf__item::before`, not as this
+  // element's `background-color`. The invariant is "something opaque behind the
+  // content"; claiming the leaf's own background meant the engine's paper beat
+  // a consumer's per-page colour, so styling one chapter differently did
+  // nothing. The pseudo-element sits behind the element's own background, so
+  // both hold at once.
+  //
+  // `--stf-paper` is also still set on the element, so a bare `<img>` page —
+  // which has no pseudo-element of its own to paint — keeps an opaque backing.
+  if (background !== undefined) {
+    element.style.setProperty('--stf-paper', background);
+    element.style.setProperty('background-color', background);
+  }
 }
 
 /**

@@ -56,10 +56,23 @@ export type {
   PointerKind,
 } from './Settings';
 
-// Enums a consumer reads off events or passes to a turn.
-export { FlipCorner, FlipDirection, FlippingState } from './Flip/Flip';
+// Enums a consumer reads off an event payload or passes to a turn.
+//
+// `FlipCorner` is a `flipNext`/`flipPrev` argument; `FlippingState` and
+// `Orientation` appear in `changeState` / `BookSnapshot`.
+export { FlipCorner, FlippingState } from './Flip/Flip';
 export { Orientation } from './Render/Render';
-export { PageDensity, PageOrientation } from './Page/Page';
+
+// `PageDensity` is the value of the `data-density` attribute a consumer writes
+// on a leaf, so it is vocabulary even though no signature returns it.
+export { PageDensity } from './Page/Page';
+
+// NOT exported: `FlipDirection` and `PageOrientation`. Both were orphans — no
+// public signature mentions either, and neither is anything a consumer sets.
+// `FlipDirection` is the engine's internal turn axis (and `Render` overloads it
+// as a physical fold side, which is a separate confusion not worth publishing);
+// `PageOrientation` drives the `--left` / `--right` classes, which are the
+// documented surface rather than the enum.
 
 export type {
   WidgetEvent,

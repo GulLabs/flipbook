@@ -33,7 +33,6 @@ export {
   PageFlip,
   PageFlipError,
   FlipCorner,
-  FlipDirection,
   FlippingState,
   SizeMode,
   ALL_POINTERS,

@@ -64,15 +64,30 @@ const INJECTION_RE = /[;{}\\]|\/\*|<|url\s*\(|expression\s*\(|@import/i;
  *
  * It is therefore MORE PERMISSIVE than a browser: `notacolour` matches the
  * named-colour shape and passes under SSR, where `CSS.supports` would refuse
- * it. Accepted knowingly — the engine only paints in a browser, so the strict
- * check runs in the one place the value can do damage, and shipping the ~148
- * real colour names to tighten a path that never paints is the wrong trade.
+ * it. Accepted knowingly, and the argument that actually closes it is not
+ * "SSR does not paint" but that the value is RE-CHECKED in the browser by
+ * `foldFill` before it reaches a pixel — so the permissive path cannot produce
+ * a wrong colour, only a late rejection.
  */
 const COLOUR_SHAPE_RE =
   /^(?:#[0-9a-f]{3,8}|[a-z][a-z-]{1,30}|[a-z-]{2,20}\(\s*[^()]*(?:\([^()]*\)[^()]*)*\))$/i;
 
-/** `var(--x)` and `var(--x, fallback)`. Cannot be statically resolved. */
-const VAR_RE = /^var\(\s*--[\w-]+\s*(?:,[^;]*)?\)$/i;
+/**
+ * `var(--x, fallback)` — the FALLBACK IS REQUIRED, and that closes a real hole.
+ *
+ * A bare `var(--typo)` whose property is never defined is invalid at
+ * computed-value time, which for `background-color` means TRANSPARENT — a
+ * see-through fold, the exact §4.2 failure this setting exists to prevent, and
+ * reached by a plain typo. The documented trade ("a translucent custom property
+ * is the caller's to get right") covers a property that resolves to something;
+ * it does not cover one that resolves to nothing.
+ *
+ * Requiring the fallback makes the value total: whatever the property does, the
+ * declaration still yields a colour. The fallback itself is not validated —
+ * that would mean parsing arbitrary nesting — so this is a guarantee of
+ * well-formedness, not of opacity.
+ */
+const VAR_RE = /^var\(\s*--[\w-]+\s*,[^;]+\)$/i;
 
 /**
  * Alpha channel, for both legacy comma syntax and the modern slash form.
@@ -121,11 +136,13 @@ function hexAlpha(value: string): number | null {
 /**
  * Whether the given background would paint an opaque leaf.
  *
- * `var()` returns TRUE and that is a deliberate, stated trade: a custom
- * property cannot be resolved without layout, and `var(--paper)` is the single
- * most likely value a design-system consumer passes. Rejecting it to defend an
+ * `var(--x, fallback)` returns TRUE and that is a deliberate, stated trade: a
+ * custom property cannot be resolved without layout, and it is the single most
+ * likely value a design-system consumer passes. Rejecting it to defend an
  * invariant we cannot verify either way would be worse than accepting it and
  * saying so — a translucent custom property is then the caller's to get right.
+ * The FALLBACK is mandatory, so an undefined property cannot produce a
+ * transparent fold; see {@link VAR_RE}.
  */
 export function isOpaquePageBackground(pageBackground?: string): boolean {
   const value = (pageBackground ?? '').trim().toLowerCase();

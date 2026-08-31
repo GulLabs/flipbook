@@ -24,7 +24,6 @@ import { Flip, FlipCorner, FlippingState } from './Flip/Flip';
 import type { Orientation, Render } from './Render/Render';
 import { HTMLUI } from './UI/HTMLUI';
 import { distanceBetween } from './Helper';
-import type { Page } from './Page/Page';
 import { EventObject } from './Event/EventObject';
 import type { BookSnapshot, FlipbookEventMap } from './Event/EventObject';
 import { HTMLRender } from './Render/HTMLRender';
@@ -1331,7 +1330,13 @@ export class PageFlip extends EventObject {
    * @returns {Page}
    */
   /**
-   * The leaf indices currently on screen, in reading order.
+   * The leaf indices currently on screen, in INDEX order — ascending, which is
+   * reading order under `ltr` and the reverse of it under `rtl`.
+   *
+   * Index order rather than visual order on purpose: "page 5" means the same
+   * page whichever way the book binds, and the spatial side is derived from the
+   * index, never the other way round (see `PageCollection.showSpread`). A
+   * consumer laying out RTL chrome reverses it.
    *
    * One in portrait, two in landscape, one for a cover. THE question a reader
    * UI has to answer — a page counter, a scrubber, a thumbnail strip, a table
@@ -1391,8 +1396,15 @@ export class PageFlip extends EventObject {
     return !this.destroyed && this.flipController !== null && this.pages !== null;
   }
 
-  public getPage(pageIndex: number): Page {
-    return this.pagesOrThrow.getPage(pageIndex);
+  /**
+   * Whether a turn is animating right now.
+   *
+   * The one question `getRender()` was legitimately reached for that the façade
+   * could not answer. Added in the same change that closed the getter, so the
+   * need does not outlive the escape hatch.
+   */
+  public isAnimating(): boolean {
+    return this.render?.isAnimating() ?? false;
   }
 
   /**

@@ -49,7 +49,13 @@ export interface FlipbookState {
   canGoPrev: boolean;
   /** Leaf indices on screen, in reading order. One in portrait, two in landscape. */
   visiblePages: number[];
-  /** The most recent refusal, or `null`. Cleared by the next successful turn. */
+  /**
+   * The most recent refusal, or `null`.
+   *
+   * Cleared by the next successful TURN. Deliberately not cleared by a load or
+   * by the engine sync below — a refusal a consumer is about to render should
+   * survive an unrelated reflow.
+   */
   lastRejection: TurnRejected | null;
 }
 
@@ -217,8 +223,9 @@ export function usePageFlip(initialPage = 0, options: { hardCovers?: boolean } =
    * entirely. It runs once an engine exists — `pageCount` moving off 0 is that
    * signal — and re-subscribes if the engine is replaced.
    */
+  const engine = ref.current?.pageFlip() ?? null;
+
   useEffect(() => {
-    const engine = ref.current?.pageFlip() ?? null;
     if (engine === null || engine.isDestroyed()) return;
 
     const sync = (): void => {
@@ -243,7 +250,11 @@ export function usePageFlip(initialPage = 0, options: { hardCovers?: boolean } =
       engine.off('pagesChanged', sync);
       engine.off('changeOrientation', sync);
     };
-  }, [apply, state.pageCount]);
+    // Keyed on the ENGINE's identity, not on pageCount. A remount that keeps
+    // the same page count — a `hardCovers` change, say — produced a new engine
+    // the old subscription was not attached to, which re-opened the very freeze
+    // this effect exists to close.
+  }, [apply, engine, state.pageCount]);
 
   return {
     ref,
