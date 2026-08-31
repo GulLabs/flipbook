@@ -702,7 +702,7 @@ describe('lazy mounting', () => {
    * Unskip when the binding stops looping; do NOT weaken the assertion.
    * See docs/reviews/test-round-product-bugs-2026-08-30.md.
    */
-  test.skip('the lazy window still advances when the page turns', async () => {
+  test('the lazy window still advances when the page turns', async () => {
     // Controlled page (not usePageFlip) — the contract under test is the
     // window, not the hook. Still OOMs today; kept as the revert target.
     const ref = { current: null as FlipBookHandle | null };
@@ -1491,7 +1491,7 @@ describe('lazy mounting keeps page identity (RB3)', () => {
   }
 
   // PRODUCT-BUG: lazyRadius mount OOMs the worker — see lazy mounting above.
-  test.skip('crossing the lazy window boundary does not rebuild the collection', async () => {
+  test('crossing the lazy window boundary does not rebuild the collection', async () => {
     const onPagesChanged = vi.fn();
 
     function Harness() {
@@ -1553,7 +1553,7 @@ describe('RB7 — the lazy window covers the whole next spread', () => {
   useMeasuredLayout();
 
   // PRODUCT-BUG: lazyRadius mount OOMs the worker — see lazy mounting above.
-  test.skip('landscape lazyRadius=1 mounts BOTH leaves of the adjacent spread', async () => {
+  test('landscape lazyRadius=1 mounts BOTH leaves of the adjacent spread', async () => {
     blockSize = LANDSCAPE_BLOCK;
     const ref = createRef<FlipBookHandle>();
 
@@ -1588,7 +1588,7 @@ describe('RB7 — the lazy window covers the whole next spread', () => {
   });
 
   // PRODUCT-BUG: lazyRadius mount OOMs the worker — see lazy mounting above.
-  test.skip('the window is still bounded — a spread two away stays lazy', async () => {
+  test('the window is still bounded — a spread two away stays lazy', async () => {
     blockSize = LANDSCAPE_BLOCK;
     const ref = createRef<FlipBookHandle>();
 

@@ -431,9 +431,25 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     //
     // Depends on `pageCount` and `orientation` as well as `enginePage` because
     // those are what change under it; the engine is the source of the value.
+    // VALUE-STABLE, not merely memoised (BUG-1). `getVisiblePages()` returns
+    // a fresh defensive array on every call (C6), and this memo re-runs on
+    // `pages` — which the lazy-window effect itself sets. With `lazyRadius`
+    // on, that closed a loop the memo alone cannot break: setPages → new
+    // `pages` → new array reference → new `lazyAnchors` → the lazy effect
+    // re-runs → setPages → … — heap exhaustion on MOUNT, no flip required.
+    // Re-using the previous array whenever the CONTENTS are unchanged makes
+    // every downstream dependency see a settled value and the loop terminate,
+    // for the whole set, not just the empty-anchors path.
+    const visiblePagesRef = useRef<number[]>([]);
     const visiblePages = useMemo(() => {
       const engine = engineRef.current;
-      return engine && !engine.isDestroyed() ? engine.getVisiblePages() : [];
+      const next = engine && !engine.isDestroyed() ? engine.getVisiblePages() : [];
+      const prev = visiblePagesRef.current;
+      if (prev.length === next.length && prev.every((leaf, i) => leaf === next[i])) {
+        return prev;
+      }
+      visiblePagesRef.current = next;
+      return next;
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [enginePage, pageCount, orientation, hardCovers, pages]);
 
