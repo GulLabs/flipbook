@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { Render } from '../Render/Render';
+import { GET_COLLECTION } from '../internal';
 import { EMIT_STATE, SET_SPREAD_INDEX } from '../internal';
 import { foldSide, Orientation } from '../Render/Render';
 import type { PageFlip } from '../PageFlip';
@@ -195,7 +196,7 @@ export class Flip {
     // public getters contradicting each other.
     //
     // `finally`, so a throw out of `start()` cannot strand it either.
-    const collection = this.app.getPageCollection();
+    const collection = this.app[GET_COLLECTION]();
     const restoreSpread = target === null ? null : collection.getCurrentSpreadIndex();
 
     let started: boolean;
@@ -341,8 +342,8 @@ export class Flip {
     // defect and must surface. Upstream swallowed both, so a broken book just
     // refused to turn with nothing in the console — the silent-failure class
     // §4.6 exists to remove.
-    this.flippingPage = this.app.getPageCollection().getFlippingPage(direction);
-    this.bottomPage = this.app.getPageCollection().getBottomPage(direction);
+    this.flippingPage = this.app[GET_COLLECTION]().getFlippingPage(direction);
+    this.bottomPage = this.app[GET_COLLECTION]().getBottomPage(direction);
 
     // In landscape, the neighbouring page must take the flipped page's density.
     if (this.render.getOrientation() === Orientation.LANDSCAPE) {
@@ -381,7 +382,7 @@ export class Flip {
    * inspected the value it had changed.
    */
   private applyLandscapeDensity(direction: FlipDirection, flippingPage: Page): void {
-    const collection = this.app.getPageCollection();
+    const collection = this.app[GET_COLLECTION]();
     const neighbour =
       direction === FlipDirection.BACK
         ? collection.nextBy(flippingPage)
@@ -484,7 +485,7 @@ export class Flip {
    * in "`page` without `onPageChange` is a genuinely locked book".
    */
   public flipToPage(page: number, corner: FlipCorner): boolean {
-    const collection = this.app.getPageCollection();
+    const collection = this.app[GET_COLLECTION]();
 
     // Finish any turn already in flight *before* reading the index. Policy:
     // finish-then-restart. A second `flipToPage` used to read the phantom index
@@ -813,7 +814,7 @@ export class Flip {
         // instant, so the one-step commit below steps off it and lands on the
         // requested spread. Between `start()` and here the collection reported
         // the truth.
-        if (target !== null) this.app.getPageCollection()[SET_SPREAD_INDEX](target);
+        if (target !== null) this.app[GET_COLLECTION]()[SET_SPREAD_INDEX](target);
 
         // The SEMANTIC direction, not `calc.getDirection()` — that one is the
         // geometric side and is inverted under `direction: 'rtl'`.
@@ -977,7 +978,7 @@ export class Flip {
    * read past the end of the spread list.
    */
   private checkDirection(direction: FlipDirection): boolean {
-    const collection = this.app.getPageCollection();
+    const collection = this.app[GET_COLLECTION]();
 
     if (direction === FlipDirection.FORWARD)
       return collection.getCurrentSpreadIndex() < collection.getSpreadCount() - 1;

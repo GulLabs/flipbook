@@ -3,6 +3,10 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
+  GET_RENDER,
+  GET_UI,
+  GET_COLLECTION,
+  GET_FLIP,
   VISIBLE_PAGES,
   ADOPT_ORIENTATION,
   DROP_POINTER_GESTURE,
@@ -1397,7 +1401,7 @@ export class PageFlip extends EventObject {
    * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML`.
    * @returns {Render}
    */
-  public getRender(): Render {
+  public [GET_RENDER](): Render {
     return this.renderOrThrow;
   }
 
@@ -1406,7 +1410,7 @@ export class PageFlip extends EventObject {
    *
    * @returns {Flip} `null` until `loadFromHTML` runs.
    */
-  public getFlipController(): Flip | null {
+  public [GET_FLIP](): Flip | null {
     return this.flipController;
   }
 
@@ -1443,7 +1447,7 @@ export class PageFlip extends EventObject {
    * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML`.
    * @returns {UI}
    */
-  public getUI(): UI {
+  public [GET_UI](): UI {
     return this.uiOrThrow;
   }
 
@@ -1462,7 +1466,7 @@ export class PageFlip extends EventObject {
    * @throws {PageFlipError} `NOT_LOADED` before `loadFromHTML`.
    * @returns {PageCollection}
    */
-  public getPageCollection(): PageCollection {
+  public [GET_COLLECTION](): PageCollection {
     return this.pagesOrThrow;
   }
 

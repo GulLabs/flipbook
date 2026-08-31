@@ -91,6 +91,27 @@ export const ADOPT_ORIENTATION = Symbol('flipbook.adoptOrientation');
 export const SEED_OPENING_INDEX = Symbol('flipbook.seedOpeningIndex');
 
 /**
+ * The engine's internal wiring: one sibling reaching another.
+ *
+ * These were public getters, and they satisfied BOTH halves of the stopping
+ * rule above in the worst way. `getPageCollection()` handed back the live
+ * model, and `PageCollection.getPages()` returns the actual mutable array — so
+ * a consumer could splice or reorder leaves while the spread table, the current
+ * indices, the renderer's slots and the flip controller all still described the
+ * old model. Not an API-tidiness question: a mutable alias across the façade
+ * boundary, producing wrong visible leaves or a later internal failure rather
+ * than a supported operation or a loud refusal.
+ *
+ * The façade answers the questions consumers actually had — `getVisiblePages`,
+ * `canTurn`, `getBlockElement`, `getPageElement`, `isReady` — so nothing is
+ * lost by closing these.
+ */
+export const GET_RENDER = Symbol('flipbook.getRender');
+export const GET_UI = Symbol('flipbook.getUI');
+export const GET_COLLECTION = Symbol('flipbook.getCollection');
+export const GET_FLIP = Symbol('flipbook.getFlip');
+
+/**
  * The leaf indices on screen. `PageFlip.getVisiblePages()`'s seam.
  *
  * Symbol-keyed rather than public because the ANSWER belongs on the façade —

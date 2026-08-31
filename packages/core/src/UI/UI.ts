@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { PageFlip } from '../PageFlip';
+import { GET_RENDER, GET_COLLECTION, GET_FLIP } from '../internal';
 import type { Point } from '../BasicTypes';
 import type { FlipSetting } from '../Settings';
 import { FlipCorner, FlippingState } from '../Flip/Flip';
@@ -245,9 +246,9 @@ export abstract class UI {
    * — and unlike catching, it cannot swallow a real fault by accident.
    */
   private currentOrientation(): Orientation | null {
-    if (this.app.getFlipController() === null) return null;
+    if (this.app[GET_FLIP]() === null) return null;
 
-    return this.app.getRender().getOrientation();
+    return this.app[GET_RENDER]().getOrientation();
   }
 
   public destroy(): void {
@@ -532,7 +533,7 @@ export abstract class UI {
     // The controller is the witness that a mode is attached: it and the page
     // collection are wired in the same step, so this also proves `show()`
     // below has something to draw and cannot throw `NOT_LOADED`.
-    const flip = this.app.getFlipController();
+    const flip = this.app[GET_FLIP]();
     if (flip === null) return;
 
     this.app.userStop(lastPos, true);
@@ -540,7 +541,7 @@ export abstract class UI {
 
     // Repaint the spread: the last frame drawn was a fold that no longer
     // exists. Skipped during teardown, where there is nothing left to draw to.
-    if (!this.app.isDestroyed()) this.app.getPageCollection().show();
+    if (!this.app.isDestroyed()) this.app[GET_COLLECTION]().show();
   }
 
   private swipeDirection(dx: number): 'prev' | 'next' {
@@ -611,10 +612,10 @@ export abstract class UI {
 
   /** Put a hover-folded corner back. Only the hover fold — never a drag. */
   private unfoldHoverCorner(): void {
-    const flip = this.app.getFlipController();
+    const flip = this.app[GET_FLIP]();
 
     if (flip?.getState() === FlippingState.FOLD_CORNER) {
-      this.app.getRender().finishAnimation();
+      this.app[GET_RENDER]().finishAnimation();
       flip.stopMove();
     }
   }
@@ -764,7 +765,7 @@ export abstract class UI {
         // centred in a taller host every upper-half swipe was classified
         // BOTTOM. `Flip.start` converts first — this call site was the odd one
         // out. (`>=` matches `Flip.start`'s split exactly.)
-        const render = this.app.getRender();
+        const render = this.app[GET_RENDER]();
         const bookPos = render.convertToBook(this.touchPoint.point);
         const corner =
           bookPos.y >= render.getRect().height / 2 ? FlipCorner.BOTTOM : FlipCorner.TOP;

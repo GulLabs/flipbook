@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { UI } from './UI';
+import { GET_RENDER } from '../internal';
 import { PageFlipError } from '../errors';
 import type { PageFlip } from '../PageFlip';
 import type { FlipSetting } from '../Settings';
@@ -256,6 +257,6 @@ export class HTMLUI extends UI {
   }
 
   public update(): void {
-    this.app.getRender().update();
+    this.app[GET_RENDER]().update();
   }
 }

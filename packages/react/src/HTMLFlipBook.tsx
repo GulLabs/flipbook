@@ -933,7 +933,17 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // Membership is asked of the ENGINE, not derived here: the cover is a
       // spread of one, so "pair the leaves two at a time" is wrong exactly when
       // `hardCovers` is set.
-      if (engine.getVisiblePages().includes(controlledPage)) return;
+      if (engine.getVisiblePages().includes(controlledPage)) {
+        // CLEAR THE FLAG ON THE EARLY RETURN TOO.
+        //
+        // In the ordinary `page={0}` case the first run finds page 0 already
+        // visible and returned here without clearing it — so the next change,
+        // a real user-driven navigation, still read as "initial" and used the
+        // instant path. A controlled book's first declarative turn was a silent
+        // page swap despite `pageTransition` defaulting to 'animate'.
+        firstControlledApply.current = false;
+        return;
+      }
 
       // D14. ANIMATE by default.
       //

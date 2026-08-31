@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Orientation, Render, type Shadow } from './Render';
+import { GET_COLLECTION } from '../internal';
 import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { PageDensity, PageOrientation } from '../Page/Page';
@@ -325,7 +326,7 @@ export class HTMLRender extends Render {
   }
 
   private clear(): void {
-    for (const page of this.app.getPageCollection().getPages()) {
+    for (const page of this.app[GET_COLLECTION]().getPages()) {
       if (
         page !== this.leftPage &&
         page !== this.rightPage &&

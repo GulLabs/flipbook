@@ -50,7 +50,7 @@ const ENGINE_STYLE_PROPS = [
  * property maps would be a much larger change to the hot path for the same
  * result. The parse is ~15 declarations on at most four leaves per frame.
  */
-function applyEngineStyle(element: HTMLElement, css: string): void {
+function applyEngineStyle(element: HTMLElement, css: string, background?: string): void {
   const next = new Map<string, string>();
 
   for (const declaration of css.split(';')) {
@@ -67,6 +67,17 @@ function applyEngineStyle(element: HTMLElement, css: string): void {
   }
 
   for (const [property, value] of next) element.style.setProperty(property, value);
+
+  // The BACKGROUND is applied separately, never through the parsed string.
+  //
+  // It is the one declaration whose value comes from consumer input, and this
+  // function splits on `;` — so embedding it made a semicolon in the colour a
+  // second declaration. The settings boundary rejects `;` and `foldFill`
+  // rejects it again at draw, so it could not actually inject; but a rule that
+  // holds only because two other checks happen to be right is the wrong shape
+  // for the one value an attacker controls. Passing it as its own argument
+  // removes the class of bug rather than guarding it.
+  if (background !== undefined) element.style.setProperty('background-color', background);
 }
 
 /**
@@ -238,7 +249,7 @@ export class HTMLPage extends Page {
     // classes. An inline declaration beats every author rule short of
     // `!important`, and `cssText` is not public surface. It also makes the two
     // draw paths agree, which is what made this asymmetry survivable.
-    const commonStyle = `position:absolute;${zIndexStyle}left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;background-color:${foldFill(this.render.getSettings().pageBackground)};${this.isTemporaryCopy ? 'pointer-events:none;' : ''}`;
+    const commonStyle = `position:absolute;${zIndexStyle}left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;${this.isTemporaryCopy ? 'pointer-events:none;' : ''}`;
 
     this.element.classList.add('--shown');
 
@@ -294,6 +305,7 @@ export class HTMLPage extends Page {
       this.element,
       `${commonStyle}backface-visibility:hidden;-webkit-backface-visibility:hidden;` +
         `clip-path:none;-webkit-clip-path:none;${transform}`,
+      foldFill(this.render.getSettings().pageBackground),
     );
   }
 
@@ -348,6 +360,7 @@ export class HTMLPage extends Page {
     applyEngineStyle(
       this.element,
       `${commonStyle}transform-origin:0 0;clip-path:${polygon};-webkit-clip-path:${polygon};${transform}`,
+      foldFill(this.render.getSettings().pageBackground),
     );
   }
 
@@ -365,8 +378,9 @@ export class HTMLPage extends Page {
     applyEngineStyle(
       this.element,
       `position:absolute;height:${pageHeight}px;left:${x}px;top:${y}px;` +
-        `width:${pageWidth}px;background-color:${foldFill(this.render.getSettings().pageBackground)};` +
+        `width:${pageWidth}px;` +
         `z-index:${this.render.getSettings().startZIndex + 1};`,
+      foldFill(this.render.getSettings().pageBackground),
     );
   }
 

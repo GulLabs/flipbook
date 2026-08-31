@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { at } from '../arrayAccess';
+import { GET_UI } from '../internal';
 import { ADOPT_ORIENTATION } from '../internal';
 import type { PageFlip } from '../PageFlip';
 import type { Point, PageRect, RectPoints } from '../BasicTypes';
@@ -395,7 +396,7 @@ export abstract class Render {
     //    is legitimately current.
     //  - `loadFromHTML()` — the nested `attachMode` installs a new UI, render
     //    and collection, and then this method revives the OLD, detached render.
-    //    Its `clear()` iterates `app.getPageCollection()` — the NEW collection —
+    //    Its `clear()` iterates `app[GET_COLLECTION]()` — the NEW collection —
     //    and hides every page that is not one of the old render's references.
     //    Measured: all six pages of the freshly loaded book ended
     //    `display: none`, both loops parked, and nothing scheduled another
@@ -945,14 +946,14 @@ export abstract class Render {
    * Get parent block offset width
    */
   public getBlockWidth(): number {
-    return this.app.getUI().getDistElement().offsetWidth;
+    return this.app[GET_UI]().getDistElement().offsetWidth;
   }
 
   /**
    * Get parent block offset height
    */
   public getBlockHeight(): number {
-    return this.app.getUI().getDistElement().offsetHeight;
+    return this.app[GET_UI]().getDistElement().offsetHeight;
   }
 
   /**

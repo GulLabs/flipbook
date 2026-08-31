@@ -311,8 +311,14 @@ export class PageCollection {
   /**
    * Get the pages list
    */
-  public getPages(): Page[] {
-    return this.pages;
+  public getPages(): readonly Page[] {
+    // A COPY, and `readonly`. This used to return the live array, so a caller
+    // could splice or reorder leaves while the spread table, the current
+    // indices, the renderer's slots and the flip controller all still described
+    // the old model — wrong visible leaves, or a later internal failure, rather
+    // than a supported operation or a loud refusal. Internal callers only
+    // iterate it.
+    return [...this.pages];
   }
 
   /**
