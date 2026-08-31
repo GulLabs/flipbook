@@ -187,7 +187,17 @@ function* sweep(): Generator<number> {
 
 describe('FlipCalculation fold geometry is bit-stable', () => {
   test('a 2,400-frame sweep across twelve geometries hashes to the shipped value', () => {
-    expect(digest(sweep())).toBe('249bfc9f8fe5a227');
+    // Two known digests: darwin arm64 (local) and linux x64 (GitHub Actions).
+    // `libm` (`sin`/`cos`/`atan2`) can differ by a ULP across platforms on the
+    // same IEEE inputs, so a single bit-exact hash is platform-locked. Both
+    // values were captured from the same source; a third hash still means the
+    // geometry moved. The named-frame test below pins one trajectory with
+    // exact equality on every platform that reaches it.
+    const got = digest(sweep());
+    expect(
+      ['249bfc9f8fe5a227', '6836ccb3fb900246'].includes(got),
+      `unexpected fold digest ${got} — geometry moved, or a new platform needs its hash recorded`,
+    ).toBe(true);
   });
 
   test('one named frame, so a digest failure is diagnosable', () => {
