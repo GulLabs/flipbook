@@ -109,14 +109,18 @@ describe('the engine public surface is frozen', () => {
   });
 
   test('UI — only reachable via closed GET_UI seam', () => {
+    // Collapsed from UI + HTMLUI (Campaign A1): clear/update/updateItems moved
+    // onto the concrete class; `abstract` is gone.
     expect(publicMembers('UI/UI.ts')).toEqual(
       [
-        'abstract',
         'applyHostSize',
+        'clear',
         'destroy',
         'getDistElement',
         'getWrapper',
         'refreshHandlers',
+        'update',
+        'updateItems',
       ].sort(),
     );
   });
