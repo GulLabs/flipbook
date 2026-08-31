@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FlipCorner } from '@gullabs/flipbook-core';
 import type {
   BookSnapshot,
@@ -47,6 +47,8 @@ export interface FlipbookState {
   /** Whether a forward turn is possible from here. */
   canGoNext: boolean;
   canGoPrev: boolean;
+  /** Leaf indices on screen, in reading order. One in portrait, two in landscape. */
+  visiblePages: number[];
   /** The most recent refusal, or `null`. Cleared by the next successful turn. */
   lastRejection: TurnRejected | null;
 }
@@ -57,33 +59,25 @@ const INITIAL: FlipbookState = {
   orientation: 'landscape',
   canGoNext: false,
   canGoPrev: false,
+  visiblePages: [],
   lastRejection: null,
 };
 
 /**
- * R-3. `page` is the spread HEAD, so comparing it to `pageCount - 1` is wrong
- * in landscape: on the final spread [4, 5] of a six-page book the head is 4,
- * which is below 5, so `canGoNext` stayed true at the end of every landscape
- * book. That is the invariant CLAUDE.md documents — "turns are bounded by
- * spreads, not page indices" — and this had the identical bug the H4 next
- * button had.
- *
- * The last leaf on screen is `head + 1` when a second leaf fits: landscape,
- * past the cover, and not the trailing odd leaf.
+ * Bounds come from the ENGINE now — `canTurn` is spread-bounded and the engine
+ * owns that rule. This used to pair from the head locally and had already
+ * drifted: it reported no forward turn on a two-leaf hard-cover book, because
+ * its copy did not know a cover is a spread of one.
  */
-function withBounds(state: FlipbookState, hardCovers: boolean): FlipbookState {
-  // MIN-A. The cover is a spread of ONE, so pairing from the head is wrong
-  // exactly when `hardCovers` is set — on a two-leaf hard-cover book it made
-  // the head pair with leaf 1 and reported `canGoNext: false` while a real
-  // turn was available. `HTMLFlipBook` gets this right via `spreadPages`; this
-  // is the same rule, and the two should not drift.
-  const pairs = state.orientation === 'landscape' && !(hardCovers && state.page === 0);
-  const lastVisible = pairs && state.page + 1 <= state.pageCount - 1 ? state.page + 1 : state.page;
+function withBounds(state: FlipbookState, handle: FlipBookHandle | null): FlipbookState {
+  const engine = handle?.pageFlip() ?? null;
+  const live = engine !== null && !engine.isDestroyed();
 
   return {
     ...state,
-    canGoPrev: state.page > 0,
-    canGoNext: state.pageCount > 0 && lastVisible < state.pageCount - 1,
+    canGoPrev: live ? engine.canTurn('prev') : false,
+    canGoNext: live ? engine.canTurn('next') : false,
+    visiblePages: live ? engine.getVisiblePages() : [],
   };
 }
 
@@ -91,7 +85,7 @@ export function usePageFlip(initialPage = 0, options: { hardCovers?: boolean } =
   const hardCovers = options.hardCovers === true;
   const ref = useRef<FlipBookHandle | null>(null);
   const [state, setState] = useState<FlipbookState>(() =>
-    withBounds({ ...INITIAL, page: initialPage }, hardCovers),
+    withBounds({ ...INITIAL, page: initialPage }, null),
   );
 
   /**
@@ -110,11 +104,11 @@ export function usePageFlip(initialPage = 0, options: { hardCovers?: boolean } =
             orientation: snapshot.orientation === 'portrait' ? 'portrait' : 'landscape',
             lastRejection: clearRejection ? null : previous.lastRejection,
           },
-          hardCovers,
+          ref.current,
         ),
       );
     },
-    [hardCovers],
+    [],
   );
 
   const flipNext = useCallback((corner?: FlipCorner) => ref.current?.flipNext(corner) ?? false, []);
@@ -168,7 +162,20 @@ export function usePageFlip(initialPage = 0, options: { hardCovers?: boolean } =
     setState((previous) => ({ ...previous, lastRejection: info }));
   }, []);
 
-  /** Spread onto `<HTMLFlipBook {...bookProps} />`. */
+  /**
+   * Spread onto `<HTMLFlipBook {...bookProps} />`.
+   *
+   * ORDER MATTERS, and it used to matter silently. Spreading these FIRST and
+   * then passing your own `onPageChange` overwrites the hook's — so the book
+   * still turns, your handler still fires, and `page` / `canGoNext` /
+   * `visiblePages` quietly stop updating, which kills any button driven by
+   * them. It compiled, ran, and looked correct.
+   *
+   * That cannot happen any more, and the fix is not a rule to remember: the
+   * hook SUBSCRIBES TO THE ENGINE DIRECTLY (see the effect below), so its state
+   * is correct whether or not these handlers survive the spread. They stay
+   * because they make the common case work before the first render commits.
+   */
   const bookProps: Pick<
     IEventProps,
     'onPageChange' | 'onPagesChanged' | 'onChangeOrientation' | 'onLoaded' | 'onTurnRejected'
@@ -189,7 +196,7 @@ export function usePageFlip(initialPage = 0, options: { hardCovers?: boolean } =
               ...previous,
               orientation: orientation === 'portrait' ? 'portrait' : 'landscape',
             },
-            hardCovers,
+            ref.current,
           ),
         ),
       // Previously omitted, so an out-of-range page clamped with no signal.
@@ -197,6 +204,46 @@ export function usePageFlip(initialPage = 0, options: { hardCovers?: boolean } =
     }),
     [apply, onPagesChanged, onTurnRejected, initialPage, hardCovers],
   );
+
+  /**
+   * The authoritative subscription.
+   *
+   * `bookProps` can be defeated by prop order — spread it first, pass your own
+   * `onPageChange`, and the hook's is overwritten. Everything still LOOKS
+   * right: the book turns and your handler fires, while `page`, `canGoNext`
+   * and `visiblePages` silently freeze and any button driven by them dies.
+   *
+   * Listening to the engine itself removes the dependency on prop wiring
+   * entirely. It runs once an engine exists — `pageCount` moving off 0 is that
+   * signal — and re-subscribes if the engine is replaced.
+   */
+  useEffect(() => {
+    const engine = ref.current?.pageFlip() ?? null;
+    if (engine === null || engine.isDestroyed()) return;
+
+    const sync = (): void => {
+      if (engine.isDestroyed()) return;
+      apply(
+        {
+          page: engine.getCurrentPageIndex(),
+          pageCount: engine.getPageCount(),
+          orientation: engine.getOrientation(),
+        },
+        false,
+      );
+    };
+
+    engine.on('flip', sync);
+    engine.on('pagesChanged', sync);
+    engine.on('changeOrientation', sync);
+    sync();
+
+    return () => {
+      engine.off('flip', sync);
+      engine.off('pagesChanged', sync);
+      engine.off('changeOrientation', sync);
+    };
+  }, [apply, state.pageCount]);
 
   return {
     ref,

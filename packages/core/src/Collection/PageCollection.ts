@@ -12,6 +12,7 @@ import {
   INHERIT_PAGE_INDEX,
   SEED_OPENING_INDEX,
   SET_SPREAD_INDEX,
+  VISIBLE_PAGES,
 } from '../internal';
 import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
@@ -226,6 +227,30 @@ export abstract class PageCollection {
    *
    * @param {number} pageNum - page index
    */
+  /**
+   * The leaf indices currently on screen, in reading order.
+   *
+   * The spread table is `protected`, so nothing outside could answer "which
+   * leaves am I looking at" — and the React binding therefore reimplemented the
+   * rules (portrait is one leaf, landscape pairs, a cover stands alone) in its
+   * own `spreadPages()`, `usePageFlip` kept a third copy for `canGoNext`, and
+   * every consumer drawing chrome would have written a fourth.
+   *
+   * Duplicated rules drift, and these already had: `canGoNext` reported no
+   * forward turn on a two-leaf hard-cover book because its copy paired from the
+   * head without knowing about covers. One owner, one answer.
+   *
+   * @internal — reached through `PageFlip.getVisiblePages()`.
+   */
+  public [VISIBLE_PAGES](): number[] {
+    const spreads = this.getSpread();
+    if (spreads.length === 0) return [];
+
+    const spread = spreads[this.currentSpreadIndex];
+
+    return spread === undefined ? [] : [...spread];
+  }
+
   public getSpreadIndexByPage(pageNum: number): number | null {
     const spread = this.getSpread();
 

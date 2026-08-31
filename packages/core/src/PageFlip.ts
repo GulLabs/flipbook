@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import {
+  VISIBLE_PAGES,
   ADOPT_ORIENTATION,
   DROP_POINTER_GESTURE,
   EMIT_PAGE_INDEX,
@@ -13,6 +14,7 @@ import {
 } from './internal';
 import type { PageCollection } from './Collection/PageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
+import { HTMLPage } from './Page/HTMLPage';
 import type { PageRect, Point } from './BasicTypes';
 import { Flip, FlipCorner, FlippingState } from './Flip/Flip';
 import type { Orientation, Render } from './Render/Render';
@@ -1300,6 +1302,67 @@ export class PageFlip extends EventObject {
    * @param {number} pageIndex
    * @returns {Page}
    */
+  /**
+   * The leaf indices currently on screen, in reading order.
+   *
+   * One in portrait, two in landscape, one for a cover. THE question a reader
+   * UI has to answer — a page counter, a scrubber, a thumbnail strip, a table
+   * of contents highlight, an analytics call — and until now the API could not.
+   *
+   * `getCurrentPageIndex()` is the spread HEAD, so on a 12-page landscape book
+   * it reports 4 while leaves 4 AND 5 are showing. Every consumer that derived
+   * the rest got the cover and odd-leaf cases wrong; this repo got it wrong
+   * twice, from three separate copies of a rule the engine owns.
+   */
+  public getVisiblePages(): number[] {
+    return this.pages === null ? [] : this.pages[VISIBLE_PAGES]();
+  }
+
+  /**
+   * Whether a turn is possible in that direction.
+   *
+   * Bounded by SPREADS, not page indices — which is why deriving it from
+   * `getCurrentPageIndex()` and `getPageCount()` is wrong in landscape, and why
+   * everyone who tried enabled a next button on the final spread.
+   */
+  public canTurn(direction: 'next' | 'prev'): boolean {
+    if (this.pages === null) return false;
+
+    const spread = this.pages.getCurrentSpreadIndex();
+
+    return direction === 'prev' ? spread > 0 : spread < this.pages.getSpreadCount() - 1;
+  }
+
+  /**
+   * The element the leaves live in — the engine's `.stf__block`.
+   *
+   * The one legitimate reason to reach for the UI: a binding that owns its page
+   * elements has to portal them into this node so its recorded parent matches
+   * the real one.
+   */
+  public getBlockElement(): HTMLElement {
+    return this.uiOrThrow.getDistElement();
+  }
+
+  /** The DOM node for a leaf, or `null` if there is no such leaf. */
+  public getPageElement(pageIndex: number): HTMLElement | null {
+    if (this.pages === null || pageIndex < 0 || pageIndex >= this.pages.getPageCount()) return null;
+
+    const page = this.pages.getPage(pageIndex);
+
+    return page instanceof HTMLPage ? page.getElement() : null;
+  }
+
+  /**
+   * Whether the book has finished loading and can be turned.
+   *
+   * Replaces `getFlipController() !== null`, which was the only reason that
+   * getter was reached for. Readiness is a state, not an object.
+   */
+  public isReady(): boolean {
+    return !this.destroyed && this.flipController !== null && this.pages !== null;
+  }
+
   public getPage(pageIndex: number): Page {
     return this.pagesOrThrow.getPage(pageIndex);
   }

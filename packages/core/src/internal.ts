@@ -91,6 +91,15 @@ export const ADOPT_ORIENTATION = Symbol('flipbook.adoptOrientation');
 export const SEED_OPENING_INDEX = Symbol('flipbook.seedOpeningIndex');
 
 /**
+ * The leaf indices on screen. `PageFlip.getVisiblePages()`'s seam.
+ *
+ * Symbol-keyed rather than public because the ANSWER belongs on the façade —
+ * a consumer should ask the book what it is showing, not reach through it to
+ * the collection.
+ */
+export const VISIBLE_PAGES = Symbol('flipbook.visiblePages');
+
+/**
  * Re-bases the collection on another spread WITHOUT showing it. `Flip`'s seam,
  * used to select the two leaves of a turn and to re-base before a commit.
  *

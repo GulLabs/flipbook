@@ -164,33 +164,6 @@ function sameNodes(previous: HTMLElement[] | null, next: HTMLElement[]): boolean
 }
 
 /**
- * Leaf indices of the spread whose first leaf is `head`.
- *
- * This mirrors `PageCollection.createSpread` exactly: portrait is one leaf per
- * spread; landscape pairs leaves, with the cover (and a trailing odd leaf)
- * standing alone. It is derived rather than read because the collection's
- * spread table is `protected` — `getSpreadIndexByPage` / `getCurrentSpreadIndex`
- * are the only public windows onto it and neither hands back the members.
- * `head` must be the engine's `getCurrentPageIndex()`, which is `spread[0]`.
- */
-function spreadPages(
-  head: number,
-  pageCount: number,
-  orientation: PageOrientation,
-  hardCovers: boolean,
-): number[] {
-  if (pageCount <= 0) return [];
-
-  const first = Math.min(Math.max(head, 0), pageCount - 1);
-
-  if (orientation === 'portrait') return [first];
-  // The cover is a spread of its own, so it never pairs with leaf 1.
-  if (hardCovers && first === 0) return [0];
-
-  return first + 1 <= pageCount - 1 ? [first, first + 1] : [first];
-}
-
-/**
  * Human label for a leaf.
  *
  * This is the leaf index plus one, which is the printed page number only for a
@@ -365,7 +338,6 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     const childCount = useRef(0);
     /** Monotonic stamp; `pages.gen` matches once the filling commit has run. */
     const slotGeneration = useRef(0);
-    const warnedNonHost = useRef(false);
 
     /**
      * The page nodes, or a thrown error naming the child that could not be
@@ -444,10 +416,20 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     // leaf of the spread, while a controlled `page` may name either leaf of it.
     // Memoised so both the live region and the inert effect can depend on it by
     // identity; recomputed on every render it would re-announce constantly.
-    const visiblePages = useMemo(
-      () => spreadPages(enginePage, pageCount, orientation, hardCovers),
-      [enginePage, pageCount, orientation, hardCovers],
-    );
+    // ASK THE ENGINE. This used to call a local `spreadPages()` that
+    // reimplemented `createSpread`'s rules — portrait is one leaf, landscape
+    // pairs, a cover stands alone — because the collection's spread table was
+    // `protected`. `usePageFlip` kept a third copy for `canGoNext`, and it had
+    // already drifted: it reported no forward turn on a two-leaf hard-cover
+    // book. One owner, one answer.
+    //
+    // Depends on `pageCount` and `orientation` as well as `enginePage` because
+    // those are what change under it; the engine is the source of the value.
+    const visiblePages = useMemo(() => {
+      const engine = engineRef.current;
+      return engine && !engine.isDestroyed() ? engine.getVisiblePages() : [];
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [enginePage, pageCount, orientation, hardCovers, pages]);
 
     /**
      * R-3. Boundaries are asked of the SPREAD, not the head index.
@@ -492,7 +474,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
      */
     const runHandle = useCallback((page: number, animate: boolean): boolean => {
       const engine = engineRef.current;
-      if (!engine || engine.getPageCount() <= 0) {
+      if (!engine || engine.isDestroyed() || engine.getPageCount() <= 0) {
         eventHandlersRef.current.onTurnRejected?.({
           reason: 'notReady',
           direction: null,
@@ -527,7 +509,13 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
 
     const runRelative = useCallback((direction: 'next' | 'prev', corner?: FlipCorner): boolean => {
       const engine = engineRef.current;
-      if (!engine) {
+      // P3. `isDestroyed()` as well as a null ref. A consumer who calls
+      // `pageFlip()!.destroy()` WITHOUT unmounting leaves `engineRef` set, and
+      // the engine's own `turnRejected` reaches nobody — `destroy()` cleared
+      // its listener set. So the handle returned `false` with no callback at
+      // all, while the unmount path reported correctly. Same refusal, two
+      // contracts, decided by how the engine happened to die.
+      if (!engine || engine.isDestroyed()) {
         eventHandlersRef.current.onTurnRejected?.({
           reason: 'notReady',
           direction,
@@ -594,32 +582,17 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       };
       const next = wrapChildren(children, lazyAnchors, lazyRadius, collect);
 
-      // MIN-9. A component child that swallows its ref cannot be DETECTED
-      // until it renders inside the lazy window — a far leaf renders a
-      // placeholder host element whose ref always fires, so the slot is full
-      // and the book mounts cleanly, then throws several turns later when the
-      // reader arrives. That is inherent.
+      // P2. NO WARNING HERE any more.
       //
-      // What is cheap is the SIGNAL: `wrapChildren` already knows which
-      // children are not host elements, so say so once at mount rather than
-      // letting the reader find out. A warning, not a throw — a component that
-      // forwards its ref correctly is perfectly legal here.
-      if (!warnedNonHost.current) {
-        const suspects: number[] = [];
-        Children.forEach(children, (child, index) => {
-          if (isValidElement(child) && typeof child.type !== 'string') suspects.push(index);
-        });
-
-        if (suspects.length > 0) {
-          warnedNonHost.current = true;
-          console.warn(
-            `[flipbook] page child ${suspects.join(', ')} is a component, not a host element. ` +
-              'It must forward its ref to a DOM node, or the engine cannot position it. ' +
-              'Wrap it in a <div> if you are not sure.',
-          );
-        }
-      }
-
+      // This used to warn for any child whose `type` was not a string — which
+      // fires for a `forwardRef` component that forwards its ref CORRECTLY, i.e.
+      // exactly the pattern the docs recommend. A false positive on the
+      // documented happy path teaches consumers to ignore our warnings.
+      //
+      // Whether a child reached the engine is answerable precisely, one commit
+      // later, by whether its slot is still null — and `readNodes()` already
+      // throws `DETACHED_PAGE` naming the index when it is. That is the signal;
+      // this heuristic was a worse version of it fired earlier.
       const gen = (slotGeneration.current += 1);
       slotsRef.current = slots;
       childCount.current = next.length;
@@ -674,7 +647,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         eventHandlersRef.current.onPageChange?.(e.data);
       });
       flip.on('changeOrientation', (e: WidgetEvent<FlipbookEventMap['changeOrientation']>) => {
-        // Drives how many leaves count as "on screen" — see `spreadPages`.
+        // Drives how many leaves count as "on screen".
         setOrientation(e.data.orientation === 'portrait' ? 'portrait' : 'landscape');
         eventHandlersRef.current.onChangeOrientation?.(e.data);
       });
@@ -722,7 +695,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       engine.loadFromHTML([]);
       loadedNodes.current = [];
 
-      setPageHost(engine.getUI().getDistElement());
+      setPageHost(engine.getBlockElement());
       setHydrated(true);
 
       return () => {
@@ -929,7 +902,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
     useEffect(() => {
       const engine = engineRef.current;
       if (!engine || controlledPage === undefined) return;
-      if (!engine.getFlipController()) return;
+      if (!engine.isReady()) return;
       // Empty portal shell has no leaves yet — don't treat start page as OOB.
       if (engine.getPageCount() <= 0) return;
 
@@ -941,12 +914,10 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // consumer's own value — the component and the engine then disagreed
       // about a book that was already showing the requested leaf.
       //
-      // Membership is asked of the collection rather than derived here: the
-      // cover is a spread of one, so "pair the leaves two at a time" is wrong
-      // exactly when `hardCovers` is set.
-      const collection = engine.getPageCollection();
-      const targetSpread = collection.getSpreadIndexByPage(controlledPage);
-      if (targetSpread !== null && targetSpread === collection.getCurrentSpreadIndex()) return;
+      // Membership is asked of the ENGINE, not derived here: the cover is a
+      // spread of one, so "pair the leaves two at a time" is wrong exactly when
+      // `hardCovers` is set.
+      if (engine.getVisiblePages().includes(controlledPage)) return;
 
       // D14. ANIMATE by default.
       //
