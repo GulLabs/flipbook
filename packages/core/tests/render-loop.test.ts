@@ -34,8 +34,8 @@ import { Settings, SizeMode, type FlipSetting } from '../src/Settings';
 class TestRender extends Render {
   public frameDraws = 0;
 
-  public constructor(app: PageFlip, setting: FlipSetting) {
-    super(app, setting, document.createElement('div'));
+  public constructor(app: PageFlip, setting: FlipSetting, element: HTMLElement) {
+    super(app, setting, element);
   }
 
   protected drawFrame(): void {
@@ -88,7 +88,7 @@ function makeHarness(
     [ADOPT_ORIENTATION]: updateOrientation,
   } as unknown as PageFlip;
 
-  const render = new TestRender(app, setting);
+  const render = new TestRender(app, setting, document.createElement('div'));
 
   const tick = (timer: number): void => {
     const frame = pendingFrame;
