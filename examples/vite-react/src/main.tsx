@@ -1,14 +1,14 @@
 import { StrictMode, useCallback, useMemo, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
-import { HTMLFlipBook, usePageFlip, type WidgetEvent } from '@gullabs/react-flipbook';
+import { HTMLFlipBook, usePageFlip, type PageState } from '@gullabs/react-flipbook';
 
 /**
  * React binding showcase.
  *
  * Covers the public surface a consumer actually reaches for:
- *   - controlled `page` + `usePageFlip()`
- *   - `onFlip` / `onChangeState` / `onTurnRejected`
- *   - `direction: 'rtl'`
+ *   - `usePageFlip()` (uncontrolled + `goToPage` / `flipNext`)
+ *   - `onChangeState` / `lastRejection`
+ *   - `readingDirection: 'rtl'`
  *   - HTML pages with `<img>` (canvas mode was removed in 3.0.0 — ADR 0002)
  *
  * The engine owns each page ROOT's styles (`style.cssText` every frame). Put
@@ -17,6 +17,9 @@ import { HTMLFlipBook, usePageFlip, type WidgetEvent } from '@gullabs/react-flip
  * Page children must be host elements (`div`, …) so `HTMLFlipBook` can attach
  * a ref and hand the node to the engine. A custom component without
  * `forwardRef` leaves the book empty.
+ *
+ * Do not pass `page={book.page}`: the hook is uncontrolled. `bookProps` already
+ * carries `initialPage` and the load/turn handlers.
  */
 
 const leafRoot: CSSProperties = {
@@ -45,43 +48,34 @@ function svgDataUri(label: string, fill: string, ink = '#111'): string {
 
 function HtmlDemo() {
   const book = usePageFlip(0);
-  const [state, setState] = useState('read');
-  const [lastReject, setLastReject] = useState<string>('—');
+  const [state, setState] = useState<PageState>('read');
   const [rtl, setRtl] = useState(false);
 
-  const onChangeState = useCallback((e: WidgetEvent<string>) => {
-    setState(String(e.data));
-  }, []);
-
-  const onTurnRejected = useCallback((e: WidgetEvent<{ code?: string; reason?: string }>) => {
-    setLastReject(JSON.stringify(e.data));
-  }, []);
-
-  const onFlip = useCallback((e: WidgetEvent<number>) => {
-    // usePageFlip already tracks page via onPageChange; this is the raw event.
-    void e;
+  const onChangeState = useCallback((info: { state: PageState }) => {
+    setState(info.state);
   }, []);
 
   return (
     <section style={{ marginBottom: 48 }}>
-      <h2 style={{ margin: '0 0 8px' }}>HTMLFlipBook — controlled + RTL</h2>
+      <h2 style={{ margin: '0 0 8px' }}>HTMLFlipBook — usePageFlip + RTL</h2>
       <p style={{ margin: '0 0 12px', color: '#555', maxWidth: 520 }}>
-        <code>usePageFlip()</code> owns <code>page</code> / <code>pageCount</code>. Toggle RTL to
-        invert turn direction only — the fold still follows the finger.
+        <code>usePageFlip()</code> is uncontrolled: spread <code>bookProps</code>, call{' '}
+        <code>goToPage</code> / <code>flipNext</code>. Toggle RTL to invert turn direction only —
+        the fold still follows the finger.
       </p>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
-        <button type="button" onClick={() => book.flipPrev()}>
+        <button type="button" onClick={() => book.flipPrev()} disabled={!book.canGoPrev}>
           Prev
         </button>
-        <button type="button" onClick={() => book.flipNext()}>
+        <button type="button" onClick={() => book.flipNext()} disabled={!book.canGoNext}>
           Next
         </button>
-        <button type="button" onClick={() => book.turnToPage(0)}>
+        <button type="button" onClick={() => book.goToPage(0, 'instant')}>
           First
         </button>
-        <button type="button" onClick={() => book.setPage(2)}>
-          Go to page 2 (controlled)
+        <button type="button" onClick={() => book.goToPage(2)}>
+          Go to page 2
         </button>
         <button type="button" onClick={() => setRtl((v) => !v)} aria-pressed={rtl}>
           RTL: {rtl ? 'on' : 'off'}
@@ -92,21 +86,19 @@ function HtmlDemo() {
         data-demo-status=""
         style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: '#333' }}
       >
-        page {book.page} / {Math.max(0, book.pageCount - 1)} · state {state} · rejected {lastReject}
+        page {book.page} / {Math.max(0, book.pageCount - 1)} · state {state} · rejected{' '}
+        {book.lastRejection ? JSON.stringify(book.lastRejection) : '—'}
       </p>
 
       <HTMLFlipBook
         ref={book.ref}
         width={280}
         height={360}
-        size="fixed"
+        sizing="fixed"
         flippingTime={400}
-        direction={rtl ? 'rtl' : 'ltr'}
-        page={book.page}
+        readingDirection={rtl ? 'rtl' : 'ltr'}
         {...book.bookProps}
-        onFlip={onFlip}
         onChangeState={onChangeState}
-        onTurnRejected={onTurnRejected}
         style={{ maxWidth: 560 }}
         aria-label="HTML demo flipbook"
       >
@@ -145,16 +137,15 @@ function ImagesDemo() {
     <section>
       <h2 style={{ margin: '0 0 8px' }}>HTML pages with &lt;img&gt;</h2>
       <p style={{ margin: '0 0 12px', color: '#555', maxWidth: 520 }}>
-        Canvas / <code>loadFromImages</code> was removed in 3.0.0 (ADR 0002). Put pictures in HTML
-        leaves with <code>&lt;img alt&gt;</code> and <code>object-fit</code> — same public path as
-        any other content.
+        Pictures are HTML <code>&lt;img alt&gt;</code> with <code>object-fit</code> — the same
+        public path as any other content. There is no image loader.
       </p>
 
       <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <button type="button" onClick={() => book.flipPrev()}>
+        <button type="button" onClick={() => book.flipPrev()} disabled={!book.canGoPrev}>
           Prev
         </button>
-        <button type="button" onClick={() => book.flipNext()}>
+        <button type="button" onClick={() => book.flipNext()} disabled={!book.canGoNext}>
           Next
         </button>
       </div>
@@ -170,10 +161,9 @@ function ImagesDemo() {
         ref={book.ref}
         width={280}
         height={210}
-        size="fixed"
+        sizing="fixed"
         flippingTime={400}
         pageBackground="#f4ecd8"
-        page={book.page}
         {...book.bookProps}
         style={{ maxWidth: 560 }}
         aria-label="HTML images demo flipbook"

@@ -21,14 +21,14 @@ const swipeDistance =
 const book = new PageFlip(root, {
   width: 400,
   height: 300,
-  size: 'stretch',
+  sizing: 'responsive',
   minWidth: 260,
   maxWidth: 800,
   minHeight: 200,
   maxHeight: 600,
   usePortrait: true,
-  showCover: params.get('cover') === '1',
-  direction: params.get('rtl') === '1' ? 'rtl' : 'ltr',
+  hardCovers: params.get('cover') === '1',
+  readingDirection: params.get('rtl') === '1' ? 'rtl' : 'ltr',
   flippingTime: Number(params.get('flippingTime') ?? 600),
   // Opaque default; goldens assert the fold does not show the leaf below.
   pageBackground: '#ffffff',
@@ -38,7 +38,8 @@ const book = new PageFlip(root, {
   respectReducedMotion: params.get('reducedMotion') !== '0',
   // Gesture e2e knobs — omitted params keep Settings defaults.
   ...(swipeDistance !== undefined && !Number.isNaN(swipeDistance) ? { swipeDistance } : {}),
-  disableFlipByClick: params.get('disableFlipByClick') === '1',
+  // Query name kept for existing e2e URLs; the setting is `flipOnClick`.
+  flipOnClick: params.get('disableFlipByClick') === '1' ? 'corners' : 'anywhere',
 });
 
 book.loadFromHTML([...root.querySelectorAll<HTMLElement>('.page')]);
@@ -52,16 +53,16 @@ const writeStatus = (page: number) => {
 };
 
 book.on('flip', (event) => {
-  document.body.dataset['page'] = String(event.data);
-  writeStatus(typeof event.data === 'number' ? event.data : 0);
+  document.body.dataset['page'] = String(event.data.page);
+  writeStatus(event.data.page);
 });
 book.on('changeOrientation', (event) => {
-  document.body.dataset['orientation'] = String(event.data);
+  document.body.dataset['orientation'] = event.data.orientation;
 });
-book.on('init', (event) => {
-  document.body.dataset['orientation'] = String(event.data.mode);
+book.on('loaded', (event) => {
+  document.body.dataset['orientation'] = event.data.orientation;
   document.body.dataset['ready'] = '1';
-  writeStatus(book.getCurrentPageIndex());
+  writeStatus(event.data.page);
 });
 book.on('turnRejected', (event) => {
   if (status) {

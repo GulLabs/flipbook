@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { HTMLFlipBook, usePageFlip, type WidgetEvent } from '@gullabs/react-flipbook';
+import { HTMLFlipBook, usePageFlip, type PageState } from '@gullabs/react-flipbook';
 
 /**
  * App Router demo: SSR emits `data-flipbook-placeholder` until hydration; the
@@ -25,7 +25,7 @@ const leafInner = (bg: string): CSSProperties => ({
 
 export default function Page() {
   const book = usePageFlip(0);
-  const [state, setState] = useState('read');
+  const [state, setState] = useState<PageState>('read');
   // Same value on server and first client paint so hydration matches; flip
   // after mount so the status line can say the book is live.
   const [hydrated, setHydrated] = useState(false);
@@ -34,8 +34,8 @@ export default function Page() {
     setHydrated(true);
   }, []);
 
-  const onChangeState = useCallback((e: WidgetEvent<string>) => {
-    setState(String(e.data));
+  const onChangeState = useCallback((info: { state: PageState }) => {
+    setState(info.state);
   }, []);
 
   return (
@@ -57,13 +57,13 @@ export default function Page() {
       </p>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '12px 0 16px' }}>
-        <button type="button" onClick={() => book.flipPrev()}>
+        <button type="button" onClick={() => book.flipPrev()} disabled={!book.canGoPrev}>
           Prev
         </button>
-        <button type="button" onClick={() => book.flipNext()}>
+        <button type="button" onClick={() => book.flipNext()} disabled={!book.canGoNext}>
           Next
         </button>
-        <button type="button" onClick={() => book.turnToPage(0)}>
+        <button type="button" onClick={() => book.goToPage(0, 'instant')}>
           First
         </button>
       </div>
@@ -72,10 +72,9 @@ export default function Page() {
         ref={book.ref}
         width={300}
         height={400}
-        size="fixed"
+        sizing="fixed"
         flippingTime={0}
         pageBackground="#ffffff"
-        page={book.page}
         {...book.bookProps}
         onChangeState={onChangeState}
         style={{ maxWidth: 600 }}

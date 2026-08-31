@@ -72,7 +72,7 @@ function bookSettings(page: Page) {
     const s = book.getSettings();
     return {
       swipeDistance: s.swipeDistance,
-      disableFlipByClick: s.disableFlipByClick,
+      flipOnClick: s.flipOnClick,
       flippingTime: s.flippingTime,
     };
   });
@@ -93,7 +93,7 @@ async function visibleLeafCount(page: Page) {
 
 /**
  * Fire a single touch-pointer event on the book block.
- * pointerType: 'touch' hits the mobileScrollSupport branch in UI.ts.
+ * pointerType: 'touch' hits the allowTouchScroll branch in UI.ts.
  */
 async function touchPointer(
   page: Page,
@@ -264,9 +264,9 @@ test.describe('tap zones', () => {
     await expect(page.locator('body[data-page="1"]')).toBeAttached();
   });
 
-  test('corner tap turns when disableFlipByClick locks the center', async ({ page }) => {
+  test('corner tap turns when flipOnClick is corners', async ({ page }) => {
     await openBook(page, '?disableFlipByClick=1');
-    expect((await bookSettings(page)).disableFlipByClick).toBe(true);
+    expect((await bookSettings(page)).flipOnClick).toBe('corners');
 
     const box = await bookBox(page);
 

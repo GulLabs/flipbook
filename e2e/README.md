@@ -77,20 +77,21 @@ Pointer-path coverage unit tests cannot honestly simulate (especially
 inside the file — no extra Playwright project — so golden baselines stay
 untouched.
 
-| Case          | What it asserts                                                                                                    |
-| ------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Real touch    | `page.touchscreen.tap` on the forward edge turns the page                                                          |
-| Long swipe    | Horizontal swipe past `swipeDistance` (default 30) within 250ms completes a turn                                   |
-| Short swipe   | Drag under `swipeDistance` (`?swipeDistance=80` in the test) cancels; page stays put                               |
-| Tap zones     | Edge tap turns when flip-by-click is on; with `?disableFlipByClick=1` only corner taps turn                        |
-| Drag mid-curl | Fold engages (`user_fold`); release completes or cancels via `stopMove`; no stuck fold, blank book, or double-turn |
+| Case          | What it asserts                                                                                                        |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Real touch    | `page.touchscreen.tap` on the forward edge turns the page                                                              |
+| Long swipe    | Horizontal swipe past `swipeDistance` (default 30) within 250ms completes a turn                                       |
+| Short swipe   | Drag under `swipeDistance` (`?swipeDistance=80` in the test) cancels; page stays put                                   |
+| Tap zones     | Edge tap turns when flip-by-click is on; with `?disableFlipByClick=1` (`flipOnClick: 'corners'`) only corner taps turn |
+| Drag mid-curl | Fold engages (`user_fold`); release completes or cancels via `stopMove`; no stuck fold, blank book, or double-turn     |
 
 ```bash
 pnpm exec playwright test e2e/gestures.spec.ts
 ```
 
 Extra vanilla query params for this suite: `?swipeDistance=N`,
-`?disableFlipByClick=1` (plus the shared `?flippingTime=0`).
+`?disableFlipByClick=1` (maps to `flipOnClick: 'corners'`; plus the shared
+`?flippingTime=0`).
 
 The vanilla Vite config aliases `@gullabs/flipbook-core` to `packages/core/src`
 so the suite exercises the engine source (same as unit tests), not a mid-flight
