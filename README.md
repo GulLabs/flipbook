@@ -60,16 +60,16 @@ The fold and its temporary copy fill with `pageBackground` (default `#fff`). Und
 
 ## Why this fork
 
-| Bug                                                                          | Upstream                                                                                                              | Fixed in |
-| ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | -------- |
-| Portrait back-curl slides in instead of peeling the current leaf             | [StPageFlip #49](https://github.com/Nodlik/StPageFlip/issues/49), [#9](https://github.com/Nodlik/StPageFlip/issues/9) | 3.0.0    |
-| Fold is transparent; underlying text bleeds through                          | engine                                                                                                                | 3.0.0    |
-| `onUpdate` never fires (`removeHandlers` → `updateFromHtml` → `setHandlers`) | react-pageflip 2.0.3                                                                                                  | 3.0.0    |
-| `flippingTime: 0` throws in the constructor                                  | Settings.getSettings                                                                                                  | 3.0.0    |
-| `flipToPage` swallows errors and lands one page forward                      | Flip.flipToPage empty catch                                                                                           | 3.0.0    |
-| Shipped types lose `react` under pnpm isolated `node_modules`                | react-pageflip `index.d.ts`                                                                                           | 3.0.0    |
+| Bug                                                                                        | Upstream                                                                                                              | Fixed in                                  |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| Portrait back-curl slides in instead of peeling the current leaf                           | [StPageFlip #49](https://github.com/Nodlik/StPageFlip/issues/49), [#9](https://github.com/Nodlik/StPageFlip/issues/9) | 3.0.0                                     |
+| Fold is transparent; underlying text bleeds through                                        | engine                                                                                                                | 3.0.0                                     |
+| Collection-rebuild event never fires (`removeHandlers` → `updateFromHtml` → `setHandlers`) | react-pageflip 2.0.3 (`onUpdate`)                                                                                     | 3.0.0 (`pagesChanged` / `onPagesChanged`) |
+| `flippingTime: 0` throws in the constructor                                                | Settings.getSettings                                                                                                  | 3.0.0                                     |
+| `flipToPage` swallows errors and lands one page forward                                    | Flip.flipToPage empty catch                                                                                           | 3.0.0                                     |
+| Shipped types lose `react` under pnpm isolated `node_modules`                              | react-pageflip `index.d.ts`                                                                                           | 3.0.0                                     |
 
-Also: Pointer Events (one input path), `ResizeObserver` + `visualViewport`, `respectReducedMotion` (default on), SSR-safe imports, keyboard turning (Arrow/Home/End, default on — pass `useKeyboard={false}` to disable), `direction: 'rtl'` (turn direction only — the fold still follows the finger), controlled `page` + `usePageFlip()`, `once()` on the event emitter.
+Also: Pointer Events (one input path), `ResizeObserver` + `visualViewport`, `respectReducedMotion` (default on), SSR-safe imports, keyboard turning (Arrow/Home/End, default on — pass `useKeyboard={false}` to disable), `readingDirection: 'rtl'` (turn direction only — the fold still follows the finger), controlled `page` + `usePageFlip()`, `once()` on the event emitter.
 
 ### What it costs
 
@@ -140,11 +140,11 @@ export function Book() {
 
 ### Examples
 
-| Example            | Path                   | What it shows                         |
-| ------------------ | ---------------------- | ------------------------------------- |
-| Vanilla HTML       | `examples/vanilla/`    | HTML pages, golden / gesture e2e host |
-| Vite + React       | `examples/vite-react/` | `usePageFlip`, RTL, HTML+`<img>`      |
-| Next.js App Router | `examples/nextjs/`     | SSR placeholder → hydrate             |
+| Example            | Path                   | What it shows                               |
+| ------------------ | ---------------------- | ------------------------------------------- |
+| Vanilla HTML       | `examples/vanilla/`    | HTML pages, golden / gesture e2e host       |
+| Vite + React       | `examples/vite-react/` | Picture book, RTL chrome, controlled `page` |
+| Next.js App Router | `examples/nextjs/`     | SSR placeholder → hydrate, real curl        |
 
 ---
 
@@ -154,7 +154,8 @@ export function Book() {
 - **`aria-label`** names the book (default `"Flipbook"`).
 - **`liveRegion`** announces page changes (`role="status"`). Override with `liveRegionText`.
 - **`respectReducedMotion`** (engine, default `true`) — turns become instant under `prefers-reduced-motion`.
-- **`direction: 'rtl'`** inverts turn direction only, never pointer coordinates.
+- **`readingDirection: 'rtl'`** inverts turn direction only, never pointer coordinates.
+- **`controls`** — `'auto'` (skip-link, default), `'visible'`, or `'none'` if you render your own.
 - Vanilla: wire `flipNext` / `flipPrev` to your own buttons; listen for `turnRejected` when a turn does not start.
 
 ---

@@ -3,23 +3,17 @@ import { createRoot } from 'react-dom/client';
 import { HTMLFlipBook, usePageFlip, type PageState } from '@gullabs/react-flipbook';
 
 /**
- * React binding showcase.
+ * What a reader app actually reaches for:
+ *   - `usePageFlip()` for chrome (visible pages, canGoNext/Prev)
+ *   - `controls="visible"` when you do not draw your own buttons
+ *   - `hardCovers` for a picture book
+ *   - `readingDirection` for RTL
+ *   - controlled `page` + `onPageChange` for a URL / resume position
  *
- * Covers the public surface a consumer actually reaches for:
- *   - `usePageFlip()` (uncontrolled + `goToPage` / `flipNext`)
- *   - `onChangeState` / `lastRejection`
- *   - `readingDirection: 'rtl'`
- *   - HTML pages with `<img>` (canvas mode was removed in 3.0.0 — ADR 0002)
- *
- * The engine owns each page ROOT's styles (`style.cssText` every frame). Put
- * colors, padding, and images on an INNER element — never on the leaf root.
- *
- * Page children must be host elements (`div`, …) so `HTMLFlipBook` can attach
- * a ref and hand the node to the engine. A custom component without
- * `forwardRef` leaves the book empty.
- *
- * Do not pass `page={book.page}`: the hook is uncontrolled. `bookProps` already
- * carries `initialPage` and the load/turn handlers.
+ * Engine owns each page ROOT (`style.cssText` every frame). Put color, padding,
+ * and images on an INNER node. Children must be host elements (`div`, …) so
+ * the binding can attach a ref — a custom component without `forwardRef`
+ * silently empties the book.
  */
 
 const leafRoot: CSSProperties = {
@@ -37,7 +31,6 @@ const leafInner = (bg: string): CSSProperties => ({
   fontWeight: 600,
 });
 
-/** Tiny inline SVG “photo” pages — no fixture files, no canvas mode. */
 function svgDataUri(label: string, fill: string, ink = '#111'): string {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="560" height="420" viewBox="0 0 560 420">
     <rect width="560" height="420" fill="${fill}"/>
@@ -46,7 +39,63 @@ function svgDataUri(label: string, fill: string, ink = '#111'): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
-function HtmlDemo() {
+function pagesLabel(visible: number[], pageCount: number): string {
+  const shown = visible.map((i) => i + 1);
+  if (shown.length === 0) return `— of ${pageCount}`;
+  return `${shown.join('–')} of ${pageCount}`;
+}
+
+function PictureBook() {
+  const book = usePageFlip(0, { hardCovers: true });
+
+  const pages = useMemo(
+    () => [
+      { src: svgDataUri('Cover', '#c45c26', '#fff7ed'), alt: 'Cover — warm terracotta field' },
+      { src: svgDataUri('Fox', '#f4ecd8'), alt: 'A fox illustration on cream paper' },
+      { src: svgDataUri('Meadow', '#d8efe4'), alt: 'A green meadow spread' },
+      { src: svgDataUri('End', '#1e293b', '#e2e8f0'), alt: 'Back matter on slate' },
+    ],
+    [],
+  );
+
+  return (
+    <section style={{ marginBottom: 48 }}>
+      <h2 style={{ margin: '0 0 8px' }}>Picture book — hard covers, built-in controls</h2>
+      <p style={{ margin: '0 0 12px', color: '#555', maxWidth: 520 }}>
+        Pictures are HTML <code>&lt;img alt&gt;</code>. <code>controls=&quot;visible&quot;</code> is
+        the previous/next a browse-mode screen reader can actually use. <code>hardCovers</code>{' '}
+        shows the first and last leaves alone.
+      </p>
+      <p style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: '#333' }}>
+        pages {pagesLabel(book.visiblePages, book.pageCount)} · {book.orientation}
+      </p>
+      <HTMLFlipBook
+        ref={book.ref}
+        width={280}
+        height={210}
+        sizing="fixed"
+        flippingTime={500}
+        controls="visible"
+        pageBackground="#f4ecd8"
+        {...book.bookProps}
+        style={{ maxWidth: 560 }}
+        aria-label="Picture book"
+      >
+        {pages.map((p) => (
+          <div key={p.alt} style={leafRoot}>
+            <img
+              src={p.src}
+              alt={p.alt}
+              style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          </div>
+        ))}
+      </HTMLFlipBook>
+    </section>
+  );
+}
+
+function InteractiveBook() {
   const book = usePageFlip(0);
   const [state, setState] = useState<PageState>('read');
   const [rtl, setRtl] = useState(false);
@@ -57,13 +106,12 @@ function HtmlDemo() {
 
   return (
     <section style={{ marginBottom: 48 }}>
-      <h2 style={{ margin: '0 0 8px' }}>HTMLFlipBook — usePageFlip + RTL</h2>
+      <h2 style={{ margin: '0 0 8px' }}>Your own chrome — RTL, goToPage</h2>
       <p style={{ margin: '0 0 12px', color: '#555', maxWidth: 520 }}>
-        <code>usePageFlip()</code> is uncontrolled: spread <code>bookProps</code>, call{' '}
-        <code>goToPage</code> / <code>flipNext</code>. Toggle RTL to invert turn direction only —
-        the fold still follows the finger.
+        <code>usePageFlip</code> is uncontrolled. Spread <code>bookProps</code>, never pass{' '}
+        <code>page={'{book.page}'}</code>. RTL inverts turn direction only — the fold still follows
+        the finger.
       </p>
-
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
         <button type="button" onClick={() => book.flipPrev()} disabled={!book.canGoPrev}>
           Prev
@@ -75,21 +123,19 @@ function HtmlDemo() {
           First
         </button>
         <button type="button" onClick={() => book.goToPage(2)}>
-          Go to page 2
+          Go to leaf 3
         </button>
         <button type="button" onClick={() => setRtl((v) => !v)} aria-pressed={rtl}>
           RTL: {rtl ? 'on' : 'off'}
         </button>
       </div>
-
       <p
         data-demo-status=""
         style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: '#333' }}
       >
-        page {book.page} / {Math.max(0, book.pageCount - 1)} · state {state} · rejected{' '}
-        {book.lastRejection ? JSON.stringify(book.lastRejection) : '—'}
+        pages {pagesLabel(book.visiblePages, book.pageCount)} · {state} · rejected{' '}
+        {book.lastRejection ? book.lastRejection.reason : '—'}
       </p>
-
       <HTMLFlipBook
         ref={book.ref}
         width={280}
@@ -97,12 +143,12 @@ function HtmlDemo() {
         sizing="fixed"
         flippingTime={400}
         readingDirection={rtl ? 'rtl' : 'ltr'}
+        controls="none"
         {...book.bookProps}
         onChangeState={onChangeState}
         style={{ maxWidth: 560 }}
-        aria-label="HTML demo flipbook"
+        aria-label="Interactive HTML flipbook"
       >
-        {/* Host elements only — see file comment on refs. */}
         <div style={leafRoot}>
           <div style={leafInner('#ffe4e1')}>One</div>
         </div>
@@ -120,68 +166,52 @@ function HtmlDemo() {
   );
 }
 
-function ImagesDemo() {
-  const book = usePageFlip(0);
-
-  const pages = useMemo(
-    () => [
-      { src: svgDataUri('Cover', '#c45c26', '#fff7ed'), alt: 'Cover — warm terracotta field' },
-      { src: svgDataUri('Fox', '#f4ecd8'), alt: 'A fox illustration on cream paper' },
-      { src: svgDataUri('Meadow', '#d8efe4'), alt: 'A green meadow spread' },
-      { src: svgDataUri('End', '#1e293b', '#e2e8f0'), alt: 'Back matter on slate' },
-    ],
-    [],
-  );
+function ControlledBook() {
+  const [page, setPage] = useState(0);
+  const [pageCount, setPageCount] = useState(0);
 
   return (
     <section>
-      <h2 style={{ margin: '0 0 8px' }}>HTML pages with &lt;img&gt;</h2>
+      <h2 style={{ margin: '0 0 8px' }}>Controlled page — resume / deep link</h2>
       <p style={{ margin: '0 0 12px', color: '#555', maxWidth: 520 }}>
-        Pictures are HTML <code>&lt;img alt&gt;</code> with <code>object-fit</code> — the same
-        public path as any other content. There is no image loader.
+        Own <code>page</code> and <code>onPageChange</code>. Do not use <code>usePageFlip</code>{' '}
+        here. <code>pageTransition=&quot;instant&quot;</code> is the deep-link path; omit it to
+        animate.
       </p>
-
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <button type="button" onClick={() => book.flipPrev()} disabled={!book.canGoPrev}>
-          Prev
-        </button>
-        <button type="button" onClick={() => book.flipNext()} disabled={!book.canGoNext}>
-          Next
-        </button>
-      </div>
-
-      <p
-        data-demo-status=""
-        style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: '#333' }}
-      >
-        page {book.page} / {Math.max(0, book.pageCount - 1)}
+      <p style={{ fontFamily: 'ui-monospace, monospace', fontSize: 13, color: '#333' }}>
+        controlled leaf {page + 1} of {pageCount}
       </p>
-
       <HTMLFlipBook
-        ref={book.ref}
         width={280}
-        height={210}
+        height={200}
         sizing="fixed"
         flippingTime={400}
-        pageBackground="#f4ecd8"
-        {...book.bookProps}
+        page={page}
+        pageTransition="instant"
+        onPageChange={(snapshot) => {
+          setPage(snapshot.page);
+          setPageCount(snapshot.pageCount);
+        }}
+        onLoaded={(snapshot) => {
+          setPage(snapshot.page);
+          setPageCount(snapshot.pageCount);
+        }}
+        controls="visible"
         style={{ maxWidth: 560 }}
-        aria-label="HTML images demo flipbook"
+        aria-label="Controlled flipbook"
       >
-        {pages.map((p) => (
-          <div key={p.alt} style={leafRoot}>
-            <img
-              src={p.src}
-              alt={p.alt}
-              style={{
-                display: 'block',
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-              }}
-            />
-          </div>
-        ))}
+        <div style={leafRoot}>
+          <div style={leafInner('#fde68a')}>A</div>
+        </div>
+        <div style={leafRoot}>
+          <div style={leafInner('#bfdbfe')}>B</div>
+        </div>
+        <div style={leafRoot}>
+          <div style={leafInner('#bbf7d0')}>C</div>
+        </div>
+        <div style={leafRoot}>
+          <div style={leafInner('#fecaca')}>D</div>
+        </div>
       </HTMLFlipBook>
     </section>
   );
@@ -191,8 +221,9 @@ function App() {
   return (
     <main style={{ padding: 24, fontFamily: 'system-ui, sans-serif' }}>
       <h1 style={{ marginTop: 0 }}>@gullabs/react-flipbook</h1>
-      <HtmlDemo />
-      <ImagesDemo />
+      <PictureBook />
+      <InteractiveBook />
+      <ControlledBook />
     </main>
   );
 }
