@@ -57,54 +57,47 @@ describe('the guards hold where the platform is odd or the caller misbehaves', (
   });
 
   /**
-   * `getSettings()` hands back the live settings object, so assigning to it
-   * skips validation entirely. The draw-time guard still consults the shared
-   * predicate on that path — under B3 that means injection/junk falls back to
-   * the default, while any real colour (translucent included) flows into
-   * `--stf-paper`, where the ::before opaque base keeps the fold opaque.
+   * C6 closed the old vector entirely: `getSettings()` returns a COPY, so
+   * assigning to the result mutates an observation, never the engine. The
+   * draw-time guard stays for defence in depth, but the untyped-mutation path
+   * it guarded no longer exists.
    */
-  test('a settings object mutated behind updateSettings still cannot inject or throw', () => {
+  test('mutating the object getSettings() returns does not reach the engine (C6)', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);
 
-    const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
+    const book = new PageFlip(host, {
+      width: 200,
+      height: 300,
+      flippingTime: 0,
+      pageBackground: '#f4ecd8',
+    });
     const leaves = [document.createElement('div'), document.createElement('div')];
     book.loadFromHTML(leaves);
 
-    // The vector: the getter hands back the live object, so this reaches the
-    // renderer without passing through validation at all.
+    // The old vector, now inert: this writes to a copy.
     book.getSettings().pageBackground = 'red;position:fixed';
+    expect(book.getSettings().pageBackground).toBe('#f4ecd8');
 
     const page = testPage(book, 0);
     page.simpleDraw(1);
-    // Injection never reaches the style attribute — the guard substitutes the
-    // opaque default. Container roots carry the paper as the custom property.
-    expect(leaves[0]?.style.getPropertyValue('--stf-paper')).toBe('#fff');
+    expect(leaves[0]?.style.getPropertyValue('--stf-paper')).toBe('#f4ecd8');
     expect(leaves[0]?.style.cssText).not.toMatch(/position:\s*fixed/);
 
-    page.draw();
-    expect(leaves[0]?.style.getPropertyValue('--stf-paper')).toBe('#fff');
+    // The nested array is a copy too — pushing into it changes nothing.
+    const observed = book.getSettings();
+    (observed.pointerInput as unknown as string[]).push('gamepad');
+    expect(book.getSettings().pointerInput).toEqual(['mouse', 'touch', 'pen']);
 
-    // A translucent value is legitimate now and flows through verbatim; the
-    // ::before base (styling-contract.test.ts) is what keeps the fold opaque.
-    book.getSettings().pageBackground = 'rgba(0, 0, 0, 0.4)';
+    // And the rect is an observation, not live renderer geometry.
+    const rect = book.getBoundsRect();
+    rect.pageWidth = -1;
+    expect(book.getBoundsRect().pageWidth).not.toBe(-1);
+
+    // The supported route still works.
+    book.updateSettings({ pageBackground: '#0f0' });
     page.simpleDraw(1);
-    expect(leaves[0]?.style.getPropertyValue('--stf-paper')).toBe('rgba(0, 0, 0, 0.4)');
-
-    // The temporary copy is a third, independent path: it stamps the colour on
-    // a cloned element rather than on the page's own.
-    const copy = page.newTemporaryCopy();
-    expect(copy).not.toBe(page);
-    expect(
-      (copy as unknown as { getElement(): HTMLElement })
-        .getElement()
-        .style.getPropertyValue('--stf-paper'),
-    ).toBe('rgba(0, 0, 0, 0.4)');
-
-    // A legitimate opaque value is still honoured through the same paths.
-    book.getSettings().pageBackground = '#f4ecd8';
-    page.simpleDraw(1);
-    expect(leaves[0]?.style.getPropertyValue('--stf-paper')).toBe('#f4ecd8');
+    expect(leaves[0]?.style.getPropertyValue('--stf-paper')).toBe('#0f0');
 
     book.destroy();
     host.remove();

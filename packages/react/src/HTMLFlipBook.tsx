@@ -496,7 +496,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         // had dropped — contradicting `FlipBookHandle.flipToPage`'s own boolean
         // contract, and with no rejection to compensate. The controlled path
         // already handles this; the imperative one did not.
-        if (engine.flip(page)) return true;
+        if (engine.flipToPage(page)) return true;
 
         eventHandlersRef.current.onTurnRejected?.({
           reason: 'superseded',
@@ -962,7 +962,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
           // MIN-10. A superseded turn used to vanish: `flip` returned void, so
           // the effect saw no change, did not re-run, and the book rested
           // somewhere the prop had not asked for with nothing reported.
-          if (!engine.flip(controlledPage)) {
+          if (!engine.flipToPage(controlledPage)) {
             eventHandlersRef.current.onTurnRejected?.({
               reason: 'superseded',
               direction: null,

@@ -49,6 +49,12 @@ describe('consumer: book lifecycle', () => {
     expect(book.isReady()).toBe(false);
     expect(book.isDestroyed()).toBe(false);
 
+    // C1: content queries are TOTAL — a book that is not loaded has zero
+    // pages, and that is an answer, not an error. Chrome renders "Page 1 of
+    // 0" states from these without guards.
+    expect(book.getPageCount()).toBe(0);
+    expect(book.getCurrentPageIndex()).toBe(0);
+
     book.loadFromHTML(makePages(4));
     expect(book.isReady()).toBe(true);
     expect(book.getPageCount()).toBe(4);
@@ -57,7 +63,11 @@ describe('consumer: book lifecycle', () => {
     book.destroy();
     expect(book.isDestroyed()).toBe(true);
     expect(book.isReady()).toBe(false);
-    expect(() => book.getPageCount()).toThrow(PageFlipError);
+    // Total after destroy too — same rule, any engine state.
+    expect(book.getPageCount()).toBe(0);
+    expect(book.getCurrentPageIndex()).toBe(0);
+    // Layout queries keep throwing: no honest empty answer exists.
+    expect(() => book.getBoundsRect()).toThrow(PageFlipError);
   });
 
   test('ready once, loaded every time, pagesChanged on collection swap', () => {
@@ -195,7 +205,7 @@ describe('consumer: turn contract', () => {
       expect((e as PageFlipError).code).toBe('INVALID_PAGE');
     }
 
-    expect(() => book.flip(99)).toThrow(PageFlipError);
+    expect(() => book.flipToPage(99)).toThrow(PageFlipError);
 
     destroy();
   });
@@ -425,8 +435,9 @@ describe('consumer: awkward public edges (documented)', () => {
     book.on('ready', (e) => ready.push(e.data));
     book.loadFromHTML([]);
     expect(ready).toEqual([]);
-    // isReady requires flipController + pages — empty collection may still wire
-    // a controller. Pin actual contract:
+    // C3: an empty portal shell is NOT a book you can turn — isReady answers
+    // the question its name asks, and requires a page count.
+    expect(book.isReady()).toBe(false);
     expect(book.flipNext()).toBe(false);
     book.destroy();
   });

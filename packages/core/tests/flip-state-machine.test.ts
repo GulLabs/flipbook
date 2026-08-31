@@ -152,7 +152,7 @@ describe('I3 — flipToPage must not publish a phantom spread index', () => {
 
     expect(app.getCurrentPageIndex()).toBe(0);
 
-    app.flip(5);
+    app.flipToPage(5);
 
     // Mid-animation the book has not moved yet, and both accessors must say so.
     expect(app.getCurrentPageIndex()).toBe(0);
@@ -162,8 +162,8 @@ describe('I3 — flipToPage must not publish a phantom spread index', () => {
   test('a second flipToPage mid-turn lands on the page it asked for', () => {
     const { book: app } = book({ pageCount: 8, flippingTime: 1000 });
 
-    app.flip(5);
-    app.flip(2); // finish-then-restart: the first turn commits, then we go to 2
+    app.flipToPage(5);
+    app.flipToPage(2); // finish-then-restart: the first turn commits, then we go to 2
 
     testRender(app).finishAnimation();
 
@@ -173,11 +173,11 @@ describe('I3 — flipToPage must not publish a phantom spread index', () => {
   test('a single flipToPage still lands exactly on its target', () => {
     const { book: app } = book({ pageCount: 8, flippingTime: 1000 });
 
-    app.flip(6);
+    app.flipToPage(6);
     testRender(app).finishAnimation();
     expect(app.getCurrentPageIndex()).toBe(6);
 
-    app.flip(1);
+    app.flipToPage(1);
     testRender(app).finishAnimation();
     expect(app.getCurrentPageIndex()).toBe(1);
   });
@@ -647,7 +647,7 @@ describe('F7 — flipping to a page already on screen is a declared no-op', () =
     app.on('turnRejected', (e) => events.push(`rejected:${e.data.reason}`));
 
     expect(() => {
-      app.flip(partner);
+      app.flipToPage(partner);
     }).not.toThrow();
 
     // Nothing animated, nothing was rejected, and the postcondition of the call
@@ -664,7 +664,7 @@ describe('F7 — flipping to a page already on screen is a declared no-op', () =
     const { book: app } = landscapeBook();
     const pages = testCollection(app);
 
-    app.flip(3);
+    app.flipToPage(3);
 
     expect(pages.getCurrentSpreadIndex()).toBe(1);
     expect(pages.getSpreadIndexByPage(3)).toBe(pages.getCurrentSpreadIndex());
@@ -676,7 +676,7 @@ describe('F7 — flipping to a page already on screen is a declared no-op', () =
     const { book: app } = landscapeBook();
 
     expect(() => {
-      app.flip(99);
+      app.flipToPage(99);
     }).toThrow();
   });
 });
@@ -965,7 +965,7 @@ describe('AN1 — a turn started from `flip` beats the call that finished it', (
     // computed against a spread the nested turn has already left, `runFlip`
     // refuses, and the caller gets `FLIP_SETUP` for a book working correctly.
     expect(() => {
-      app.flip(5);
+      app.flipToPage(5);
     }).not.toThrow();
 
     expect(app.getCurrentPageIndex()).toBe(1);
@@ -1304,7 +1304,7 @@ describe('AN4 — a turn started from `changeState` cannot be overrun either', (
     // uncaught in the consumer — and the React binding drives it from the
     // controlled `page` prop.
     expect(() => {
-      app.flip(5);
+      app.flipToPage(5);
     }).not.toThrow();
 
     // The phantom spread index is the collection's PUBLIC state. Leaving it
@@ -1348,7 +1348,7 @@ describe('AN6 — an interrupted turn takes its destination with it', () => {
     const rect = app.getBoundsRect();
     const leafLeft = rect.left + rect.width - rect.pageWidth;
 
-    app.flip(5);
+    app.flipToPage(5);
     expect(testRender(app).isAnimating()).toBe(true);
 
     // The reader catches the moving leaf and carries it across the spine.
@@ -1377,7 +1377,7 @@ describe('AN6 — an interrupted turn takes its destination with it', () => {
     });
 
     expect(() => {
-      app.flip(5);
+      app.flipToPage(5);
     }).not.toThrow();
 
     // Reverted fix: `getCurrentPageIndex() === 5` with
@@ -1408,7 +1408,7 @@ describe('AN6 — an interrupted turn takes its destination with it', () => {
       seen.push(testCollection(app).getCurrentSpreadIndex());
     });
 
-    app.flip(5);
+    app.flipToPage(5);
 
     // The phantom (spread 4) exists only so `start()` picks the DESTINATION
     // leaves. A listener that sees it is a listener that can act on it — which

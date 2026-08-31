@@ -99,23 +99,20 @@ export function usePageFlip(initialPage = 0, options: { hardCovers?: boolean } =
    * successful TURN, which is what the field documents; clearing it on every
    * `loaded` swallowed the refusal a consumer was about to render.
    */
-  const apply = useCallback(
-    (snapshot: BookSnapshot, clearRejection = true) => {
-      setState((previous) =>
-        withBounds(
-          {
-            ...previous,
-            page: snapshot.page,
-            pageCount: snapshot.pageCount,
-            orientation: snapshot.orientation === 'portrait' ? 'portrait' : 'landscape',
-            lastRejection: clearRejection ? null : previous.lastRejection,
-          },
-          ref.current,
-        ),
-      );
-    },
-    [],
-  );
+  const apply = useCallback((snapshot: BookSnapshot, clearRejection = true) => {
+    setState((previous) =>
+      withBounds(
+        {
+          ...previous,
+          page: snapshot.page,
+          pageCount: snapshot.pageCount,
+          orientation: snapshot.orientation === 'portrait' ? 'portrait' : 'landscape',
+          lastRejection: clearRejection ? null : previous.lastRejection,
+        },
+        ref.current,
+      ),
+    );
+  }, []);
 
   const flipNext = useCallback((corner?: FlipCorner) => ref.current?.flipNext(corner) ?? false, []);
   const flipPrev = useCallback((corner?: FlipCorner) => ref.current?.flipPrev(corner) ?? false, []);
@@ -235,6 +232,7 @@ export function usePageFlip(initialPage = 0, options: { hardCovers?: boolean } =
           page: engine.getCurrentPageIndex(),
           pageCount: engine.getPageCount(),
           orientation: engine.getOrientation(),
+          visiblePages: engine.getVisiblePages(),
         },
         false,
       );

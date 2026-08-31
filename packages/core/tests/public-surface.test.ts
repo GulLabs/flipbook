@@ -46,7 +46,7 @@ describe('the engine public surface is frozen', () => {
         'canTurn',
         'clear',
         'destroy',
-        'flip',
+        'flipToPage',
         'flipNext',
         'flipPrev',
         'getBlock',

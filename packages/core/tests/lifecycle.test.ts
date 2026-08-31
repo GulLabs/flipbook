@@ -517,15 +517,24 @@ describe('a destroyed engine is observably dead (P3)', () => {
     expectDestroyed('getRender', () => testRender(book));
     expectDestroyed('getUI', () => testUI(book));
     expectDestroyed('getPage', () => testPage(book, 0));
-    expectDestroyed('getPageCount', () => book.getPageCount());
-    expectDestroyed('getCurrentPageIndex', () => book.getCurrentPageIndex());
+    // C1: content queries are TOTAL — a destroyed book has zero pages, and
+    // that is an answer, not an error. Layout queries keep throwing.
+    expect(book.getPageCount()).toBe(0);
+    expect(book.getCurrentPageIndex()).toBe(0);
     expectDestroyed('getOrientation', () => book.getOrientation());
     expectDestroyed('getBoundsRect', () => book.getBoundsRect());
     expectDestroyed('turnToPage', () => book.turnToPage(1));
-    expectDestroyed('turnToNextPage', () => book.turnToNextPage());
-    expectDestroyed('turnToPrevPage', () => book.turnToPrevPage());
-    expectDestroyed('flip', () => book.flip(1));
+    expectDestroyed('flip', () => book.flipToPage(1));
     expectDestroyed('clear', () => book.clear());
+
+    // C8: the instant relatives refuse like their animated twins — boolean
+    // plus a notReady rejection carrying DESTROYED, never a throw.
+    const rejected: { reason: string; code?: string }[] = [];
+    book.on('turnRejected', (e) => rejected.push(e.data));
+    expect(book.turnToNextPage()).toBe(false);
+    expect(book.turnToPrevPage()).toBe(false);
+    expect(rejected).toHaveLength(2);
+    expect(rejected[0]).toMatchObject({ reason: 'notReady', code: 'DESTROYED' });
   });
 
   test('flipNext / flipPrev keep the boolean contract and report DESTROYED', () => {
@@ -737,6 +746,7 @@ describe('loaded reports the index the book actually settled on (I13)', () => {
       page: book.getCurrentPageIndex(),
       pageCount: book.getPageCount(),
       orientation: book.getOrientation(),
+      visiblePages: book.getVisiblePages(),
     });
     expect(loaded[0]!.page).toBe(2);
     expect(loaded[0]!.pageCount).toBe(8);
@@ -1761,7 +1771,7 @@ describe('round 9 — lifecycle ownership', () => {
       book.loadFromHTML(makePages(4));
     });
 
-    book.flip(5);
+    book.flipToPage(5);
 
     // Reverted fix: the old turn resumed after the swap and applied its
     // destination through `getPageCollection()` — the NEW collection. Measured

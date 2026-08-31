@@ -287,10 +287,10 @@ describe('rtl still mirrors what it is supposed to mirror', () => {
   test('turnToPage lands on the requested page under rtl', () => {
     const book = landscapeBook('rtl');
 
-    book.flip(4, FlipCorner.TOP);
+    book.flipToPage(4, FlipCorner.TOP);
     expect(book.getCurrentPageIndex()).toBe(4);
 
-    book.flip(0, FlipCorner.TOP);
+    book.flipToPage(0, FlipCorner.TOP);
     expect(book.getCurrentPageIndex()).toBe(0);
   });
 });

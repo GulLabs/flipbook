@@ -22,6 +22,17 @@ export interface BookSnapshot {
   page: number;
   pageCount: number;
   orientation: Orientation;
+  /**
+   * Leaf indices on screen, in index order — one in portrait, two in
+   * landscape, one for a cover (C4).
+   *
+   * Chrome's whole question is "what is on screen", and `page` alone is the
+   * spread head: a 12-page landscape book sits on head 4 while leaves 4 AND
+   * 5 are showing. With this on every payload, "Page 3–4 of 12" renders from
+   * the event alone — no second live query, no consumer copy of the spread
+   * rule (a rule this repo itself got wrong twice).
+   */
+  visiblePages: number[];
 }
 
 /** Why a turn did not happen. */

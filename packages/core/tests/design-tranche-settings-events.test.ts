@@ -369,11 +369,12 @@ describe('pagesChanged payload is a BookSnapshot', () => {
 
     expect(changes).toHaveLength(1);
     const snap = changes[0]!;
-    expect(Object.keys(snap).sort()).toEqual(['orientation', 'page', 'pageCount']);
+    expect(Object.keys(snap).sort()).toEqual(['orientation', 'page', 'pageCount', 'visiblePages']);
     expect(snap).toEqual({
       page: 0,
       pageCount: 0,
       orientation: book.getOrientation(),
+      visiblePages: [],
     });
     // Shape only — no extra keys leaking from older pair payloads.
     expect('reason' in snap).toBe(false);
@@ -397,6 +398,7 @@ describe('pagesChanged payload is a BookSnapshot', () => {
       page: book.getCurrentPageIndex(),
       pageCount: book.getPageCount(),
       orientation: book.getOrientation(),
+      visiblePages: book.getVisiblePages(),
     });
     expect(snap!.pageCount).toBe(4);
 

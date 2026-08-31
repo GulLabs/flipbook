@@ -328,7 +328,12 @@ export class PageFlip extends EventObject {
    * wanted.
    */
   private dispatchPagesChanged(page: number, pageCount: number, orientation: Orientation): void {
-    this.dispatch('pagesChanged', { page, pageCount, orientation });
+    this.dispatch('pagesChanged', {
+      page,
+      pageCount,
+      orientation,
+      visiblePages: this.getVisiblePages(),
+    });
   }
 
   /**
@@ -460,6 +465,7 @@ export class PageFlip extends EventObject {
         page: this.resolvedPageIndex(this.pages),
         pageCount,
         orientation: render.getOrientation(),
+        visiblePages: this.getVisiblePages(),
       });
     }
 
@@ -609,6 +615,7 @@ export class PageFlip extends EventObject {
       page: this.resolvedPageIndex(this.pages),
       pageCount: pages.getPageCount(),
       orientation: render.getOrientation(),
+      visiblePages: this.getVisiblePages(),
     };
 
     // MAJOR 3. The generation guard the deleted `dispatchCollectionChange`
@@ -835,6 +842,7 @@ export class PageFlip extends EventObject {
           page: this.resolvedPageIndex(pages),
           pageCount,
           orientation: render.getOrientation(),
+          visiblePages: this.getVisiblePages(),
         });
       }
     }
@@ -1160,11 +1168,23 @@ export class PageFlip extends EventObject {
   }
 
   private instantRelativeTurn(direction: 'next' | 'prev'): boolean {
-    const pages = this.pagesOrThrow;
-
     // Nested inside an instant jump's window: the jump wins (B5).
     if (this.turnBarrier) {
       this.barrierRefused = true;
+      return false;
+    }
+
+    // The same refusal shape as `flipNext`/`flipPrev` on a dead or unloaded
+    // engine — the triads differ only in animation, including here.
+    const pages = this.pages;
+    if (pages === null) {
+      this.dispatch('turnRejected', {
+        reason: 'notReady',
+        direction,
+        targetPage: null,
+        landedOn: null,
+        code: this.destroyed ? 'DESTROYED' : 'NOT_LOADED',
+      });
       return false;
     }
 
@@ -1372,12 +1392,17 @@ export class PageFlip extends EventObject {
   }
 
   /**
-   * Turn to the specified page number (with animation)
+   * Turn to the specified page number (with animation).
+   *
+   * C2: renamed from `flip` — the React handle already called this
+   * `flipToPage`, and the rename makes the two triads symmetric:
+   * `flipToPage`/`flipNext`/`flipPrev` animate, `turnToPage`/`turnToNextPage`/
+   * `turnToPrevPage` are instant. Same names, one difference.
    *
    * @param {number} page - New page number
    * @param {FlipCorner} corner - Active page corner when turning
    */
-  public flip(page: number, corner: FlipCorner = FlipCorner.TOP): boolean {
+  public flipToPage(page: number, corner: FlipCorner = FlipCorner.TOP): boolean {
     // Explicit navigation fails loudly, exactly like `turnToPage`. Optional
     // chaining here made "animate to page 7" a silent no-op before load — the
     // §4.6 failure this fork exists to remove.
@@ -1415,6 +1440,7 @@ export class PageFlip extends EventObject {
   public [EMIT_PAGE_INDEX](newPage: number): void {
     this.dispatch('flip', {
       page: newPage,
+      visiblePages: this.getVisiblePages(),
       pageCount: this.pages === null ? 0 : this.pages.getPageCount(),
       // Optional, not `renderOrThrow`: this is an EMIT path, and a dispatch
       // that can throw is a hazard class this engine does not otherwise have.
@@ -1445,7 +1471,12 @@ export class PageFlip extends EventObject {
    * @returns {number}
    */
   public getPageCount(): number {
-    return this.pagesOrThrow.getPageCount();
+    // C1: content queries are TOTAL. "Not loaded" and "destroyed" are books
+    // with zero pages — an answer chrome can render, not an error it must
+    // guard. Layout queries (`getBoundsRect`, `getOrientation`,
+    // `getBlockElement`) keep throwing, because no honest empty answer
+    // exists for layout that was never computed.
+    return this.pages === null ? 0 : this.pages.getPageCount();
   }
 
   /**
@@ -1454,9 +1485,8 @@ export class PageFlip extends EventObject {
    * @returns {number}
    */
   public getCurrentPageIndex(): number {
-    // `pagesOrThrow` first: an empty book still reports 0, but a destroyed or
-    // never-loaded one must still throw rather than answer.
-    return this.resolvedPageIndex(this.pagesOrThrow);
+    // C1: total, like `getPageCount` — page 0 of an empty or absent book.
+    return this.pages === null ? 0 : this.resolvedPageIndex(this.pages);
   }
 
   /**
@@ -1529,7 +1559,17 @@ export class PageFlip extends EventObject {
    * getter was reached for. Readiness is a state, not an object.
    */
   public isReady(): boolean {
-    return !this.destroyed && this.flipController !== null && this.pages !== null;
+    // C3: readiness answers "can this book be turned". The empty portal
+    // shell the React binding mounts (`loadFromHTML([])`) wires a controller
+    // and a collection while deliberately withholding `ready` — chrome that
+    // enabled Next on object-existence alone flashed live controls over a
+    // zero-page book.
+    return (
+      !this.destroyed &&
+      this.flipController !== null &&
+      this.pages !== null &&
+      this.pages.getPageCount() > 0
+    );
   }
 
   /**
@@ -1577,7 +1617,10 @@ export class PageFlip extends EventObject {
    * @returns {PageRect}
    */
   public getBoundsRect(): PageRect {
-    return this.renderOrThrow.getRect();
+    // C6: an observation, not a handle. The renderer caches and reuses its
+    // rect object; returning it let a caller mutate live geometry through a
+    // result presented as a measurement.
+    return { ...this.renderOrThrow.getRect() };
   }
 
   /**
@@ -1586,7 +1629,12 @@ export class PageFlip extends EventObject {
    * @returns {FlipSetting}
    */
   public getSettings(): FlipSetting {
-    return this.setting;
+    // C6: a copy, not the live object. Direct assignment to the live
+    // settings bypassed validation, gesture settling, handler rebinding and
+    // the construction-time-setting refusal — e.g. mutating `hardCovers`
+    // reported a cover mode the spread model never adopted. `pointerInput`
+    // is the one nested value, sliced so the array cannot be pushed into.
+    return { ...this.setting, pointerInput: [...this.setting.pointerInput] };
   }
 
   /**
