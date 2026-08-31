@@ -24,7 +24,7 @@ pnpm test               # vitest run, both projects
 pnpm build              # tsup per package (see caveat below)
 pnpm typecheck          # tsc --noEmit per package
 pnpm lint               # eslint flat config, repo-wide
-pnpm size               # size-limit on the packed html engine (62 kB raw / 16 kB brotli / 18 kB gzip)
+pnpm size               # size-limit on the packed html engine (61.25 kB raw / 15.1 kB brotli / 17 kB gzip)
 node ./scripts/check-isolated-types.mjs   # pnpm-isolated consumer type fixture
 ```
 
@@ -69,16 +69,17 @@ Two packages, one direction of dependency: `react` → `core` (`workspace:*`). C
 
 `PageFlip` is the façade and the event emitter (extends `EventObject`). It owns four collaborators created in `loadFromHTML` (canvas mode was removed — ADR 0002; there is no `loadFromImages`):
 
-- **`UI`** (`HTMLUI`) — all DOM contact. One Pointer Events path (no separate mouse/touch), `ResizeObserver` + `visualViewport`. It builds `.stf__parent > .stf__wrapper > .stf__block` and **moves the caller's page elements into `.stf__block`**. Styles are injected at runtime by `ensureFlipbookStyles()` (`styles.ts`) and also shipped as `@gullabs/flipbook-core/style.css`.
-- **`Render`** (`HTMLRender`) — the rAF loop, layout rect, orientation detection, shadows, z-order, and the local↔global coordinate conversion.
+- **`UI`** — all DOM contact. One Pointer Events path (no separate mouse/touch), `ResizeObserver` + `visualViewport`. It builds `.stf__parent > .stf__wrapper > .stf__block` and **moves the caller's page elements into `.stf__block`**. Styles are injected at runtime by `ensureFlipbookStyles()` (`styles.ts`) and also shipped as `@gullabs/flipbook-core/style.css`.
+- **`Render`** — the rAF loop, layout rect, orientation detection, shadows, z-order, and the local↔global coordinate conversion.
 - **`Flip`** — the flip state machine (`READ` / `FOLD_CORNER` / `USER_FOLD` / `FLIPPING`), delegating math to `FlipCalculation`.
-- **`PageCollection`** (`HTMLPageCollection`) — pages, spreads (portrait = 1 page per spread, landscape = 2), and which leaf is the mover vs the leaf underneath.
+- **`PageCollection`** — pages, spreads (portrait = 1 page per spread, landscape = 2), and which leaf is the mover vs the leaf underneath. (`HTMLPageCollection` remains a one-release internal alias.)
 
-The four abstract/concrete pairs are slated to COLLAPSE — see
-`docs/ABSTRACTION-BOUNDARY.md`. The abstract base is not an abstraction over
-rendering: `Render` holds ~78% of the renderer and is DOM-bound (`offsetWidth`
-measurement, a `navigator.userAgent` sniff, pixel-space conversion), so a second
-renderer would inherit all of it and fight it. Do not add to these seams.
+The former abstract/concrete pairs (`UI`/`HTMLUI`, `Page`/`HTMLPage`,
+`Render`/`HTMLRender`, and `PageCollection`/`HTMLPageCollection`) are
+**collapsed** — see `docs/ABSTRACTION-BOUNDARY.md` and `docs/PLAN-3.1.md`. The
+abstract bases were never a renderer seam: `Render` holds ~78% of the renderer
+and is DOM-bound (`offsetWidth` measurement, a `navigator.userAgent` sniff,
+pixel-space conversion). Do not re-open inheritance at these lines.
 
 `PageFlip` answers questions rather than handing out its collaborators:
 `getVisiblePages()`, `canTurn(dir)`, `getBlockElement()`, `getPageElement(i)`,
@@ -115,7 +116,7 @@ deep-import from `../src/`, and testability never justified the export.
 - one effect pushes runtime-updatable settings via `engine.updateSettings(partial)`;
 - one effect drives the controlled `page` prop.
 
-React owns the page elements and **portals** them into the engine's `.stf__block`, so React's recorded parent matches the real one. `HTMLUI.updateItems` adopts and releases individual leaves rather than wiping the block. Any change to how children are keyed, reordered, or removed risks a React/DOM ownership conflict — verify in a browser, not just jsdom. See "Who owns which DOM node".
+React owns the page elements and **portals** them into the engine's `.stf__block`, so React's recorded parent matches the real one. `UI.updateItems` adopts and releases individual leaves rather than wiping the block. Any change to how children are keyed, reordered, or removed risks a React/DOM ownership conflict — verify in a browser, not just jsdom. See "Who owns which DOM node".
 
 ## Invariants that must not regress
 
@@ -124,7 +125,7 @@ These encode the flagship fixes; there are unit tests for each, but the tests pa
 - **Portrait BACK animates a temporary copy of the _current_ leaf**, not `pages[current - 1]` (`getPortraitFlippingPage`). Hard pages return `this` from `newTemporaryCopy()` and stay on the vendor previous-leaf path.
 - **The local curl is identical for both directions**, ending at `to.x = -pageWidth` (`portraitCurlLocal`). BACK reads as a rightward on-screen curl only because `convertPageToGlobal` mirrors x. A "smarter" back curl with `to.x > pageWidth` re-creates the slide-in regression.
 - **The bottom page is skipped only when `flippingPage === bottomPage`** (`shouldDrawBottomPage`), i.e. the hard-cover case — not "portrait AND back" as upstream did.
-- **The fold is opaque** via `pageBackground` (default `#fff`), applied to the temporary copy and to `HTMLPage.draw`.
+- **The fold is opaque** via `pageBackground` (default `#fff`), applied to the temporary copy and to `Page.draw`.
 - **`flippingTime: 0` is instant, not an error**; `respectReducedMotion` (default true) makes turns instant under `prefers-reduced-motion`. Instant turns run `onAnimateEnd` synchronously inside `startAnimation` — anything that inspects `calc`/state after calling `flip()` must not treat that as failure. `Flip.flip/flipNext/flipPrev` return a boolean for exactly this reason.
 - **`turnToPage` / `flipToPage` throw `PageFlipError`** instead of silently
   landing one page forward. `flip` / `Flip.flipToPage` ALSO return a boolean —
@@ -170,7 +171,7 @@ throws `NotFoundError`. Two consequences to preserve:
 
 - The mount effect calls `engine.loadFromHTML([])` to build the DOM shell before
   any page exists, so the portal has a target. Pages arrive via `updateFromHtml`.
-- `HTMLUI.updateItems` adopts and releases individual leaves; it must never wipe
+- `UI.updateItems` adopts and releases individual leaves; it must never wipe
   `.stf__block` wholesale (that also deletes the render's shadow elements and
   nodes React still owns).
 
@@ -181,11 +182,12 @@ tears the book down mid-animation.
 
 ## Known gaps in the current state
 
-- **Bundle size.** The packed HTML engine is **61.69 kB raw / 15.21 kB brotli /
-  17.08 kB gzip** against ceilings of **62 / 16 / 18 kB**, raised by the OWNER
-  for the code-complete round (see `docs/ROUND-CODE-COMPLETE.md`) — an agent may
-  not raise them (AGENTS.md §2). Re-measure with `pnpm size` before quoting these — the
-  figures here have twice been left behind by the code they describe. The §5 target of 35 kB minified is **retired**: upstream
+- **Bundle size.** The packed HTML engine is **61.16 kB raw / 15.09 kB brotli /
+  16.94 kB gzip** against ceilings of **61.25 / 15.1 / 17 kB**, re-ratcheted after
+  the A1–A3 class-pair collapse (PLAN-3.1 A4). Raw saving vs the temporary 62 kB
+  ceiling is **under 1 kB** — the collapse is justified by architecture either
+  way. An agent may not raise ceilings (AGENTS.md §2). Re-measure with `pnpm size`
+  before quoting these. The §5 target of 35 kB minified is **retired**: upstream
   `page-flip@2.0.7` is itself 44,058 B minified (measured from its published
   tarball), so that target asked this fork to be ~20% smaller than the thing it
   forks while doing strictly more. See `docs/QUALITY_BAR_CLIMB.md` for the
