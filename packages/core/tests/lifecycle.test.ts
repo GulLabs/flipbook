@@ -946,7 +946,14 @@ describe('PageFlip lifecycle — load, loaded, clear and settings', () => {
       });
       book.loadFromHTML(makePages(4));
 
-      const returned = book.updateSettings({ hardCovers: true, initialPage: 3, flippingTime: 7 });
+      // Construction-time keys are omitted from LiveSetting (compile error for
+      // typed callers). The runtime path still refuses them for JS callers —
+      // cast so this test can exercise that refusal without fighting the type.
+      const returned = book.updateSettings({
+        hardCovers: true,
+        initialPage: 3,
+        flippingTime: 7,
+      } as unknown as Parameters<typeof book.updateSettings>[0]);
 
       // `hardCovers` is baked into the collection's spreads and `initialPage` is
       // read once in `attachMode`, so accepting them into `this.setting` made

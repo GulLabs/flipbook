@@ -158,12 +158,13 @@ describe('I12 — Settings rejects non-finite numbers instead of leaking NaN', (
 /** Minimal concrete collection: the assertions are purely about list lookup. */
 class TestCollection extends PageCollection {
   public constructor(pages: Page[]) {
-    super({ getSettings: () => ({ hardCovers: false }) } as unknown as PageFlip, {} as Render);
+    super(
+      { getSettings: () => ({ hardCovers: false }) } as unknown as PageFlip,
+      {} as Render,
+      null as unknown as HTMLElement,
+      [],
+    );
     this.pages = pages;
-  }
-
-  public load(): void {
-    /* nothing to load: pages are injected */
   }
 }
 

@@ -7,9 +7,13 @@ import { foldFill } from '../src/Render/pageBackground';
 
 const resolve = (partial: FlipOptions) => new Settings().resolve(partial);
 
+/** Runtime-shaped input (JSON / query / CMS) is a plain record, not FlipOptions. */
+const asOptions = (partial: Record<string, unknown>): FlipOptions =>
+  partial as unknown as FlipOptions;
+
 const codeOf = (partial: Record<string, unknown>): string => {
   try {
-    resolve(partial as FlipOptions);
+    resolve(asOptions(partial));
   } catch (error) {
     return (error as PageFlipError).code;
   }
@@ -18,7 +22,7 @@ const codeOf = (partial: Record<string, unknown>): string => {
 
 const settingOf = (partial: Record<string, unknown>): string | undefined => {
   try {
-    resolve(partial as FlipOptions);
+    resolve(asOptions(partial));
   } catch (error) {
     return (error as PageFlipError).setting;
   }

@@ -51,9 +51,13 @@ const BOOLEANS = [
   'respectReducedMotion',
 ] as const satisfies readonly (keyof FlipSetting)[];
 
+/** Runtime-shaped input: JSON/`data-*` paths produce plain records, not FlipOptions. */
+const asOptions = (setting: Record<string, unknown>): FlipOptions =>
+  setting as unknown as FlipOptions;
+
 const codeOf = (setting: Record<string, unknown>): string => {
   try {
-    new Settings().resolve(setting as FlipOptions);
+    new Settings().resolve(asOptions(setting));
   } catch (error) {
     return (error as PageFlipError).code;
   }
@@ -62,7 +66,7 @@ const codeOf = (setting: Record<string, unknown>): string => {
 
 const settingOf = (setting: Record<string, unknown>): string | undefined => {
   try {
-    new Settings().resolve(setting as FlipOptions);
+    new Settings().resolve(asOptions(setting));
   } catch (error) {
     return (error as PageFlipError).setting;
   }
@@ -114,7 +118,7 @@ describe('S6 — boolean settings are validated', () => {
     // The defaults must themselves be booleans. If one were ever changed to a
     // truthy non-boolean, every consumer would fail at construction — the
     // validator would have turned a silent bug into a total outage.
-    expect(codeOf(base)).toBe('NO_THROW');
+    expect(codeOf({ ...base })).toBe('NO_THROW');
   });
 
   test('an explicit undefined still falls back to the default, it does not throw', () => {
@@ -138,7 +142,7 @@ describe('S6 — boolean settings are validated', () => {
     let message = '';
     let setting: string | undefined;
     try {
-      new Settings().resolve(withKey('drawShadow', 'false') as FlipOptions);
+      new Settings().resolve(asOptions(withKey('drawShadow', 'false')));
     } catch (error) {
       message = (error as PageFlipError).message;
       setting = (error as PageFlipError).setting;
