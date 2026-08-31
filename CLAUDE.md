@@ -24,7 +24,7 @@ pnpm test               # vitest run, both projects
 pnpm build              # tsup per package (see caveat below)
 pnpm typecheck          # tsc --noEmit per package
 pnpm lint               # eslint flat config, repo-wide
-pnpm size               # size-limit on the packed html engine (57 kB raw / 14 kB brotli / 16 kB gzip)
+pnpm size               # size-limit on the packed html engine (62 kB raw / 16 kB brotli / 18 kB gzip)
 node ./scripts/check-isolated-types.mjs   # pnpm-isolated consumer type fixture
 ```
 
@@ -69,21 +69,48 @@ Two packages, one direction of dependency: `react` → `core` (`workspace:*`). C
 
 `PageFlip` is the façade and the event emitter (extends `EventObject`). It owns four collaborators created in `loadFromHTML` (canvas mode was removed — ADR 0002; there is no `loadFromImages`):
 
-- **`UI`** (`HTMLUI`; abstract `UI` stays for a future renderer) — all DOM contact. One Pointer Events path (no separate mouse/touch), `ResizeObserver` + `visualViewport`. It builds `.stf__parent > .stf__wrapper > .stf__block` and **moves the caller's page elements into `.stf__block`**. Styles are injected at runtime by `ensureFlipbookStyles()` (`styles.ts`) and also shipped as `@gullabs/flipbook-core/style.css`.
-- **`Render`** (`HTMLRender`; abstract `Render` stays) — the rAF loop, layout rect, orientation detection, shadows, z-order, and the local↔global coordinate conversion.
+- **`UI`** (`HTMLUI`) — all DOM contact. One Pointer Events path (no separate mouse/touch), `ResizeObserver` + `visualViewport`. It builds `.stf__parent > .stf__wrapper > .stf__block` and **moves the caller's page elements into `.stf__block`**. Styles are injected at runtime by `ensureFlipbookStyles()` (`styles.ts`) and also shipped as `@gullabs/flipbook-core/style.css`.
+- **`Render`** (`HTMLRender`) — the rAF loop, layout rect, orientation detection, shadows, z-order, and the local↔global coordinate conversion.
 - **`Flip`** — the flip state machine (`READ` / `FOLD_CORNER` / `USER_FOLD` / `FLIPPING`), delegating math to `FlipCalculation`.
-- **`PageCollection`** (`HTMLPageCollection`; abstract `PageCollection` stays) — pages, spreads (portrait = 1 page per spread, landscape = 2), and which leaf is the mover vs the leaf underneath.
+- **`PageCollection`** (`HTMLPageCollection`) — pages, spreads (portrait = 1 page per spread, landscape = 2), and which leaf is the mover vs the leaf underneath.
+
+The four abstract/concrete pairs are slated to COLLAPSE — see
+`docs/ABSTRACTION-BOUNDARY.md`. The abstract base is not an abstraction over
+rendering: `Render` holds ~78% of the renderer and is DOM-bound (`offsetWidth`
+measurement, a `navigator.userAgent` sniff, pixel-space conversion), so a second
+renderer would inherit all of it and fight it. Do not add to these seams.
+
+`PageFlip` answers questions rather than handing out its collaborators:
+`getVisiblePages()`, `canTurn(dir)`, `getBlockElement()`, `getPageElement(i)`,
+`isReady()`, `isAnimating()`. The old `getRender` / `getUI` /
+`getPageCollection` / `getFlipController` / `getPage` getters are symbol-keyed
+internals now — they leaked a mutable model (`getPages()` returned the live
+array) and forced the React binding to reimplement spread rules that then
+drifted. Add a façade answer; never re-open a collaborator getter.
 
 Input flows `UI` → `PageFlip.startUserTouch/userMove/userStop` → `Flip.fold/flip/showCorner/stopMove` → `Render.startAnimation(frames)` → per-frame `Flip.do()` → `Page.draw()`. Page turns are committed by the animation's `onAnimateEnd` calling `PageFlip.turnToNextPage/turnToPrevPage`.
 
-The fork's fixes are deliberately factored into small, separately exported, unit-testable modules so the invariants can be locked down: `geometry.ts`, `Collection/flippingPage.ts`, `Render/bottomPage.ts`, `Render/pageBackground.ts`, `reducedMotion.ts`, `errors.ts`. Prefer extending those over inlining logic back into `Flip`/`Render`.
+The fork's fixes are factored into small, unit-testable modules so the
+invariants can be locked down: `geometry.ts`, `Collection/flippingPage.ts`,
+`Render/bottomPage.ts`, `Render/pageBackground.ts`, `reducedMotion.ts`,
+`errors.ts`. Prefer extending those over inlining logic back into
+`Flip`/`Render`. They are NO LONGER exported from the public barrel — tests
+deep-import from `../src/`, and testability never justified the export.
 
 ### React binding (`packages/react/src`)
 
 `HTMLFlipBook.tsx` is the whole binding (`forwardRef`, `'use client'`). Its structure is load-bearing and easy to break:
 
-- children are wrapped, each page element collected into a `childNodes` ref;
-- one effect constructs/destroys the engine, keyed on `remountKeyOf(props)` (`showCover`, `size` — the only genuinely construction-time settings; `width`/`height` are live, see below);
+- children are wrapped, each page element written into an INDEX-KEYED slot
+  (`slotsRef`); a null slot after commit means that child never called its ref,
+  and `readNodes()` throws `DETACHED_PAGE` naming it. Append-order collection
+  silently produced a SHORTER list than the page list, so every index the
+  binding computed was against a different list than the engine's;
+- one effect constructs/destroys the engine, keyed on `remountKeyOf(props)`
+  (`hardCovers`, `initialPage` — the only genuinely construction-time settings).
+  `width`/`height` are live, and so is `sizing`: it was in the key and is not,
+  because `updateSettings` recalculates layout for it and remounting lost the
+  current page for a change the engine absorbs;
 - one effect binds event handlers **before** calling `loadFromHTML`/`updateFromHtml` — this ordering is the §4.3 `onUpdate` fix, do not reorder;
 - one effect pushes runtime-updatable settings via `engine.updateSettings(partial)`;
 - one effect drives the controlled `page` prop.
@@ -99,26 +126,37 @@ These encode the flagship fixes; there are unit tests for each, but the tests pa
 - **The bottom page is skipped only when `flippingPage === bottomPage`** (`shouldDrawBottomPage`), i.e. the hard-cover case — not "portrait AND back" as upstream did.
 - **The fold is opaque** via `pageBackground` (default `#fff`), applied to the temporary copy and to `HTMLPage.draw`.
 - **`flippingTime: 0` is instant, not an error**; `respectReducedMotion` (default true) makes turns instant under `prefers-reduced-motion`. Instant turns run `onAnimateEnd` synchronously inside `startAnimation` — anything that inspects `calc`/state after calling `flip()` must not treat that as failure. `Flip.flip/flipNext/flipPrev` return a boolean for exactly this reason.
-- **`turnToPage` / `flipToPage` throw `PageFlipError`** instead of silently landing one page forward.
+- **`turnToPage` / `flipToPage` throw `PageFlipError`** instead of silently
+  landing one page forward. `flip` / `Flip.flipToPage` ALSO return a boolean —
+  `false` only when a newer turn overtook this one, which is not an error and
+  was previously indistinguishable from success.
 - **No `window`/`document` at module scope** (SSR); guard with `typeof … === 'undefined'`. `packages/core/tests/ssr-import.test.ts` runs in the node environment to enforce this.
 - **Engine state is nullable inside, non-null at the boundary.** `pages`,
   `render` and `ui` only exist after a load, so they are typed `| null`; the
   public getters keep non-null signatures and throw `PageFlipError('NOT_LOADED')`.
   Do not "simplify" either half — `!` hands callers `undefined`, and `| null`
   getters break every consumer for a state they cannot observe.
-- **`pageBackground` must end up opaque.** Sanitising it for CSS safety and
-  checking it for opacity are different jobs; collapsing them is how a
-  translucent fold shipped once already.
+- **The fold's opacity is STRUCTURAL, not validated.** There is no opacity
+  check any more, deliberately: two generations of alpha parser were defeated
+  in turn (the first did not understand `rgb(0 0 0 / 50%)`, the second fell to
+  `calc(.5)` alphas, `color-mix(… transparent 50% …)` and `var()` fallbacks),
+  and every parser is one CSS release from a syntax it has not met.
+  `.stf__item::before` now composites `var(--stf-paper, #fff)` OVER an opaque
+  base, so a translucent value blends with white instead of revealing the page
+  underneath. `pageBackground` validation checks only injection safety and "is
+  it a colour at all" — do not re-add an opacity check and do not remove the
+  `::before` layer.
 - **`react` stays a peer dependency (`>=18`)** and the shipped types must survive pnpm's isolated `node_modules` — that is what `fixtures/isolated-consumer` guards.
 - **Turns are bounded by spreads, not page indices.** `getCurrentPageIndex()` is `spread[0]`, so in landscape it is below `pageCount - 1` even on the last spread; checking pages there let a turn start and read past the end of the spread list.
-- **`direction: 'rtl'` mirrors the turn direction, never the pointer coordinates.** Mirroring coordinates makes the fold run away from the finger; the inversion belongs in `Flip.getDirectionByPoint` (user input) and `UI.swipeDirection`, and programmatic turns pass an explicit direction so they stay index-ordered.
+- **`readingDirection: 'rtl'` mirrors the turn direction, never the pointer coordinates.** Mirroring coordinates makes the fold run away from the finger; the inversion belongs in `Flip.getDirectionByPoint` (user input) and `UI.swipeDirection`, and programmatic turns pass an explicit direction so they stay index-ordered.
 - **A setting must be read where it is used, not cached at construction.**
   `updateSettings` mutates the shared settings object in place, so `Render` and
   `UI` see changes for free — unless someone copies a value into a field.
   `swipeDistance` shipped cached and silently ignored every runtime update.
-  Engine `updateSettings` refuses a changed `showCover` or `startPage` (baked
-  in at load). The React binding remounts on `showCover` and `size`
-  (`remountKeyOf`).
+  Engine `updateSettings` refuses a changed `hardCovers` or `initialPage`
+  (baked in at load), and its parameter type is `LiveSetting`, so passing one
+  is a compile error rather than a runtime warning. The React binding remounts
+  on `hardCovers` and `initialPage` (`remountKeyOf`).
 - **Core compiles under `strictNullChecks`.** The published `.d.ts` is the contract; do not silence a null with a cast that makes a public getter lie.
 
 ## Who owns which DOM node
@@ -143,10 +181,10 @@ tears the book down mid-animation.
 
 ## Known gaps in the current state
 
-- **Bundle size.** The packed HTML engine is **61.23 kB raw / 15.15 kB brotli /
-  16.95 kB gzip** against ceilings of **62 / 16 / 18 kB** (raised for the 3.0
-  contract delta — B2/B3/B5, C1–C8 — which spent correctness headroom per
-  AGENTS.md §2). Re-measure with `pnpm size` before quoting these — the
+- **Bundle size.** The packed HTML engine is **61.69 kB raw / 15.21 kB brotli /
+  17.08 kB gzip** against ceilings of **62 / 16 / 18 kB**, raised by the OWNER
+  for the code-complete round (see `docs/ROUND-CODE-COMPLETE.md`) — an agent may
+  not raise them (AGENTS.md §2). Re-measure with `pnpm size` before quoting these — the
   figures here have twice been left behind by the code they describe. The §5 target of 35 kB minified is **retired**: upstream
   `page-flip@2.0.7` is itself 44,058 B minified (measured from its published
   tarball), so that target asked this fork to be ~20% smaller than the thing it
