@@ -67,5 +67,11 @@
     "book",
     "typescript",
     "stpageflip"
+  ],
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/atifgul99"
+    }
   ]
 }

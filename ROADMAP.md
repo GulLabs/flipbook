@@ -14,6 +14,7 @@ Tracked in detail in [`docs/TODO.md`](./docs/TODO.md):
 - Additive API: `validateFlipOptions`, controls styling seam, spread-space
   position, `pageLabel`, shadow / paper-base tokens, `allowTextSelection`
 - OpenSSF Scorecard Action + public coverage badge
+- (done) Sponsor button + GitHub Issue Forms
 
 ## Later
 

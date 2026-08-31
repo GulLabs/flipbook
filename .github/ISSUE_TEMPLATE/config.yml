@@ -5,4 +5,7 @@ contact_links:
     about: Report security issues privately. Do not open a public issue.
   - name: Read the docs
     url: https://github.com/gul-labs/flipbook#flipbook
-    about: README and package docs before filing a question.
+    about: README, MIGRATION.md, and ROADMAP.md before filing a question.
+  - name: Sponsor
+    url: https://github.com/sponsors/atifgul99
+    about: Support maintenance of @gullabs/flipbook and other GulLabs packages.

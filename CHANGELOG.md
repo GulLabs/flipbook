@@ -11,6 +11,10 @@ All notable changes to this monorepo will be documented in this file.
 - `engines.node: ">=22.18.0"` on both published packages (matches root / `.nvmrc`).
 - Keywords tightened (react package discoverability; core keeps `html`).
 - `ROADMAP.md` points at the post-3.0 backlog without burying WebGL.
+- Sponsor button: `.github/FUNDING.yml` + `funding` on both packages →
+  https://github.com/sponsors/atifgul99
+- Issue **forms** (YAML) replace the free-text markdown templates — required
+  package / version / repro fields and a package dropdown.
 
 ### Fixed — CI typecheck on a clean tree; SSR colour-shape ReDoS
 
