@@ -76,7 +76,7 @@ test('remounting right after a turn warns about the URL-sync footgun (dev only)'
       </HTMLFlipBook>,
     );
 
-    expect(warned.join(' ')).toMatch(/remounted within 1s of a page turn/);
+    expect(warned.join(' ')).toMatch(/changed within 1s of a page turn/);
     expect(warned.join(' ')).toMatch(/initialPage/);
   } finally {
     console.warn = original;
@@ -104,7 +104,36 @@ test('an ordinary remount long after any turn stays silent', () => {
       </HTMLFlipBook>,
     );
 
-    expect(warned.join(' ')).not.toMatch(/remounted within 1s/);
+    expect(warned.join(' ')).not.toMatch(/within 1s of a page turn/);
+  } finally {
+    console.warn = original;
+  }
+});
+
+test('a hardCovers remount right after a turn stays silent (only initialPage is the footgun)', () => {
+  // Codex finding 3: a layout-driven remount coinciding with a turn is
+  // legitimate; the warning names ONLY an initialPage identity change.
+  const warned: string[] = [];
+  const original = console.warn;
+  console.warn = (msg: unknown) => warned.push(String(msg));
+
+  try {
+    const ref = createRef<FlipBookHandle>();
+    const view = render(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} ref={ref}>
+        {pages}
+      </HTMLFlipBook>,
+    );
+
+    expect(ref.current?.pageFlip()?.flipNext()).toBe(true);
+
+    view.rerender(
+      <HTMLFlipBook width={200} height={300} flippingTime={0} hardCovers ref={ref}>
+        {pages}
+      </HTMLFlipBook>,
+    );
+
+    expect(warned.join(' ')).not.toMatch(/within 1s of a page turn/);
   } finally {
     console.warn = original;
   }

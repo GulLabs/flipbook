@@ -200,6 +200,47 @@ test.describe('landscape', () => {
     await expect(page.locator('body[data-page="2"]')).toBeAttached();
   });
 
+  test('the turning leaf paints its own opaque paper mid-fold', async ({ page }) => {
+    // Puddlebend Issue 1 was LANDSCAPE-only: the fold's transform+clip-path
+    // rode a root whose only opacity was the ::before pseudo, and the two
+    // alpha-blended in a band at the fold line. The fix stamps the structural
+    // pair on the element itself; this pins it in the orientation that broke,
+    // at the DOM level — the goldens alone are a 5%-tolerance pixel diff.
+    await openBook(page, LANDSCAPE);
+
+    const box = await page.locator('#book .stf__block').boundingBox();
+    if (!box) throw new Error('no book box');
+
+    const mid = box.y + box.height / 2;
+    await dragTo(
+      page,
+      { x: box.x + box.width - 12, y: mid },
+      { x: box.x + box.width * 0.4, y: mid },
+    );
+
+    const folding = await page.$$eval('#book .stf__item', (nodes) =>
+      nodes
+        .map((node) => {
+          const el = node as HTMLElement;
+          return {
+            clipped: el.style.getPropertyValue('clip-path') !== '',
+            shown: el.classList.contains('--shown'),
+            inlineBase: el.style.getPropertyValue('background-color'),
+            inlinePaper: el.style.getPropertyValue('background-image'),
+          };
+        })
+        .filter((leaf) => leaf.clipped && leaf.shown),
+    );
+
+    expect(folding.length).toBeGreaterThan(0);
+    for (const leaf of folding) {
+      expect(leaf.inlineBase).toMatch(/^(#fff|rgb\(255,\s*255,\s*255\))$/);
+      expect(leaf.inlinePaper).toContain('linear-gradient(var(--stf-paper');
+    }
+
+    await page.mouse.up();
+  });
+
   test('a hard cover turns without leaving the book blank', async ({ page }) => {
     await openBook(page, LANDSCAPE, '?cover=1');
 

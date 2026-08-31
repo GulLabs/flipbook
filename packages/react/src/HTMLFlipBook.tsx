@@ -681,6 +681,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
      */
     const lastFlipAt = useRef(0);
     const engineBuilds = useRef(0);
+    const lastInitialPage = useRef<number | undefined>(undefined);
     const bindHandlers = useCallback((flip: PageFlip) => {
       if (handlersBoundRef.current) return;
       handlersBoundRef.current = true;
@@ -733,24 +734,32 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       const root = rootRef.current;
       if (!root) return;
 
-      // Dev-only: bundlers substitute NODE_ENV; the typed globalThis access
-      // keeps this a browser library (no @types/node) and a plain-ESM no-op.
+      // Dev-only, and only for an `initialPage` change — a `hardCovers` or
+      // `injectStyles` remount near a turn is a legitimate layout change, not
+      // the footgun. OPT-IN dev detection: `process` is absent in an
+      // unbundled browser, so the gate requires an EXPLICIT dev/test
+      // NODE_ENV rather than "not production" — a plain-ESM production page
+      // must never see this. (Typed globalThis access keeps the package free
+      // of @types/node; bundlers substitute the literal.)
       const nodeEnv = (globalThis as { process?: { env?: { NODE_ENV?: string } } }).process?.env
         ?.NODE_ENV;
+      const initialPageChanged =
+        engineBuilds.current > 0 && lastInitialPage.current !== props.initialPage;
       if (
-        engineBuilds.current > 0 &&
+        initialPageChanged &&
         Date.now() - lastFlipAt.current < 1000 &&
-        nodeEnv !== 'production'
+        (nodeEnv === 'development' || nodeEnv === 'test')
       ) {
         console.warn(
-          '[flipbook] The engine remounted within 1s of a page turn. This usually means ' +
-            'a remount-keyed prop (initialPage, hardCovers, injectStyles) changed as a ' +
-            'RESULT of the turn — most often initialPage fed from the URL while ' +
-            'onPageChange writes the URL. Freeze the deep link at mount, or drive ' +
-            'position with the controlled `page` prop instead.',
+          '[flipbook] `initialPage` changed within 1s of a page turn, remounting the ' +
+            'engine mid-read. This usually means initialPage is fed from the URL while ' +
+            'onPageChange writes the URL — every turn then rebuilds the book (a flicker ' +
+            'at animation end). Freeze the deep link at mount, or drive position with ' +
+            'the controlled `page` prop instead.',
         );
       }
       engineBuilds.current += 1;
+      lastInitialPage.current = props.initialPage;
 
       const engine = new PageFlip(root, settings);
       engineRef.current = engine;

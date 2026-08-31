@@ -23,9 +23,24 @@ The styling contract as built is genuinely good, and it is the part the review
 rounds have been most stale about:
 
 - **The paper is a CSS custom property.** `pageBackground` flows into
-  `--stf-paper`, painted on a `::before` layer at `z-index:-1` **behind the
-  leaf's own background** — so a consumer's per-page `background` wins over the
-  engine's paper, and the paper is still there behind translucent content.
+  `--stf-paper`, painted as an image layer over an opaque base.
+
+  > **CORRECTED 2026-08-31 (Puddlebend consumer report, Issue 1 + Codex
+  > adversarial reviews task-mtgwoxvq / task-mtgzp05z).** The original text
+  > promised the `::before` paper sat "behind the leaf's own background" so a
+  > consumer's root `background` would win. That was never physically true: a
+  > drawn leaf carries an inline `z-index` and the stylesheet's
+  > `preserve-3d`, making it a stacking context, inside which a negative-z
+  > pseudo paints ABOVE the root's own background. Worse, hanging ALL opacity
+  > on the pseudo left the element that receives the fold's
+  > `transform`+`clip-path` transparent, which alpha-blended in landscape —
+  > the report's release blocker. The corrected rule: **every drawn leaf root
+  > carries the structural pair inline** (`background-color:#fff` + a
+  > `var(--stf-paper)` gradient); per-page colour goes through
+  > `pageBackground`/`--stf-paper` or an inner element, never the root's own
+  > background. "Opaque paper, always" is Job 1 and outranks a root-paint
+  > ownership that was never actually delivered.
+
 - **The engine no longer owns `display`** and no longer wipes inline styles.
   Hiding is `visibility`-based, so a consumer's `display:flex` on a page
   survives. Two residues still contradict this promise at HEAD —
@@ -35,8 +50,10 @@ rounds have been most stale about:
 - **The engine owns exactly** `position/left/top/width/height/clip-path` (+
   `z-index`, transforms during a fold) **on the leaf root**, and nothing else.
 
-**LOCKED contract:** the engine owns leaf-root _layout_; the consumer owns leaf
-_paint and content_. Stable, documented selectors: `.stf__parent`,
+**LOCKED contract (amended 2026-08-31, see the correction above):** the engine
+owns leaf-root _layout and paper_ (the inline structural pair); the consumer
+owns leaf _content_ and paints through `pageBackground` / `--stf-paper` or an
+inner element. Stable, documented selectors: `.stf__parent`,
 `.stf__block`, `.stf__item`, `.--shown`, `.--left`/`.--right`,
 `[data-density]`, `--stf-paper`. Everything else in the stylesheet is
 unstable.
