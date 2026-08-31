@@ -209,8 +209,9 @@ describe('frame discipline (B1)', () => {
    * Write count is bounded.
    *
    * Pre-fix measured mid-fold frame (soft landscape, 10 leaves): **106**
-   * writes. Post-B3.1–B3.4 measured: **48** (includes foldFill probe noise on a
-   * throwaway div). Ceiling = measured + 25%.
+   * writes. Post-B3.1–B3.4 measured: **48** (included foldFill probe noise on
+   * a throwaway div); **44** after the R2 foldFill memo removed the per-frame
+   * `CSS.supports` re-validation. Ceiling = measured + 25%.
    */
   test('mid-fold write count is bounded', () => {
     const { book } = landscape10();
@@ -224,8 +225,9 @@ describe('frame discipline (B1)', () => {
     book.userMove({ x: 480, y: 150 }, false);
     drawFrame(book);
 
-    // Post-B3.1–B3.4 measured 2026-08-31: 48. Ceiling = measured + 25%.
-    const MEASURED_POST_FIX = 48;
+    // Post-B3.1–B3.4 measured 2026-08-31: 48; 44 after the R2 foldFill memo.
+    // Ceiling = measured + 25%.
+    const MEASURED_POST_FIX = 44;
     const ceiling = Math.ceil(MEASURED_POST_FIX * 1.25);
 
     expect(

@@ -57,10 +57,13 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
       (2026-08-31): resting redraw **0** writes; mid-fold measured **48**
       (was **106**); working-set identity + mid-fold goldens. Memoize
       applyEngineStyle, delta clear/`lastShown`, zIndex + classList elision.
-      **Residue still open** (see `docs/FINDINGS-3.1-RESIDUAL.md` R1–R2): soft
-      static leaves still enter `simpleDraw` every rAF; shadow nodes still take
-      full `cssText` every fold frame; `foldFill`/`CSS.supports` still runs on
-      every style-memo miss (the flipping leaf every frame).
+      R2 (`foldFill` memo) fixed same day — mid-fold now **44**. Remaining
+      residue is R1 only (see `docs/FINDINGS-3.1-RESIDUAL.md`): soft static
+      leaves still enter `simpleDraw` every rAF (string build, no DOM writes)
+      and shadow nodes take full `cssText` per fold frame (values genuinely
+      change per frame, so a memo buys ~nothing mid-turn). Deferred until a
+      real device profile shows it matters — the counts no longer scale with
+      page count and the B1 budget test caps drift.
 - [ ] **Binding-owned leaf hosts** (Puddlebend Issue 2 residue) — the engine
       still stamps classes/inline styles on consumer-rendered roots (two-owner
       DOM). It did not cause the remount flicker, but engine-owned host

@@ -59,8 +59,10 @@ since construction / `updateSettings`.
 **User-visible?** No. Wrong colours are still rejected; the cost is pure
 overhead.
 
-**Not fixed because:** caching the last accepted fill string next to settings
-(or on the page after first successful foldFill) was out of B3 scope.
+**FIXED 2026-08-31 (same session, R2):** `normalizePageBackground` now keeps a
+size-1 (input → result) memo, so an unchanged `pageBackground` validates once,
+not once per rAF; a new string still validates (revert-proved test in
+`page-background-dom.test.ts`). Mid-fold budget re-measured 48 → 44.
 
 ---
 
@@ -160,7 +162,8 @@ the Playwright image manually.
 **User-visible?** Only maintainers regenerating `-linux` baselines via
 `pnpm test:e2e:golden:update:linux`.
 
-**Fix:** `"Running golden suite in ${IMAGE}…"` (brace the variable).
+**FIXED** in the same commit that added this document (`ab4b6e3` braces the
+variable: `"Running golden suite in ${IMAGE}…"`). Listed stale here.
 
 ---
 
@@ -177,10 +180,10 @@ the Playwright image manually.
 
 ## Suggested follow-ups (owner triage)
 
-| ID  | Item                                                                                | Suggested track                           |
-| --- | ----------------------------------------------------------------------------------- | ----------------------------------------- |
-| R1  | Skip `simpleDraw` when static leaf stamp unchanged **and** memoize shadow `cssText` | perf / frame-discipline round 2           |
-| R2  | Cache last `foldFill` result on settings or page                                    | micro-perf                                |
-| R3  | Brace `$IMAGE` in `update-golden-linux.sh`                                          | one-line tooling fix                      |
-| R4  | Scrubber recipe: `turnProgress` + `flip` completion (docs sample)                   | docs only if README snippet is incomplete |
-| R5  | Rotated-host hit testing                                                            | only if a real consumer needs it          |
+| ID  | Item                                                                                | Status (audited 2026-08-31)                                                                                                                                                                                                                                                                             |
+| --- | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1  | Skip `simpleDraw` when static leaf stamp unchanged **and** memoize shadow `cssText` | **Deferred with cause** (on `docs/TODO.md`): the remaining 44 writes/frame are the working set whose values genuinely change per frame — shadow strings differ every frame mid-turn, so a memo buys ~nothing; static-leaf residue is string-building, not DOM writes. No longer scales with page count. |
+| R2  | Cache last `foldFill` result on settings or page                                    | **FIXED** — size-1 memo in `pageBackground.ts`, revert-proved.                                                                                                                                                                                                                                          |
+| R3  | Brace `$IMAGE` in `update-golden-linux.sh`                                          | **Already fixed** in `ab4b6e3` (stale listing).                                                                                                                                                                                                                                                         |
+| R4  | Scrubber recipe: `turnProgress` + `flip` completion (docs sample)                   | **Already covered** — README recipe shows `flip`/`onPageChange` completion in both core and React samples.                                                                                                                                                                                              |
+| R5  | Rotated-host hit testing                                                            | **Wait for a consumer** — documented known-limitation at `UI.getMousePos`; a `DOMMatrix` inversion costs bundle bytes for a scenario no consumer has.                                                                                                                                                   |
