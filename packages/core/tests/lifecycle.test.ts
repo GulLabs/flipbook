@@ -14,6 +14,7 @@ import { PageFlip, PageFlipError, FlippingState } from '@gullabs/flipbook-core';
 import type { BookSnapshot, FlipSetting } from '@gullabs/flipbook-core';
 import { HTMLPageCollection } from '../src/Collection/HTMLPageCollection';
 import { testCollection, testFlip, testRender, testUI, testPage } from './engine-access';
+import { GET_BLOCK, REPLACE_PAGES } from '../src/internal';
 import {
   installPointerCaptureShims,
   makeHtmlBook,
@@ -575,7 +576,7 @@ describe('a destroyed engine is observably dead (P3)', () => {
     expect(book.getState()).toBe(FlippingState.READ);
     expect(testFlip(book)).toBeNull();
     expect(book.getSettings().flippingTime).toBe(500);
-    expect(book.getBlock()).toBeInstanceOf(HTMLElement);
+    expect(book[GET_BLOCK]()).toBeInstanceOf(HTMLElement);
   });
 
   test('the pre-load error still says NOT_LOADED, not DESTROYED', () => {
@@ -1106,7 +1107,7 @@ describe('L6 — a collection swap forgets the pointer gesture', () => {
 
     const items = makePages(6);
     for (const el of items) dist.appendChild(el);
-    book.replacePages(new HTMLPageCollection(book, testRender(book), dist, items), 0);
+    book[REPLACE_PAGES](new HTMLPageCollection(book, testRender(book), dist, items), 0);
 
     book.userMove({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, true);
 

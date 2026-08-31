@@ -5,8 +5,11 @@
 import {
   GET_RENDER,
   GET_UI,
+  ATTACH_MODE,
   COMMIT_TURN,
+  GET_BLOCK,
   GET_COLLECTION,
+  REPLACE_PAGES,
   GET_FLIP,
   VISIBLE_PAGES,
   ADOPT_ORIENTATION,
@@ -364,7 +367,7 @@ export class PageFlip extends EventObject {
    * @internal Wiring seam for load/attach. Not part of the supported API; it
    * may change in a minor release.
    */
-  public getBlock(): HTMLElement {
+  public [GET_BLOCK](): HTMLElement {
     return this.block;
   }
 
@@ -405,7 +408,7 @@ export class PageFlip extends EventObject {
    * @internal Wiring seam. Not part of the supported API; it may change in a
    * minor release.
    */
-  public replacePages(pages: PageCollection, current: number): void {
+  public [REPLACE_PAGES](pages: PageCollection, current: number): void {
     if (this.destroyed) return;
 
     const render = this.renderOrThrow;
@@ -482,7 +485,7 @@ export class PageFlip extends EventObject {
    * @internal Wiring seam for HTML load and any future renderer. Not part of
    * the supported API; it may change in a minor release. Use `loadFromHTML`.
    */
-  public attachMode(ui: UI, render: Render, pages: PageCollection): void {
+  public [ATTACH_MODE](ui: UI, render: Render, pages: PageCollection): void {
     // Mode attachment is the boundary a stale async load must not cross.
     const generation = this.nextGeneration();
 
@@ -704,7 +707,7 @@ export class PageFlip extends EventObject {
     const ui = new HTMLUI(this.block, this, this.setting, items);
     const render = new HTMLRender(this, this.setting, ui.getDistElement());
     const pages = new HTMLPageCollection(this, render, ui.getDistElement(), items);
-    this.attachMode(ui, render, pages);
+    this[ATTACH_MODE](ui, render, pages);
   }
 
   /**

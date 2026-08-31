@@ -327,11 +327,14 @@ describe('consumer: DOM hooks', () => {
     destroy();
   });
 
-  test('getBlock is the construction host (still public, dual with getBlockElement)', () => {
+  test('getBlockElement is the ONE portal target; getBlock is gone (C7)', () => {
     const el = host();
     const book = new PageFlip(el, { width: 200, height: 300, flippingTime: 0 });
     book.loadFromHTML(makePages(2));
-    expect(book.getBlock()).toBe(el);
+    // The dual-name trap is closed: the wiring getter is symbol-keyed now,
+    // and the string key does not exist on the published surface.
+    expect('getBlock' in book).toBe(false);
+    expect(book.getBlockElement()).toBeInstanceOf(HTMLElement);
     expect(book.getBlockElement()).not.toBe(el);
     book.destroy();
   });
@@ -411,13 +414,18 @@ describe('consumer: README claims', () => {
 /* -------------------------------------------------------------------------- */
 
 describe('consumer: awkward public edges (documented)', () => {
-  test('attachMode and replacePages are public but take unexported types', () => {
-    // Compile-time: a consumer cannot name PageCollection / UI / Render from
-    // the package entry. Runtime: the methods still exist on the instance.
+  test('the wiring seams are closed; synthetic input stays public (C7)', () => {
+    // The awkward edge this test used to document is gone: attachMode and
+    // replacePages named unexported types in public signatures, and are
+    // symbol-keyed now. The synthetic-input trio remains the supported
+    // advanced surface for custom gesture layers.
     const { book, destroy } = loadBook();
-    expect(typeof book.attachMode).toBe('function');
-    expect(typeof book.replacePages).toBe('function');
+    expect('attachMode' in book).toBe(false);
+    expect('replacePages' in book).toBe(false);
+    expect('getBlock' in book).toBe(false);
     expect(typeof book.startUserTouch).toBe('function');
+    expect(typeof book.userMove).toBe('function');
+    expect(typeof book.userStop).toBe('function');
     destroy();
   });
 

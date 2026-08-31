@@ -42,14 +42,12 @@ describe('the engine public surface is frozen', () => {
   test('PageFlip — consumer façade only', () => {
     expect(publicMembers('PageFlip.ts')).toEqual(
       [
-        'attachMode',
         'canTurn',
         'clear',
         'destroy',
         'flipToPage',
         'flipNext',
         'flipPrev',
-        'getBlock',
         'getBlockElement',
         'getBoundsRect',
         'getCurrentPageIndex',
@@ -63,7 +61,6 @@ describe('the engine public surface is frozen', () => {
         'isDestroyed',
         'isReady',
         'loadFromHTML',
-        'replacePages',
         'startUserTouch',
         'turnToNextPage',
         'turnToPage',

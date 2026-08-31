@@ -64,6 +64,21 @@ export const EMIT_PAGE_INDEX = Symbol('flipbook.emitPageIndex');
 export const COMMIT_TURN = Symbol('flipbook.commitTurn');
 
 /**
+ * C7 — the load/attach wiring, closed off the public surface.
+ *
+ * These three were `public` with `@internal` JSDoc, and two of them named
+ * types the barrel no longer exports (`UI`, `Render`, `PageCollection`) —
+ * recreating in argument position the exact defect the barrel prune fixed in
+ * return position. All three meet the stopping rule: every caller is the
+ * engine itself (or a test through this module), and an outside call can
+ * fabricate events or leave the facade describing a book that was never
+ * loaded.
+ */
+export const ATTACH_MODE = Symbol('flipbook.attachMode');
+export const REPLACE_PAGES = Symbol('flipbook.replacePages');
+export const GET_BLOCK = Symbol('flipbook.getBlock');
+
+/**
  * Announces a flipping-state change. `Flip.setState`'s seam.
  *
  * Public, it let a consumer announce a state the engine is not in — and

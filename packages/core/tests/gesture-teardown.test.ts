@@ -3,6 +3,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import { PageFlip } from '@gullabs/flipbook-core';
 import { makePages, sizeElement } from './html-book-fixture';
 import { testRender } from './engine-access';
+import { REPLACE_PAGES } from '../src/internal';
 import { HTMLPageCollection } from '../src/Collection/HTMLPageCollection';
 
 /**
@@ -161,7 +162,7 @@ const TEARDOWNS: Array<{ name: string; run: (b: Book) => void }> = [
     run: (b) => {
       const next = makePages(6);
       for (const p of next) b.host.appendChild(p);
-      b.book.replacePages(
+      b.book[REPLACE_PAGES](
         new HTMLPageCollection(b.book, testRender(b.book), b.dist, next),
         b.book.getCurrentPageIndex(),
       );

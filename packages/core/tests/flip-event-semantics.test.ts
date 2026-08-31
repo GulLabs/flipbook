@@ -5,6 +5,7 @@ import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
 import { testCollection, testRender, testUI } from './engine-access';
 import { HTMLPageCollection } from '../src/Collection/HTMLPageCollection';
 import {
+  REPLACE_PAGES,
   ADOPT_ORIENTATION,
   DROP_POINTER_GESTURE,
   EMIT_PAGE_INDEX,
@@ -248,7 +249,7 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
 
     const replacement = makePages(6);
     for (const p of replacement) book.host.appendChild(p);
-    book.book.replacePages(
+    book.book[REPLACE_PAGES](
       new HTMLPageCollection(
         book.book,
         testRender(book.book),
@@ -452,7 +453,7 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
 
     const replacement = makePages(6);
     for (const p of replacement) book.host.appendChild(p);
-    book.book.replacePages(
+    book.book[REPLACE_PAGES](
       new HTMLPageCollection(
         book.book,
         testRender(book.book),
