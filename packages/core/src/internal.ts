@@ -88,6 +88,15 @@ export const GET_BLOCK = Symbol('flipbook.getBlock');
 export const EMIT_STATE = Symbol('flipbook.emitState');
 
 /**
+ * Announces fold progress during a USER_FOLD / FLIPPING turn. `Flip.do`'s seam.
+ *
+ * Takes primitives; payload allocation is gated on listeners inside PageFlip.
+ * Meets the stopping rule: only `Flip` calls it, and an outside call fabricates
+ * a `turnProgress` stream for a fold that never moved.
+ */
+export const EMIT_TURN_PROGRESS = Symbol('flipbook.emitTurnProgress');
+
+/**
  * Adopts a new orientation. `Render.update`'s seam, called only after the
  * renderer has decided the orientation from the measured box.
  *

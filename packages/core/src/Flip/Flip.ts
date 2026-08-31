@@ -4,7 +4,7 @@
 
 import type { Render } from '../Render/Render';
 import { GET_COLLECTION } from '../internal';
-import { COMMIT_TURN, EMIT_STATE, SET_SPREAD_INDEX } from '../internal';
+import { COMMIT_TURN, EMIT_STATE, EMIT_TURN_PROGRESS, SET_SPREAD_INDEX } from '../internal';
 import { foldSide, Orientation } from '../Render/Render';
 import type { PageFlip } from '../PageFlip';
 import { pointsBetween } from '../Helper';
@@ -81,6 +81,13 @@ export class Flip {
    * See `applyLandscapeDensity`.
    */
   private densityOverrides: Page[] = [];
+
+  /**
+   * Instant turns (`flippingTime: 0` / reduced motion) run their final `do()`
+   * synchronously inside `startAnimation`. Suppress `turnProgress` for that
+   * path — an instant turn has no frames for a scrubber to track.
+   */
+  private suppressProgress = false;
 
   constructor(render: Render, app: PageFlip) {
     this.render = render;
@@ -463,6 +470,17 @@ export class Flip {
         // is a result, not an absence of one.
         this.render.clearShadow();
       }
+
+      // turnProgress: same source as shadow progress, only while a real turn
+      // (or user fold) is in flight — never FOLD_CORNER, never instant turns.
+      if (
+        !this.suppressProgress &&
+        (this.state === FlippingState.USER_FOLD || this.state === FlippingState.FLIPPING)
+      ) {
+        const clamped = Math.min(1, Math.max(0, progress / 100));
+        const direction = this.turnDirection === FlipDirection.FORWARD ? 'next' : 'prev';
+        this.app[EMIT_TURN_PROGRESS](clamped, direction);
+      }
     }
   }
 
@@ -818,7 +836,7 @@ export class Flip {
     // *this* turn.
     const turnDirection = this.turnDirection;
 
-    this.render.startAnimation(frames, duration, () => {
+    const onEnd = (): void => {
       // callback function
       if (!this.calc) return;
 
@@ -897,7 +915,20 @@ export class Flip {
         this.reset();
         this.setState(FlippingState.READ);
       }
-    });
+    };
+
+    // Instant path runs the final frame action synchronously inside
+    // `startAnimation`; gate turnProgress for that call only.
+    if (duration <= 0) {
+      this.suppressProgress = true;
+      try {
+        this.render.startAnimation(frames, duration, onEnd);
+      } finally {
+        this.suppressProgress = false;
+      }
+    } else {
+      this.render.startAnimation(frames, duration, onEnd);
+    }
   }
 
   /**
@@ -1046,6 +1077,8 @@ export class Flip {
     // their own one-step turn consume the stale target and land on page 5.
     // Their drag, someone else's destination.
     this.pendingTarget = null;
+
+    this.suppressProgress = false;
 
     // Put back every drawing density this turn overrode. `getDensity()` is the
     // density the page was created with, so this restores rather than freezes.

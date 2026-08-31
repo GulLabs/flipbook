@@ -16,6 +16,7 @@ import {
   DROP_POINTER_GESTURE,
   EMIT_PAGE_INDEX,
   EMIT_STATE,
+  EMIT_TURN_PROGRESS,
   INHERIT_PAGE_INDEX,
   SEED_OPENING_INDEX,
   SET_ORIENTATION_STYLE,
@@ -26,7 +27,7 @@ import type { PageRect, Point } from './BasicTypes';
 import { Flip, FlipCorner, FlippingState } from './Flip/Flip';
 import { Render, type Orientation } from './Render/Render';
 import { distanceBetween } from './Helper';
-import { EventObject } from './Event/EventObject';
+import { EventObject, turnProgressPayload } from './Event/EventObject';
 import type { BookSnapshot, FlipbookEventMap } from './Event/EventObject';
 import type { FlipOptions, FlipSetting, LiveSetting } from './Settings';
 import { Settings } from './Settings';
@@ -1413,6 +1414,17 @@ export class PageFlip extends EventObject {
    */
   public [EMIT_STATE](newState: FlippingState): void {
     this.dispatch('changeState', { state: newState });
+  }
+
+  /**
+   * Emit fold progress during a USER_FOLD / FLIPPING turn.
+   *
+   * See {@link EMIT_TURN_PROGRESS}. Primitives in; payload built only when a
+   * listener is registered, via {@link turnProgressPayload.build}.
+   */
+  public [EMIT_TURN_PROGRESS](progress: number, direction: 'next' | 'prev'): void {
+    if (!this.hasListeners('turnProgress')) return;
+    this.dispatch('turnProgress', turnProgressPayload.build(progress, direction));
   }
 
   /**
