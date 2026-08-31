@@ -1,0 +1,68 @@
+name: Feature request
+description: Suggest an addition or change to flipbook
+title: 'feat: '
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The 3.0 public surface is locked (`docs/API-CONTRACT.md`). Additive
+        ideas are welcome; breaking changes need a strong case and an owner
+        decision. Check [`ROADMAP.md`](https://github.com/gul-labs/flipbook/blob/main/ROADMAP.md)
+        and [`docs/TODO.md`](https://github.com/gul-labs/flipbook/blob/main/docs/TODO.md)
+        first.
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package / surface
+      options:
+        - '@gullabs/flipbook-core'
+        - '@gullabs/react-flipbook'
+        - Docs / examples / repo
+        - Both packages
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: What are you trying to do, and why doesn't the library support it today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: API shape, prop, or behavior you want — rough is fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you tried, or other APIs you looked at.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Would this need a breaking change?
+      options:
+        - 'No — additive / optional'
+        - 'Maybe — not sure'
+        - 'Yes — existing callers would break'
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I checked ROADMAP.md / docs/TODO.md for an existing item
+          required: true

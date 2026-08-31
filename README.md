@@ -10,6 +10,9 @@ Forked from [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) and [Nodli
 
 <p align="center">
   <a href="https://github.com/gul-labs/flipbook/actions/workflows/ci.yml"><img src="https://github.com/gul-labs/flipbook/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://www.npmjs.com/package/@gullabs/flipbook-core"><img src="https://img.shields.io/npm/v/%40gullabs%2Fflipbook-core.svg" alt="npm @gullabs/flipbook-core"></a>
+  <a href="https://www.npmjs.com/package/@gullabs/react-flipbook"><img src="https://img.shields.io/npm/v/%40gullabs%2Freact-flipbook.svg" alt="npm @gullabs/react-flipbook"></a>
+  <a href="https://www.npmjs.com/package/@gullabs/flipbook-core"><img src="https://img.shields.io/npm/types/%40gullabs%2Fflipbook-core.svg" alt="TypeScript types"></a>
   <a href="./packages/core/LICENSE"><img src="https://img.shields.io/badge/core-MPL--2.0-blue.svg" alt="core: MPL-2.0"></a>
   <a href="./packages/react/LICENSE"><img src="https://img.shields.io/badge/react-MIT-blue.svg" alt="react: MIT"></a>
   <img src="https://img.shields.io/badge/core-zero%20runtime%20deps-0f172a.svg" alt="Zero runtime dependencies">
@@ -25,10 +28,22 @@ Canvas / images mode was **removed** in 3.0.0 ([ADR 0002](./docs/adr/0002-remove
 
 ## Packages
 
-| Package                                       | Path             | Role                                                      |
-| --------------------------------------------- | ---------------- | --------------------------------------------------------- |
-| [`@gullabs/flipbook-core`](./packages/core)   | `packages/core`  | Framework-agnostic curl engine (HTML). Zero runtime deps. |
-| [`@gullabs/react-flipbook`](./packages/react) | `packages/react` | React 18/19 binding. `react` peer `>=18`.                 |
+| Package                                                                            | Path             | Role                                                      |
+| ---------------------------------------------------------------------------------- | ---------------- | --------------------------------------------------------- |
+| [`@gullabs/flipbook-core`](https://www.npmjs.com/package/@gullabs/flipbook-core)   | `packages/core`  | Framework-agnostic curl engine (HTML). Zero runtime deps. |
+| [`@gullabs/react-flipbook`](https://www.npmjs.com/package/@gullabs/react-flipbook) | `packages/react` | React 18/19 binding. `react` peer `>=18`.                 |
+
+### Browser support
+
+| Browser                    | Status                                                                |
+| -------------------------- | --------------------------------------------------------------------- |
+| Chromium (Chrome, Edge, …) | Supported — unit + Playwright e2e                                     |
+| Safari / iOS (WebKit)      | Supported — Playwright WebKit e2e (portrait back-curl lives here)     |
+| Firefox                    | Expected to work (Pointer Events + modern CSS); **not** in CI e2e yet |
+| IE / legacy Edge           | Not supported                                                         |
+
+Needs a evergreen browser with **Pointer Events**, `ResizeObserver`, and CSS
+`clip-path`. No IE polyfill path.
 
 ---
 
@@ -332,7 +347,9 @@ pnpm install
 pnpm quality:ci
 ```
 
-See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`AGENTS.md`](./AGENTS.md). Other GulLabs open source: [github.com/gul-labs](https://github.com/gul-labs).
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md), [`AGENTS.md`](./AGENTS.md), and
+[`ROADMAP.md`](./ROADMAP.md). Other GulLabs open source:
+[github.com/gul-labs](https://github.com/gul-labs).
 
 ---
 

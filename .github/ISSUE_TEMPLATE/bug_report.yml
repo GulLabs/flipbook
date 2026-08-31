@@ -1,0 +1,82 @@
+name: Bug report
+description: Report a problem with @gullabs/flipbook-core or @gullabs/react-flipbook
+title: 'bug: '
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing. A minimal reproduction (snippet or StackBlitz later)
+        is worth more than a long description. Do not paste secrets or customer
+        payloads.
+
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package affected
+      description: Which published package is broken?
+      options:
+        - '@gullabs/flipbook-core'
+        - '@gullabs/react-flipbook'
+        - Both / monorepo tooling
+        - Not sure
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Package version
+      description: Exact version from package.json or `npm ls` (e.g. 3.0.0).
+      placeholder: '3.0.0'
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Minimal steps or a code snippet that triggers the bug.
+      placeholder: |
+        1. Mount HTMLFlipBook with …
+        2. flipNext() / swipe back in portrait …
+        3. Observe …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What happened instead? Include console errors if any.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser / Node / OS / package manager.
+      placeholder: |
+        - Browser: Safari 18 iOS / Chrome 128 desktop
+        - Node: 24.x
+        - pnpm 10.34.5 / macOS 15
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues and the README / MIGRATION.md
+          required: true
+        - label: This is not a security report (those go to Security Advisories)
+          required: true

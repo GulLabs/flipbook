@@ -70,12 +70,22 @@
   "publishConfig": {
     "access": "public"
   },
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "keywords": [
     "flipbook",
     "page-flip",
     "page-turn",
     "book",
     "typescript",
-    "stpageflip"
+    "stpageflip",
+    "html"
+  ],
+  "funding": [
+    {
+      "type": "github",
+      "url": "https://github.com/sponsors/atifgul99"
+    }
   ]
 }
