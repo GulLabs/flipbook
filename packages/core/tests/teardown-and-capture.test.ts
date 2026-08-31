@@ -109,7 +109,7 @@ describe('X4 destroying from an onFlip handler survives the frame already in fli
 
     const flips: number[] = [];
     app.on('flip', (e) => {
-      flips.push(e.data);
+      flips.push(e.data.page);
       app.destroy();
     });
 

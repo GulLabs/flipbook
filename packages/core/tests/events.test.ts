@@ -4,8 +4,16 @@
 
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { EventObject } from '../src/Event/EventObject';
-import type { WidgetEvent, FlipbookEventMap } from '../src/Event/EventObject';
+import type { BookSnapshot, WidgetEvent, FlipbookEventMap } from '../src/Event/EventObject';
 import type { PageFlip } from '../src/PageFlip';
+
+/** Minimal snapshot payload — flip used to carry a bare page index. */
+const snap = (page: number): BookSnapshot => ({
+  page,
+  pageCount: 10,
+  orientation: 'portrait',
+  visiblePages: [page],
+});
 
 /**
  * `trigger` is protected and `EventObject` is abstract, so the dispatch
@@ -39,13 +47,13 @@ describe('E1 — the listener set is snapshotted at dispatch', () => {
       book.on('flip', late);
     });
 
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
     expect(late).not.toHaveBeenCalled();
 
     // ...but it is registered, and runs on the next emit.
-    book.emit('flip', 2);
+    book.emit('flip', snap(2));
     expect(late).toHaveBeenCalledTimes(1);
-    expect(late.mock.calls[0]?.[0]).toMatchObject({ data: 2 });
+    expect(late.mock.calls[0]?.[0]).toMatchObject({ data: snap(2) });
   });
 
   test('a self-re-registering listener runs exactly once per emit and terminates', () => {
@@ -61,7 +69,7 @@ describe('E1 — the listener set is snapshotted at dispatch', () => {
     };
 
     book.on('flip', handler);
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
 
     expect(calls).toBe(1);
   });
@@ -75,11 +83,11 @@ describe('E1 — the listener set is snapshotted at dispatch', () => {
     });
     book.on('flip', second);
 
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
     expect(second).toHaveBeenCalledTimes(1);
 
     // The removal took effect for every LATER dispatch.
-    book.emit('flip', 2);
+    book.emit('flip', snap(2));
     expect(second).toHaveBeenCalledTimes(1);
   });
 
@@ -94,11 +102,11 @@ describe('E1 — the listener set is snapshotted at dispatch', () => {
     book.on('flip', first);
     book.on('flip', second);
 
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
     expect(first).toHaveBeenCalledTimes(1);
     expect(second).toHaveBeenCalledTimes(1);
 
-    book.emit('flip', 2);
+    book.emit('flip', snap(2));
     expect(first).toHaveBeenCalledTimes(1);
     expect(second).toHaveBeenCalledTimes(1);
   });
@@ -114,8 +122,8 @@ describe('E1 — the listener set is snapshotted at dispatch', () => {
       seen.push(e.data);
     });
 
-    book.emit('flip', 7);
-    expect(seen).toEqual([7]);
+    book.emit('flip', snap(7));
+    expect(seen).toEqual([snap(7)]);
   });
 });
 
@@ -133,13 +141,13 @@ describe('E2 — a throwing listener does not cancel the others', () => {
     book.on('flip', evenLater);
 
     expect(() => {
-      book.emit('flip', 3);
+      book.emit('flip', snap(3));
     }).toThrow(boom);
 
     expect(later).toHaveBeenCalledTimes(1);
     expect(evenLater).toHaveBeenCalledTimes(1);
     // The surviving listeners got the real payload, not a placeholder.
-    expect(later.mock.calls[0]?.[0]).toMatchObject({ data: 3 });
+    expect(later.mock.calls[0]?.[0]).toMatchObject({ data: snap(3) });
   });
 
   test('the FIRST error is the one thrown; the rest reach the host uncaught', () => {
@@ -157,7 +165,7 @@ describe('E2 — a throwing listener does not cancel the others', () => {
     });
 
     expect(() => {
-      book.emit('flip', 1);
+      book.emit('flip', snap(1));
     }).toThrow(first);
 
     // Not swallowed: the second error is rethrown on a fresh task, where it
@@ -172,7 +180,7 @@ describe('E2 — a throwing listener does not cancel the others', () => {
 
     const book = new Emitter();
     book.on('flip', vi.fn());
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
 
     expect(vi.getTimerCount()).toBe(0);
   });
@@ -188,7 +196,7 @@ describe('E3 — off(event, callback) detaches one listener', () => {
     book.on('flip', analytics);
 
     book.off('flip', counter);
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
 
     expect(counter).not.toHaveBeenCalled();
     expect(analytics).toHaveBeenCalledTimes(1);
@@ -202,7 +210,7 @@ describe('E3 — off(event, callback) detaches one listener', () => {
     book.on('flip', a);
     book.on('flip', b);
     book.off('flip');
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
 
     expect(a).not.toHaveBeenCalled();
     expect(b).not.toHaveBeenCalled();
@@ -212,17 +220,17 @@ describe('E3 — off(event, callback) detaches one listener', () => {
     const book = new Emitter();
     const seen: number[] = [];
     const handler = (e: FlipEvent): void => {
-      seen.push(e.data);
+      seen.push(e.data.page);
     };
 
     book.on('flip', handler);
     // Same source, different function object — must NOT detach, or `off` would
     // be silently removing something the caller did not name.
     book.off('flip', (e: FlipEvent): void => {
-      seen.push(e.data);
+      seen.push(e.data.page);
     });
 
-    book.emit('flip', 5);
+    book.emit('flip', snap(5));
     expect(seen).toEqual([5]);
   });
 
@@ -234,7 +242,7 @@ describe('E3 — off(event, callback) detaches one listener', () => {
     book.on('flip', handler);
     book.off('flip', handler);
 
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
@@ -246,7 +254,7 @@ describe('E3 — off(event, callback) detaches one listener', () => {
     expect(book.off('changeState', handler)).toBe(book);
     expect(book.off('flip', vi.fn())).toBe(book);
 
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
     expect(handler).toHaveBeenCalledTimes(1);
   });
 
@@ -256,12 +264,12 @@ describe('E3 — off(event, callback) detaches one listener', () => {
 
     book.on('flip', handler);
     book.off('flip', handler);
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
     book.on('flip', handler);
-    book.emit('flip', 2);
+    book.emit('flip', snap(2));
 
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler.mock.calls[0]?.[0]).toMatchObject({ data: 2 });
+    expect(handler.mock.calls[0]?.[0]).toMatchObject({ data: snap(2) });
   });
 });
 
@@ -277,7 +285,7 @@ describe('E4 — an event name that nothing emits is a compile error', () => {
     // @ts-expect-error same for `off`.
     book.off('flpi', handler);
 
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
     expect(handler).toHaveBeenCalledTimes(1);
   });
 });
@@ -289,11 +297,11 @@ describe('clearListeners still behaves as documented (Y2)', () => {
 
     book.on('flip', handler);
     book.clear();
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
     expect(handler).not.toHaveBeenCalled();
 
     book.on('flip', handler);
-    book.emit('flip', 2);
+    book.emit('flip', snap(2));
     expect(handler).toHaveBeenCalledTimes(1);
   });
 });

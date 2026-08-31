@@ -1,6 +1,14 @@
 import { describe, expect, test, vi } from 'vitest';
 import { EventObject } from '../src/Event/EventObject';
+import type { BookSnapshot } from '../src/Event/EventObject';
 import type { PageFlip } from '../src/PageFlip';
+
+const snap = (page: number): BookSnapshot => ({
+  page,
+  pageCount: 10,
+  orientation: 'portrait',
+  visiblePages: [page],
+});
 
 /**
  * `EventObject` in isolation, driven directly rather than through a book.
@@ -19,7 +27,7 @@ import type { PageFlip } from '../src/PageFlip';
 
 /** The emitter is abstract and `trigger` is protected; this exposes both. */
 class Emitter extends EventObject {
-  public emit(name: 'flip', data: number): void {
+  public emit(name: 'flip', data: BookSnapshot): void {
     this.trigger(name, this as unknown as PageFlip, data);
   }
 }
@@ -29,11 +37,11 @@ describe('EventObject.once', () => {
     const book = new Emitter();
     const seen: number[] = [];
 
-    book.once('flip', (e) => seen.push(e.data));
+    book.once('flip', (e) => seen.push(e.data.page));
 
-    book.emit('flip', 1);
-    book.emit('flip', 2);
-    book.emit('flip', 3);
+    book.emit('flip', snap(1));
+    book.emit('flip', snap(2));
+    book.emit('flip', snap(3));
 
     expect(seen).toEqual([1]);
   });
@@ -42,13 +50,13 @@ describe('EventObject.once', () => {
     // Without this, a `once` that fires with a mangled or missing event object
     // still satisfies "runs exactly once".
     const book = new Emitter();
-    const calls: Array<{ data: number; object: unknown }> = [];
+    const calls: Array<{ data: BookSnapshot; object: unknown }> = [];
 
     book.once('flip', (e) => calls.push({ data: e.data, object: e.object }));
-    book.emit('flip', 7);
+    book.emit('flip', snap(7));
 
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.data).toBe(7);
+    expect(calls[0]?.data).toEqual(snap(7));
     expect(calls[0]?.object).toBe(book);
   });
 
@@ -62,7 +70,7 @@ describe('EventObject.once', () => {
 
     book.once('flip', fn);
     book.off('flip', fn);
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
 
     expect(fn).not.toHaveBeenCalled();
   });
@@ -81,12 +89,12 @@ describe('EventObject.once', () => {
     });
 
     expect(() => {
-      book.emit('flip', 1);
+      book.emit('flip', snap(1));
     }).toThrow('consumer defect');
 
     // The second emit must be silent — the listener is gone.
     expect(() => {
-      book.emit('flip', 2);
+      book.emit('flip', snap(2));
     }).not.toThrow();
     expect(calls).toBe(1);
   });
@@ -96,11 +104,11 @@ describe('EventObject.once', () => {
     const persistent: number[] = [];
     const oneShot: number[] = [];
 
-    book.on('flip', (e) => persistent.push(e.data));
-    book.once('flip', (e) => oneShot.push(e.data));
+    book.on('flip', (e) => persistent.push(e.data.page));
+    book.once('flip', (e) => oneShot.push(e.data.page));
 
-    book.emit('flip', 1);
-    book.emit('flip', 2);
+    book.emit('flip', snap(1));
+    book.emit('flip', snap(2));
 
     // The negative control: if `once` detached the whole event (the E3 bug it
     // depends on having been fixed), `persistent` would stop at [1].
@@ -113,11 +121,11 @@ describe('EventObject.once', () => {
     const a: number[] = [];
     const b: number[] = [];
 
-    book.once('flip', (e) => a.push(e.data));
-    book.once('flip', (e) => b.push(e.data));
+    book.once('flip', (e) => a.push(e.data.page));
+    book.once('flip', (e) => b.push(e.data.page));
 
-    book.emit('flip', 1);
-    book.emit('flip', 2);
+    book.emit('flip', snap(1));
+    book.emit('flip', snap(2));
 
     // Kills a `once` implemented by clearing the event's whole listener list,
     // which passes every single-listener test above.
@@ -137,16 +145,16 @@ describe('EventObject.once', () => {
     const arm = (): void => {
       armed += 1;
       book.once('flip', (e) => {
-        seen.push(e.data);
+        seen.push(e.data.page);
         if (armed < 3) arm();
       });
     };
     arm();
 
-    book.emit('flip', 1);
-    book.emit('flip', 2);
-    book.emit('flip', 3);
-    book.emit('flip', 4);
+    book.emit('flip', snap(1));
+    book.emit('flip', snap(2));
+    book.emit('flip', snap(3));
+    book.emit('flip', snap(4));
 
     expect(seen).toEqual([1, 2, 3]);
   });
@@ -157,7 +165,7 @@ describe('EventObject.once', () => {
 
     book.once('flip', fn);
     book.off('flip');
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
 
     expect(fn).not.toHaveBeenCalled();
   });
@@ -170,7 +178,7 @@ describe('EventObject.once', () => {
 
     book.once('flip', fn);
     book.off('flip', vi.fn());
-    book.emit('flip', 1);
+    book.emit('flip', snap(1));
 
     expect(fn).toHaveBeenCalledTimes(1);
   });
