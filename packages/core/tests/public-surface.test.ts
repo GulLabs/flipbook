@@ -84,9 +84,28 @@ describe('the engine public surface is frozen', () => {
       'getPage',
       'loadFromImages',
       'updateFromImages',
+      // C7 — load/attach wiring is symbol-keyed; public names must not return.
+      'attachMode',
+      'replacePages',
+      'getBlock',
     ]) {
       expect(names).not.toContain(closed);
     }
+  });
+
+  test('C7 — attach/replace/getBlock live only as symbol methods in source', () => {
+    // Revert-blocker for 5480ebe: if someone re-publishes these as plain
+    // `public attachMode(...)` the publicMembers allowlist above catches the
+    // name, and this catches a half-migration that keeps the string name in a
+    // different form (`public attachMode` without the method paren match, or a
+    // re-export). The symbols themselves stay — that is the designed seam.
+    const source = fs.readFileSync(`${SRC}/PageFlip.ts`, 'utf8');
+    expect(source).toMatch(/public \[ATTACH_MODE\]/);
+    expect(source).toMatch(/public \[REPLACE_PAGES\]/);
+    expect(source).toMatch(/public \[GET_BLOCK\]/);
+    expect(source).not.toMatch(/^ {2}public attachMode\b/m);
+    expect(source).not.toMatch(/^ {2}public replacePages\b/m);
+    expect(source).not.toMatch(/^ {2}public getBlock\(/m);
   });
 
   test('UI — only reachable via closed GET_UI seam', () => {
