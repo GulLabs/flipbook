@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { foldX } from './engine-access';
 
 /**
  * The §4.1 / §4.2 guard.
@@ -82,16 +83,8 @@ function settle(page: Page) {
  * Read from the engine rather than from a bounding box: the leaf is drawn with
  * a clip-path over a transformed element, and Chromium and WebKit disagree on
  * what rectangle that produces even when the fold is in the same place.
+ * Implementation: `./engine-access` (symbol-keyed render/flip after C7).
  */
-function foldX(page: Page) {
-  return page.evaluate(() => {
-    const book = (window as unknown as { flipbook: import('@gullabs/flipbook-core').PageFlip })
-      .flipbook;
-    const calc = book.getFlipController()?.getCalculation();
-    if (!calc) return null;
-    return book.getRender().convertPointToGlobal(calc.getPosition()).x;
-  });
-}
 
 test.describe('portrait back-curl (StPageFlip #49)', () => {
   test('the moving leaf is a copy of the current page, and the previous leaf is painted under it', async ({

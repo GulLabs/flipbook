@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { foldProgress, settleAtPage } from './engine-access';
 
 /**
  * §8.2 Golden visual frames.
@@ -38,10 +39,6 @@ const SCREENSHOT = {
 
 type FlipDir = 'forward' | 'back';
 
-type FlipbookWindow = Window & {
-  flipbook: import('@gullabs/flipbook-core').PageFlip;
-};
-
 function goldenQuery(extra = ''): string {
   const base = `golden=1&flippingTime=${FLIPPING_TIME_MS}&reducedMotion=0`;
   return extra ? `?${base}&${extra}` : `?${base}`;
@@ -74,12 +71,8 @@ async function paint(page: Page): Promise<void> {
 }
 
 async function settleAt(page: Page, pageIndex: number): Promise<void> {
-  await page.evaluate((idx) => {
-    const book = (window as unknown as FlipbookWindow).flipbook;
-    book.getRender().finishAnimation();
-    book.turnToPage(idx);
-    book.getRender().start();
-  }, pageIndex);
+  // C7: render is symbol-keyed — see `./engine-access`.
+  await settleAtPage(page, pageIndex);
   await paint(page);
 }
 
@@ -126,11 +119,8 @@ async function capturePathFrame(
   await paint(page);
 
   // Fold must be live: a zero-progress frame would green-pass a broken curl.
-  const progress = await page.evaluate(() => {
-    const book = (window as unknown as FlipbookWindow).flipbook;
-    const calc = book.getFlipController()?.getCalculation();
-    return calc ? calc.getFlippingProgress() : null;
-  });
+  // C7: flip controller is symbol-keyed — see `./engine-access`.
+  const progress = await foldProgress(page);
   expect(progress, `fold engaged for ${snapshotName}`).not.toBeNull();
   expect(progress ?? 0, `fold progress for ${snapshotName}`).toBeGreaterThan(1);
 

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { engineSnapshot } from './engine-access';
 
 /**
  * §8.3 Gesture e2e — real touch, swipe thresholds, tap zones, drag-release mid-curl.
@@ -49,26 +50,23 @@ async function bookBox(page: Page) {
   return box;
 }
 
-/** Live engine snapshot — state, page index, fold calc position. */
-function engineSnapshot(page: Page) {
-  return page.evaluate(() => {
-    const book = (window as unknown as { flipbook: import('@gullabs/flipbook-core').PageFlip })
-      .flipbook;
-    const flip = book.getFlipController();
-    const calc = flip?.getCalculation();
-    return {
-      state: book.getState(),
-      page: book.getCurrentPageIndex(),
-      folding: calc != null,
-      foldX: calc?.getPosition().x ?? null,
-    };
-  });
-}
+/** Live engine snapshot — state, page index, fold calc position.
+ * Implementation: `./engine-access` (symbol-keyed flip after C7).
+ */
 
 function bookSettings(page: Page) {
   return page.evaluate(() => {
-    const book = (window as unknown as { flipbook: import('@gullabs/flipbook-core').PageFlip })
-      .flipbook;
+    const book = (
+      window as unknown as {
+        flipbook: {
+          getSettings(): {
+            swipeDistance: number;
+            flipOnClick: string;
+            flippingTime: number;
+          };
+        };
+      }
+    ).flipbook;
     const s = book.getSettings();
     return {
       swipeDistance: s.swipeDistance,
