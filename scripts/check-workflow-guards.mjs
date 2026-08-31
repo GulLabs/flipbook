@@ -357,6 +357,53 @@ for (const jobId of publishingJobIds) {
 }
 
 // ---------------------------------------------------------------------------
+// changesets/action@v2 input contract
+// ---------------------------------------------------------------------------
+//
+// v2 renamed the root inputs and stopped reading GITHUB_TOKEN from the
+// environment. A Dependabot pin bump that leaves the v1 names is a silent
+// publish break (the action ignores unknown inputs). Assert the live contract
+// whenever a step uses changesets/action.
+
+const CHANGESSETS_V1_INPUTS = new Set(['version', 'publish', 'commit', 'title', 'branch']);
+const CHANGESSETS_V2_REQUIRED = ['version-script', 'publish-script', 'github-token'];
+
+for (const jobId of publishingJobIds) {
+  const steps = jobs[jobId]?.steps;
+  if (!Array.isArray(steps)) continue;
+  for (const [i, step] of steps.entries()) {
+    const uses = typeof step?.uses === 'string' ? step.uses : '';
+    if (!uses.startsWith('changesets/action@')) continue;
+
+    const withBlock =
+      step.with !== null && typeof step.with === 'object' && !Array.isArray(step.with)
+        ? step.with
+        : {};
+    const keys = Object.keys(withBlock);
+    const stepLabel = `job "${jobId}" step ${String(i)} (${uses})`;
+
+    for (const key of keys) {
+      if (CHANGESSETS_V1_INPUTS.has(key)) {
+        fail(
+          `${stepLabel}: still uses changesets/action v1 input \`${key}\`. ` +
+            'v2 renamed these (version→version-script, publish→publish-script, ' +
+            'commit→commit-message, title→pr-title, branch→pr-base-branch).',
+        );
+      }
+    }
+
+    for (const required of CHANGESSETS_V2_REQUIRED) {
+      if (!(required in withBlock) || withBlock[required] === '' || withBlock[required] == null) {
+        fail(
+          `${stepLabel}: missing required changesets/action@v2 input \`${required}\`. ` +
+            'github-token must be an explicit input — the action no longer reads GITHUB_TOKEN from env.',
+        );
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 
 if (failures.length > 0) {
   console.error(`Release workflow guard check FAILED (${workflowPath}):\n`);

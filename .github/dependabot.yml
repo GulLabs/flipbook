@@ -14,18 +14,6 @@ updates:
       development:
         dependency-type: development
 
-  - package-ecosystem: 'npm'
-    directory: '/packages/core'
-    schedule:
-      interval: 'weekly'
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: 'npm'
-    directory: '/packages/react'
-    schedule:
-      interval: 'weekly'
-    open-pull-requests-limit: 5
-
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
