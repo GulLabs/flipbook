@@ -57,6 +57,10 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
       (2026-08-31): resting redraw **0** writes; mid-fold measured **48**
       (was **106**); working-set identity + mid-fold goldens. Memoize
       applyEngineStyle, delta clear/`lastShown`, zIndex + classList elision.
+      **Residue still open** (see `docs/FINDINGS-3.1-RESIDUAL.md` R1–R2): soft
+      static leaves still enter `simpleDraw` every rAF; shadow nodes still take
+      full `cssText` every fold frame; `foldFill`/`CSS.supports` still runs on
+      every style-memo miss (the flipping leaf every frame).
 - [ ] **Binding-owned leaf hosts** (Puddlebend Issue 2 residue) — the engine
       still stamps classes/inline styles on consumer-rendered roots (two-owner
       DOM). It did not cause the remount flicker, but engine-owned host
@@ -76,6 +80,10 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
 
 ## Examples & repo polish
 
+- [ ] **`scripts/update-golden-linux.sh` `$IMAGE…` under `set -u`** — line 35
+      expands `$IMAGE…` as one parameter name (Unicode ellipsis). Brace as
+      `${IMAGE}…`. Found during PLAN-3.1 B2; worked around manually for
+      baselines. See `docs/FINDINGS-3.1-RESIDUAL.md` §7.
 - [ ] **Next.js example gets a real `flippingTime`** (H7) — the App Router demo
       currently proves "instant page swap", not the product. Do with the docs
       round if e2e permits.

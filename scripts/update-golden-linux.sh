@@ -32,7 +32,7 @@ tar --exclude=node_modules \
     --exclude=coverage \
     -cf - -C "$REPO_ROOT" . | (cd "$STAGE" && tar xf -)
 
-echo "Running golden suite in $IMAGE…"
+echo "Running golden suite in ${IMAGE}…"
 docker run --rm -v "$STAGE":/work -w /work -e CI=1 "$IMAGE" bash -lc '
   corepack enable >/dev/null 2>&1
   # The Playwright webServer command shells out to `pnpm`, which is not on PATH
