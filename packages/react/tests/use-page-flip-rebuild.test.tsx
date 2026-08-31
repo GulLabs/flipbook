@@ -34,11 +34,14 @@ function rebuildSnapshot(data: {
   page: number;
   pageCount: number;
   orientation?: BookSnapshot['orientation'];
+  visiblePages?: number[];
 }): BookSnapshot {
   return {
     page: data.page,
     pageCount: data.pageCount,
     orientation: data.orientation ?? 'portrait',
+    // C4: every snapshot carries the on-screen leaf list.
+    visiblePages: data.visiblePages ?? [data.page],
   };
 }
 

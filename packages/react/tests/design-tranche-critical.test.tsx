@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createRef, forwardRef, StrictMode, useState, type ReactNode } from 'react';
 import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { HTMLFlipBook, usePageFlip } from '@gullabs/react-flipbook';
-import type { FlipBookHandle, TurnRejected } from '@gullabs/react-flipbook';
+import type { BookSnapshot, FlipBookHandle, TurnRejected } from '@gullabs/react-flipbook';
 import { PageFlipError } from '@gullabs/flipbook-core';
 
 afterEach(() => {
@@ -204,8 +204,8 @@ describe('D17 — onReady/onLoaded announce the real book, never pageCount: 0', 
   test('mount with pages reports pageCount matching children on both events', async () => {
     // Reverted fix: loadFromHTML([]) announced synchronously, so the binding
     // deterministically reported pageCount: 0 (the empty portal shell).
-    const onReady = vi.fn();
-    const onLoaded = vi.fn();
+    const onReady = vi.fn<(snapshot: BookSnapshot) => void>();
+    const onLoaded = vi.fn<(snapshot: BookSnapshot) => void>();
     const ref = createRef<FlipBookHandle>();
 
     render(
@@ -231,12 +231,14 @@ describe('D17 — onReady/onLoaded announce the real book, never pageCount: 0', 
     // Never fire with the empty shell. A "last call is right" check would still
     // pass the defect if a stale pageCount:0 came first.
     for (const call of onReady.mock.calls) {
-      expect(call[0]).toEqual(expect.objectContaining({ pageCount: 4 }));
-      expect(call[0].pageCount).not.toBe(0);
+      const snapshot = call[0];
+      expect(snapshot).toEqual(expect.objectContaining({ pageCount: 4 }));
+      expect(snapshot.pageCount).not.toBe(0);
     }
     for (const call of onLoaded.mock.calls) {
-      expect(call[0]).toEqual(expect.objectContaining({ pageCount: 4 }));
-      expect(call[0].pageCount).not.toBe(0);
+      const snapshot = call[0];
+      expect(snapshot).toEqual(expect.objectContaining({ pageCount: 4 }));
+      expect(snapshot.pageCount).not.toBe(0);
     }
 
     expect(onReady).toHaveBeenCalledTimes(1);
@@ -246,7 +248,7 @@ describe('D17 — onReady/onLoaded announce the real book, never pageCount: 0', 
   });
 
   test('payloads are unwrapped BookSnapshots, not WidgetEvent wrappers', async () => {
-    const onReady = vi.fn();
+    const onReady = vi.fn<(snapshot: BookSnapshot) => void>();
     render(
       <HTMLFlipBook width={200} height={300} flippingTime={0} onReady={onReady}>
         {pages('a', 'b')}
@@ -254,17 +256,13 @@ describe('D17 — onReady/onLoaded announce the real book, never pageCount: 0', 
     );
 
     await waitFor(() => expect(onReady).toHaveBeenCalled());
-    const snapshot = onReady.mock.calls[0]?.[0] as {
-      page: number;
-      pageCount: number;
-      orientation: string;
-      data?: unknown;
-    };
-    expect(snapshot).toMatchObject({
-      page: expect.any(Number),
-      pageCount: 2,
-      orientation: expect.stringMatching(/portrait|landscape/),
-    });
+    const snapshot = onReady.mock.calls[0]?.[0];
+    expect(snapshot).toBeDefined();
+    if (snapshot === undefined) throw new Error('onReady never fired');
+    expect(typeof snapshot.page).toBe('number');
+    expect(snapshot.pageCount).toBe(2);
+    expect(snapshot.orientation).toMatch(/portrait|landscape/);
+    expect(Array.isArray(snapshot.visiblePages)).toBe(true);
     // D18: no WidgetEvent wrapper.
     expect(snapshot).not.toHaveProperty('data');
     expect(snapshot).not.toHaveProperty('object');
@@ -919,7 +917,8 @@ describe('R-1b — a turn with onPageChange does not throw DETACHED_PAGE', () =>
         expect(handleRef.current?.pageFlip()?.getCurrentPageIndex()).toBe(2);
       });
 
-      const all = [...errors, ...consoleError.mock.calls.flatMap((a) => a)];
+      const consoleArgs: unknown[] = consoleError.mock.calls.flatMap((args: unknown[]) => args);
+      const all: unknown[] = [...errors, ...consoleArgs];
       expect(
         all.some((value) => value instanceof PageFlipError && value.code === 'DETACHED_PAGE'),
       ).toBe(false);
