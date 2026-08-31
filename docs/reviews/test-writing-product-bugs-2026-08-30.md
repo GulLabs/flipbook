@@ -1,314 +1,379 @@
-# Product bugs & consumer-audit findings
+# Consumer re-evaluation — bugs, gaps, and customization value
 
-**Date:** 2026-08-30 (updated same day — consumer audit pass)  
-**File:** `docs/reviews/test-writing-product-bugs-2026-08-30.md`
+**File:** `docs/reviews/test-writing-product-bugs-2026-08-30.md`  
+**Date:** 2026-08-30 (re-evaluated same day)  
+**Packages:** `@gullabs/flipbook-core`, `@gullabs/react-flipbook`
 
-**Method:** Act as a real product consumer of `@gullabs/flipbook-core` +
-`@gullabs/react-flipbook`. Use only the **published** package entry. Cross-check
-README / MIGRATION claims against runtime. Pin failures in tests where possible.
+This is not a laundry list of engineer taste. It is a **product-consumer**
+re-read of every prior finding: who the buyer is, what they must control at
+runtime, why a broken claim costs money, and what is still missing that a
+shipped reader needs.
 
-Each entry: severity, failure mode, `file:line` when known, test status.
-
----
-
-## How a real consumer wants to use this library
-
-| Need                                  | Wanted API                                                     | Status                              |
-| ------------------------------------- | -------------------------------------------------------------- | ----------------------------------- |
-| Mount a book, know when it is ready   | `isReady()`, `ready` / `loaded`                                | **OK**                              |
-| Page counter / TOC / scrubber         | `getVisiblePages()`, `getCurrentPageIndex()`, `getPageCount()` | **OK** (new façade)                 |
-| Enable/disable next/prev chrome       | `canTurn('next'\|'prev')`                                      | **OK** (spread-bounded)             |
-| Programmatic next/prev with animation | `flipNext` / `flipPrev`                                        | **BROKEN in jsdom unit env — P7**   |
-| Jump without animation (deep link)    | `turnToPage`                                                   | **OK**                              |
-| Controlled React page                 | `page` + `onPageChange` + `pageTransition`                     | Covered by React suites             |
-| Built-in a11y controls                | `controls`, `controlLabels`                                    | **OK** (skip-link default)          |
-| RTL                                   | `readingDirection: 'rtl'`                                      | Setting OK; fold path same as P7    |
-| Reject bad config early               | `PageFlipError` + `setting` key                                | **OK** for most; D3 incomplete — P0 |
-| One-shot listeners                    | `once()`                                                       | **OK**                              |
-| Detach one of two flip handlers       | `off(event, fn)`                                               | **OK**                              |
-| Portal React children into engine     | `getBlockElement()`                                            | **OK**                              |
-| Offline validate settings without DOM | `new Settings().resolve(...)`                                  | **GONE from package entry — P8**    |
+Method unchanged: published package entry only; claims checked against runtime;
+failures pinned in `packages/core/tests/consumer-audit.test.ts` where possible.
 
 ---
 
-## P0 — D3 `pageBackground` still treats unknown syntax as opaque
+## 1. Who the real-world consumer is
 
-**Severity:** Major (claimed fix incomplete)
+Three buyers show up repeatedly. They are not “people calling `flipNext` in a
+demo.”
 
-**Failure mode:** `Settings.resolve` only rejects when `isOpaquePageBackground`
-is false (`packages/core/src/Settings.ts`). That helper returns **true** for any
-string with no recognised alpha (`packages/core/src/Render/pageBackground.ts`).
-Modern / junk values (`oklch(...)`, `color-mix(...)`, `var(--x)`,
-`red;position:fixed`) pass construction. Draw-time `foldFill` silently
-substitutes white.
+| Buyer                          | Product                                              | What they embed                                                                |
+| ------------------------------ | ---------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **A. Content reader**          | Story books, magazines, catalogs, comics             | Full-bleed pages, brand paper colour, RTL locales, deep links to page N        |
+| **B. Learning / docs product** | Courses, manuals, onboarding carousels               | Progress chrome, keyboard, screen-reader path, “page 3 of 12”, resume position |
+| **C. Design system host**      | Marketing site or app shell that already owns layout | The book must **look like the host**, not like a default white widget          |
 
-**Test status:** Translucent legacy colours throw (consumer-audit + settings).
-Unknown-syntax silent-white is **not** fixed.
-
----
-
-## P1 — `GeometryAbort` (historical; partially fixed)
-
-**Severity:** Was Major; **now wired** in `FlipCalculation.calc` via
-`isGeometryAbort` (`packages/core/src/Flip/FlipCalculation.ts`).
-
-**Remaining issue:** real geometry faults still surface as **`PageFlipError`
-`COLLINEAR_SEGMENTS`** on the public `flipNext` path and become
-`turnRejected` `reason: 'setup'` — see **P7**. That is not the sentinel path;
-it is a hard failure presented as a soft turn refusal.
+All three treat this library as a **leaf component inside a larger UI**, not as
+the whole app. That single fact drives every customization need below.
 
 ---
 
-## P2 — `forwardRef` page children still warn as "not a host element"
+## 2. Why a consumer must pass styles, settings, and runtime control
 
-**Severity:** Minor (correct mount, noisy contract)
+### 2.1 Styles (`className`, `style`, host CSS, `FLIPBOOK_CSS`)
 
-**Failure mode:** Legitimate `forwardRef` leaves still log
-`[flipbook] page child N is a component, not a host element...` while loading
-successfully.
+**Why they want it**
 
-**Anchor:** `packages/react/src/HTMLFlipBook.tsx` (wrap/collect path).
+- The book sits in a grid/sidebar/modal that already has tokens (spacing,
+  radius, shadow, dark mode). A hard-coded white rectangle breaks the shell.
+- Marketing wants a cream paper fold (`pageBackground`), not `#fff`.
+- Focus rings and control chrome must match the host’s a11y styling, or WCAG
+  reviewers fail the page for “inconsistent focus indicator.”
+- `className` / `style` on the React root is how every other design-system
+  component is themed. If the engine **clobbers** `className` (it used to drop
+  `stf__parent`), layout collapses mid-session — measured, fixed as MIN-8.
 
-**Test status:** design-tranche-critical negative control mounts; warning on stderr.
+**What “passing styles” actually means in this codebase**
 
----
+| Surface                                     | Consumer intent                                   | Value if it works                                       |
+| ------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------- |
+| `className` / `style` on `HTMLFlipBook`     | Place and theme the root in the host layout       | Book participates in flex/grid without a wrapper hack   |
+| `pageBackground`                            | Opaque paper colour under the curl                | No text bleed (the §4.2 product promise)                |
+| `startZIndex` / host stacking               | Sit above/below modals, drawers                   | Avoid z-index wars                                      |
+| `ensureFlipbookStyles` / `FLIPBOOK_CSS`     | SSR or CSP: inject CSS when/where the host allows | No flash of unstyled book; no inline-style ban breakage |
+| Leaf content CSS (`object-fit`, typography) | Author owns page HTML                             | Library stays a turner, not a layout engine             |
+| Built-in `controls` styling                 | Skip-link vs visible chrome                       | A11y without shipping a second design language          |
 
-## P3 — React handle after out-of-band `engine.destroy()` (likely fixed)
+**Why broken styling control is bad**
 
-**Severity:** Was Minor
+If the consumer cannot own the root class/style, they wrap the book in three
+divs and fight `position`/`overflow`. Support tickets become “why is my book
+0 height” instead of product work. If `pageBackground` silently becomes white
+(P0), brand paper is a lie and the fold shows the wrong colour — visible on
+every turn.
 
-**Status:** `runRelative` now checks `engine.isDestroyed()` and reports
-`onTurnRejected` `notReady` (`HTMLFlipBook.tsx` ~527–542). Re-verify with a
-dedicated test if not already in design-tranche suite.
+### 2.2 Settings at construction and at runtime (`FlipOptions`, `updateSettings`)
 
----
+**Why they want it**
 
-## P4 — Fixture legacy setting names (fixed)
+Settings are **product policy**, not demo knobs:
 
-`html-book-fixture.ts` now uses `FlipOptions` names and `getBlockElement()`.
+| Setting                                          | Real product reason                                                  |
+| ------------------------------------------------ | -------------------------------------------------------------------- |
+| `flippingTime: 0` / `respectReducedMotion`       | Legal/a11y: respect OS reduced motion; deep links should not animate |
+| `usePortrait` / `sizing` / min/max bounds        | Phone vs desk layout without two components                          |
+| `hardCovers`                                     | Magazines vs picture books (cover is its own spread)                 |
+| `readingDirection: 'rtl'`                        | Locale, not a niche flag                                             |
+| `pointerInput`                                   | Kiosk: touch only; desktop article: mouse only                       |
+| `flipOnClick: 'never' \| 'corners'`              | Drag-to-turn readers vs click-anywhere                               |
+| `drawShadow` / `maxShadowOpacity`                | Performance on low-end devices; brand flat vs skeuomorphic           |
+| `allowTouchScroll` / `respectInteractiveContent` | Pages with forms/links must not steal scroll or clicks               |
+| `initialPage`                                    | Resume reading position from URL or server                           |
 
----
+**Runtime `updateSettings` is not optional polish.** Host apps:
 
-## P5 — `Settings.getSettings` → `resolve` (intentional break)
+- Toggle reduced motion when the user flips an in-app a11y switch.
+- Change `width`/`height` on resize or orientation without remounting (remount
+  loses page + in-flight turn).
+- Disable pointer turning while a paywall modal is open (`pointerInput: []`).
+- Soften shadows when battery saver is on.
 
-Documented. `Settings` class itself is **no longer on the package entry** (P8).
+Without live settings, every policy change becomes **destroy + recreate**, which
+fires a second `ready`, drops gesture state, and confuses analytics.
 
----
+**Why weak validation is bad (P0, P8)**
 
-## P6 — Event payload shape break (intentional)
+- Silent wrong paper colour (P0) ships to production looking “fine” in QA on
+  `#fff` fixtures and broken on brand tokens (`oklch`, `var(--paper)`).
+- No public `validateSettings` (P8) means a CMS cannot reject bad JSON before
+  mount. The alternative is construct-a-throwaway-`PageFlip`, which needs a DOM
+  and is absurd in a Node config pipeline.
 
-`ready`/`loaded`/`pagesChanged`/`flip` → `BookSnapshot`; `changeState` →
-`{ state }`. README still mentions historical `onUpdate` in the “why this fork”
-table with a note that 3.0 uses `pagesChanged` — OK if table is historical.
+### 2.3 Runtime behaviour control (events, handle, chrome)
 
----
+**Why they want it**
 
-## P7 — **BLOCKER for consumers: `flipNext` / animated fold fails with `COLLINEAR_SEGMENTS`**
+A reader product is 30% turner, 70% chrome:
 
-**Severity:** **Blocker** for any product that uses programmatic or gesture
-turns under incomplete layout; **Major** even in real browsers if the same
-math path is hit with a degenerate rect.
+- Progress bar, “page X of Y”, thumbnail strip → need **truthful** visible
+  leaves and turn availability.
+- Next/Prev buttons, keyboard, swipe → need **`flipNext` to actually turn**.
+- Analytics (“user reached chapter 2”) → need `flip` / `onPageChange`, not
+  silent no-ops.
+- Error UX (“couldn’t open that link”) → need `turnRejected` with a reason a
+  human can map, not `setup` + internal geometry codes.
+- Controlled URL `?page=4` → need `page` + `pageTransition: 'instant'` without
+  fighting the engine.
 
-**Failure mode (measured 2026-08-30, jsdom):**
+**Events a consumer wires in production**
 
-```text
-book.isReady() === true
-book.canTurn('next') === true
-book.flipNext() === false
-turnRejected: { reason: 'setup', code: 'COLLINEAR_SEGMENTS', direction: 'next', landedOn: 0 }
-getCurrentPageIndex() stays 0
-```
+| Event                             | Chrome use                                  |
+| --------------------------------- | ------------------------------------------- |
+| `ready` / `onReady`               | Hide skeleton, enable buttons once          |
+| `loaded` / `onLoaded`             | “Book replaced” after CMS fetch             |
+| `pagesChanged` / `onPagesChanged` | Rebuild TOC when chapter list changes       |
+| `flip` / `onPageChange`           | Sync URL, analytics, progress               |
+| `changeOrientation`               | Swap portrait/landscape chrome              |
+| `changeState`                     | Disable buttons mid-fold; show “turning…”   |
+| `turnRejected` / `onTurnRejected` | Disable Next at end; toast on bad deep link |
 
-`turnToPage(1)` still works. So:
-
-- README claim “flipNext turns the page” is false in the unit environment and
-  any environment where the page rect / fold segments go collinear.
-- `canTurn('next')` lies relative to `flipNext` success — chrome enables Next,
-  click does nothing but `setup` rejection.
-- Instant `flippingTime: 0` does **not** skip the broken fold math; it still
-  runs `FlipCalculation` and dies.
-
-**Root cause (measured):**
-
-1. `portraitCurlLocal` ends the curl at `y: 0` (TOP) or `y: height` (BOTTOM) —
-   collinear with the page border segment.
-2. `flippingTime: 0` runs **only the last animation frame**.
-3. That frame hits `intersectLines` → `PageFlipError('COLLINEAR_SEGMENTS')`.
-4. `FlipCalculation.calc` only swallows `GeometryAbort`; `PageFlipError` is
-   rethrown. `Helper.ts` comments still claim calc swallows collinear cases —
-   that claim is false.
-5. `PageFlip.requestTurn` maps the error to `turnRejected` `reason: 'setup'`,
-   returns `false`, and can leave `state: 'flipping'` with the index stuck.
-
-**Anchors:**
-
-- Throw: `packages/core/src/Helper.ts` ~145 (`intersectLines` → `COLLINEAR_SEGMENTS`)
-- Curl end: portrait curl local path (geometry module / Flip animation end)
-- Catch path → refusal: `PageFlip.requestTurn` maps `PageFlipError` →
-  `turnRejected` `reason: 'setup'`
-- Call chain: `flipNext` → `Flip.flipNext` → `animateFlippingTo` /
-  `startAnimation` → `FlipCalculation.calc`
-
-**Blast radius:** ~70+ core unit tests and ~13 React tests that call
-`flipNext` / complete an instant fold fail for this reason (not leftover API
-migration). `turnToPage` still works.
-
-**Test status:** Pinned in
-`packages/core/tests/consumer-audit.test.ts`
-(`BUG: flipNext from page 0 reports setup/COLLINEAR_SEGMENTS instead of turning`).
-Do **not** green this by asserting `flipNext() === true` until the product is
-fixed. E2E with non-zero `flippingTime` may still pass if intermediate frames
-succeed — verify before claiming “jsdom only.”
-
-**Consumer impact:**
-
-- Keyboard / control buttons calling `flipNext` may no-op.
-- `usePageFlip().flipNext` same.
-- Analytics listening only for `flip` never fire on “next” clicks that hit this.
+If `flipNext` fails while `canTurn('next')` is true (P7), **every** chrome
+path above lies: buttons stay enabled, analytics under-count, keyboard feels
+broken, and the bug is blamed on the host app.
 
 ---
 
-## P8 — `Settings` class removed from package entry without a consumer validator
+## 3. Re-evaluated findings
 
-**Severity:** Major for library authors / CMS config UIs; fine for in-app only
+Each item answers four questions:
 
-**Failure mode:** `import { Settings } from '@gullabs/flipbook-core'` is
-undefined. Offline validation must construct a throwaway `PageFlip` or deep-
-import (blocked by `exports`). Claim in older docs that `Settings` is public is
-false.
+1. **Is it still real?**
+2. **Why is it bad for a real product?**
+3. **What is missing / what value does a fix unlock?**
+4. **Evidence / test pin**
 
-**What is exported:** `SizeMode`, `ALL_POINTERS`, types `FlipOptions` /
-`FlipSetting` / `LiveSetting` only.
-
-**Test status:** `public-surface.test.ts` asserts `Settings` is absent from the
-entry. Unit tests deep-import `../src/Settings`.
+Closed or intentional items are marked so they stop consuming attention.
 
 ---
 
-## P9 — Public methods that take types the package does not export
+### P7 — BLOCKER: `flipNext` / instant fold dies on `COLLINEAR_SEGMENTS`
 
-**Severity:** Major API design smell / accidental surface
+|                            |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Still real?**            | **Yes.** Measured: ready book, `canTurn('next')===true`, `flipNext()===false`, `turnRejected { reason:'setup', code:'COLLINEAR_SEGMENTS' }`.                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Why bad**                | This is the **primary verb** of the library. A page-flip that cannot flip is not a niche edge case — it is the product. Host chrome (built-in controls, `usePageFlip().flipNext`, keyboard, custom Next buttons) all call this path. `canTurn` enabling Next while `flipNext` no-ops is worse than a throw: users click a live control and nothing happens, with no host-level error. Instant turns (`flippingTime: 0`, reduced motion) are **exactly** the path a11y and deep links need — and that path only runs the last animation frame, which is the collinear one. |
+| **Missing / value of fix** | A fold completion that does not throw on the terminal pose; or treat collinear end as success/`GeometryAbort`. Unlocks: trustworthy chrome, reduced-motion compliance, keyboard, analytics, and the ~70 unit tests that currently fail for this reason alone.                                                                                                                                                                                                                                                                                                             |
+| **Evidence**               | Root: terminal curl y equals page edge → `Helper.intersectLines` → `COLLINEAR_SEGMENTS`; `FlipCalculation` only swallows `GeometryAbort`. Pin: `consumer-audit.test.ts` “BUG: flipNext…”.                                                                                                                                                                                                                                                                                                                                                                                 |
 
-**Failure mode:** `PageFlip.attachMode(ui, render, pages)` and
-`replacePages(pages, current)` are still **public**, but `UI`, `Render`, and
-`PageCollection` are **not** exported from the package entry. A TypeScript
-consumer cannot name the arguments. The methods are only usable via `any` or
-internal knowledge — the exact “extension point that type-checks and dead-ends”
-the index.ts comment says was removed for the class hierarchy, recreated as
-methods.
-
-Also public: `startUserTouch` / `userMove` / `userStop` (custom input layers —
-legitimate) and `getBlock()` marked `@internal` in a comment but still `public`
-(dual with `getBlockElement()`).
-
-**Test status:** consumer-audit pins `typeof attachMode/replacePages ===
-'function'`. Allowlist in `public-surface.test.ts`.
+**Consumer story:** Learning product ships “Next” + ArrowRight. QA on a real
+phone with non-zero duration may pass intermediate frames; CI and reduced-motion
+users hit the last frame only and stall on page 0. Support cannot reproduce
+without reduced motion on.
 
 ---
 
-## P10 — Docs lag the façade collapse
+### P0 — `pageBackground` accepts modern/junk colour, paints white
 
-**Severity:** Docs / agent confusion
+|                     |                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Still real?**     | **Yes** for unknown syntax; translucent legacy colours do throw.                                                                                                                                                                                                                                                                                                                                              |
+| **Why bad**         | Paper colour is a **brand and readability** contract (opaque fold). Design tokens in 2026 are `oklch`, `color-mix`, `var(--paper)`. Accepting them at the boundary and substituting white at draw time means: construction succeeds, every QA screenshot on default fixtures is green, production brand builds show the wrong paper and/or bleed. Silent visual wrongness is the most expensive class of bug. |
+| **Missing / value** | Boundary rejection (or real parsing) for non-legacy colours, with `INVALID_SETTING` + `setting: 'pageBackground'`. Unlocks safe CMS/theme integration and honest fail-fast config.                                                                                                                                                                                                                            |
+| **Evidence**        | `isOpaquePageBackground` treats “no alpha channel” as opaque; `foldFill` falls back to white.                                                                                                                                                                                                                                                                                                                 |
 
-**Examples:**
-
-- MIGRATION still documents `getUI` / `getRender` / `getPageCollection` /
-  `getFlipController` as throwing `DESTROYED` — those getters are **gone**
-  (symbol seams + `isReady` / `getBlockElement` / …).
-- CLAUDE.md / older agent memory may still describe exporting internal
-  algorithms; `packages/core/src/index.ts` now explicitly does not.
-- README “why this fork” still says `Settings.getSettings` historically —
-  fine as history if clearly past tense.
-
-**Action:** rewrite MIGRATION lifecycle section against the live allowlist in
-`public-surface.test.ts`.
+**Consumer story:** Design system passes `pageBackground: 'var(--color-paper)'`.
+Book mounts. Folds look white. Designer files “engine ignores token.” Engineer
+finds silent substitution after a day of CSS debugging.
 
 ---
 
-## P11 — Dual host getters (`getBlock` vs `getBlockElement`)
+### P8 — No public settings validator (`Settings` off the package entry)
 
-**Severity:** Minor (extra surface)
+|                     |                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Still real?**     | **Yes.** `import { Settings } from '@gullabs/flipbook-core'` is not on the entry. Types `FlipOptions` / `LiveSetting` remain.                                                                                                                                                                                                                                     |
+| **Why bad**         | Buyer C and CMS pipelines validate config **before** they have a document. Without a pure function or class on the entry, they either (a) mount a throwaway engine (needs DOM, slow, side-effecting), or (b) reimplement validation and drift from the engine. Runtime `updateSettings` failures in a live book are worse than compile-time or pre-flight errors. |
+| **Missing / value** | e.g. `validateFlipOptions(partial): FlipSetting` or re-export `Settings.resolve`. Unlocks config UIs, storybook knobs, and server-side “is this book JSON publishable?”                                                                                                                                                                                           |
+| **Evidence**        | `public-surface.test.ts` asserts `Settings` absent from entry.                                                                                                                                                                                                                                                                                                    |
 
-**Failure mode:** Two public methods answer “where is the DOM?”
-
-- `getBlock()` — construction host (comment says `@internal`, still public)
-- `getBlockElement()` — `.stf__block` portal target (the one React needs)
-
-Consumers will call the wrong one. Prefer documenting only `getBlockElement`
-and demoting `getBlock` to a symbol or deleting it.
-
-**Test status:** consumer-audit asserts they differ after load.
-
----
-
-## P12 — Empty book / shell readiness is ambiguous
-
-**Severity:** Minor
-
-**Failure mode:** `loadFromHTML([])` does not fire `ready`/`loaded` (good), but
-`isReady()` may still be true if a controller was wired, while `flipNext`
-refuses. Consumer chrome that keys only on `isReady` will show enabled controls
-for a book with no pages.
-
-**Test status:** consumer-audit empty-shell case pins `flipNext() === false`.
+**Note:** Removing the class from the entry is a valid packaging choice. The
+**gap** is not “export the class for purity” — it is “give consumers _some_
+supported preflight that shares the engine’s rules.”
 
 ---
 
-## What is extra (candidate to remove or hide)
+### P9 — Public `attachMode` / `replacePages` with unexported argument types
 
-1. `attachMode`, `replacePages` as public (P9)
-2. `getBlock` alongside `getBlockElement` (P11)
-3. Raw pointer simulation trio if only UI should drive input (keep if custom
-   input is a supported product)
-4. Re-exporting `WidgetEvent` to React consumers who only get unwrapped payloads
+|                     |                                                                                                                                                                                                                                                                                                |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Still real?**     | **Yes.** Methods public; `UI` / `Render` / `PageCollection` not exported.                                                                                                                                                                                                                      |
+| **Why bad**         | Accidental surface. TypeScript consumers cannot call them without `any`. That trains people to cast, which then reaches real internals. Docs that say “the façade is the API” are contradicted by the `.d.ts`. Support cost: “how do I replacePages?” has no honest answer except “you don’t.” |
+| **Missing / value** | Either **delete/internalize** (symbol) or export a **supported** high-level API (`replaceHtmlPages(els)` already exists as `updateFromHtml`). Value is a smaller, teachable surface and fewer false extension points.                                                                          |
+| **Evidence**        | `public-surface.test.ts` allowlist; consumer-audit pins methods exist.                                                                                                                                                                                                                         |
 
----
-
-## What is missing (consumer wishlist)
-
-1. **Working `flipNext` / fold path** in all environments with valid layout (P7)
-2. **Public settings validator** without constructing a `PageFlip` (P8)
-3. **`onProgress` / animation tick** for custom chrome scrubbers
-4. **Spread count / current spread index** on the façade (only via closed
-   collection today) — `canTurn` helps but scrubbers want `getSpreadCount()`
-5. **Stable `page` identity for landscape** when controlled prop names either
-   leaf of a spread (partially handled; still a support FAQ)
-6. **Documented event list** in README matching `FlipbookEventMap` exactly
-   (`ready`, `loaded`, `pagesChanged`, `flip`, `changeState`,
-   `changeOrientation`, `turnRejected`) — no stale `init`/`update`/`onFlip`
+`startUserTouch` / `userMove` / `userStop` are different: a **custom input
+layer** (gamepad, remote control, canvas overlay) is a real product need. Keep
+those; document them as the supported escape hatch.
 
 ---
 
-## Claims that do not hold (or hold only sometimes)
+### P2 — `forwardRef` page children warn falsely
 
-| Claim                                  | Reality                                                             |
-| -------------------------------------- | ------------------------------------------------------------------- |
-| `flipNext` turns the page              | Fails with `COLLINEAR_SEGMENTS` / `setup` in measured jsdom (P7)    |
-| `canTurn('next')` means next will work | True for bounds; false for fold success (P7)                        |
-| `flippingTime: 0` is instant turn      | Instant **if** the fold path runs; currently fold path errors first |
-| D3 rejects bad `pageBackground`        | Only translucent legacy; not unknown CSS (P0)                       |
-| `Settings` is a public API             | Not on package entry (P8)                                           |
-| MIGRATION “getUI after destroy throws” | `getUI` does not exist (P10)                                        |
+|                     |                                                                                                                                                                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Still real?**     | **Yes** (noise while mount succeeds).                                                                                                                                                             |
+| **Why bad**         | Design systems wrap pages in `forwardRef` primitives (`<Page as={Box}>`). Console warnings on every mount fail CI log policies, scare engineers, and hide real `DETACHED_PAGE` failures in noise. |
+| **Missing / value** | Warn only when the ref slot is still null after commit (D1 already throws then). Quiet happy path.                                                                                                |
+| **Evidence**        | design-tranche-critical forwardRef control; stderr warning.                                                                                                                                       |
 
 ---
 
-## Test files from this work
+### P10 — Docs lag the façade collapse
+
+|                     |                                                                                                                                         |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Still real?**     | **Yes** for MIGRATION lifecycle text still naming `getUI` / `getRender` / …                                                             |
+| **Why bad**         | Adopters follow MIGRATION and write code that does not typecheck. Agents “restore” deleted getters. Trust in the rest of the doc drops. |
+| **Missing / value** | Single source of truth = `public-surface.test.ts` allowlist + short “supported façade” section in README/MIGRATION.                     |
+| **Evidence**        | MIGRATION destroy section vs live `PageFlip` public list.                                                                               |
+
+---
+
+### P11 — Dual `getBlock` vs `getBlockElement`
+
+|                     |                                                                                                                                                                                                                                                                                                        |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Still real?**     | **Yes.**                                                                                                                                                                                                                                                                                               |
+| **Why bad**         | React portals need `.stf__block` (`getBlockElement`). Construction host is `getBlock`. Calling the wrong one is a silent layout bug (portal into host → React parent mismatch → `NotFoundError` class of failure). Two names for “the DOM node” without a one-line doc rule guarantees the wrong call. |
+| **Missing / value** | One documented portal target; demote or rename the other (`getHostElement` vs `getPageHost`).                                                                                                                                                                                                          |
+| **Evidence**        | consumer-audit: after load they are different nodes.                                                                                                                                                                                                                                                   |
+
+---
+
+### P12 — Empty shell vs `isReady`
+
+|                     |                                                                                                                                                                                           |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Still real?**     | **Yes** as ambiguity.                                                                                                                                                                     |
+| **Why bad**         | React mounts `loadFromHTML([])` then fills pages. Chrome that enables Next on `isReady` alone can flash enabled controls on a zero-page shell. Combined with P7, “ready” is not “usable.” |
+| **Missing / value** | Document: usable ⇒ `isReady() && getPageCount() > 0` (and after P7, successful turn path). Optional `isInteractive` helper.                                                               |
+| **Evidence**        | consumer-audit empty shell; React portal mount pattern.                                                                                                                                   |
+
+---
+
+### P1 — `GeometryAbort` (mostly closed; residual is P7)
+
+|                                 |                                                                                                                                                                                        |
+| ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Still real as original D20?** | **Partially fixed** — `FlipCalculation` uses `isGeometryAbort`.                                                                                                                        |
+| **Why residual is bad**         | Collinear end is a **`PageFlipError`**, not a sentinel abort, so it becomes `turnRejected` `setup` (P7). Callers cannot distinguish “user at end of book” from “engine math exploded.” |
+| **Value of finishing**          | Map geometry completion to abort/success, not `setup`.                                                                                                                                 |
+
+---
+
+### P3 — Destroyed engine + React handle (likely closed)
+
+|                     |                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Still real?**     | **Likely fixed** (`isDestroyed()` in `runRelative`).                                                               |
+| **Why it mattered** | Out-of-band `pageFlip()!.destroy()` returned `false` with no `onTurnRejected` — chrome could not show “book gone.” |
+| **Action**          | Keep a regression test; do not re-open unless it fails.                                                            |
+
+---
+
+### P4–P6 — Intentional / fixed migration debt
+
+| ID  | Status      | Consumer note                                                 |
+| --- | ----------- | ------------------------------------------------------------- |
+| P4  | Fixed       | Fixture uses real `FlipOptions` names                         |
+| P5  | Intentional | `resolve` not `getSettings` on Settings class                 |
+| P6  | Intentional | One `BookSnapshot` shape — good for consumers once docs match |
+
+---
+
+## 4. What is extra (costs more than it helps)
+
+| Extra                                                  | Why a consumer does not need it | Prefer                                        |
+| ------------------------------------------------------ | ------------------------------- | --------------------------------------------- |
+| Public `attachMode` / `replacePages` with secret types | Cannot call safely              | `updateFromHtml` only                         |
+| `getBlock` + `getBlockElement` without naming          | Wrong portal target             | One name                                      |
+| Re-exporting `WidgetEvent` to React                    | Handlers already unwrapped      | Drop from React entry or document “core only” |
+| Console warn on successful `forwardRef` pages          | Noise                           | Warn on null slot only                        |
+
+Extra API is not free: it appears in autocomplete, gets used, and becomes
+semver forever.
+
+---
+
+## 5. What is missing (and why it is worth building)
+
+Prioritized by **product value**, not elegance.
+
+| Missing capability                                                         | Who needs it            | Why it brings value                                                                                                  |
+| -------------------------------------------------------------------------- | ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **P7 fix — working animated / instant fold**                               | Everyone                | Core verb; without it chrome and a11y paths are theater                                                              |
+| **Honest turn result** (`canTurn` ≈ `flipNext` success, or progress event) | Chrome authors          | Buttons and keyboard stay consistent                                                                                 |
+| **Preflight `validateFlipOptions`**                                        | CMS / design systems    | Fail in CI before paint                                                                                              |
+| **Strict or real `pageBackground` tokens**                                 | Brand / dark mode       | Paper colour is a visible brand surface                                                                              |
+| **`getSpreadCount` / current spread index**                                | Scrubbers, PDF-like UI  | `canTurn` is boolean; scrubbers need position in spread space                                                        |
+| **`onProgress` or frame tick** (optional)                                  | Custom animation chrome | Drive scrubber thumb during turn without rAF hacking                                                                 |
+| **Documented customization recipe**                                        | All buyers              | “How do I theme controls, paper, z-index, reduced motion” in one place                                               |
+| **Control styling hooks**                                                  | Design systems          | Today: unstyled buttons + skip-link CSS. Need classNames or slot/`renderControls` so hosts do not fork the component |
+| **Clear “portal here” API doc**                                            | React hosts             | One sentence: always `getBlockElement()`                                                                             |
+
+### Controls styling specifically
+
+Built-in controls exist because browse-mode AT users cannot use arrows (H4).
+That is correct product. What is still thin:
+
+- Default is visually hidden until focus — good for layout, bad if the host
+  wants always-visible branded buttons without `controls="visible"` + full
+  custom CSS against `data-flipbook-control`.
+- There is no `controlsClassName` / render prop. Hosts either accept naked
+  buttons or set `controls="none"` and reimplement a11y (easy to get wrong).
+
+**Value of a small styling seam:** keep H4 behaviour, let the design system
+paint the buttons. That is how every other headless/a11y component library
+ships (behaviour owned by lib, look owned by host).
+
+---
+
+## 6. Claims vs reality (consumer trust)
+
+| Claim (README / docs / types)              | Reality                                     | Trust impact             |
+| ------------------------------------------ | ------------------------------------------- | ------------------------ |
+| Library flips pages (`flipNext`)           | Can no-op with `setup`/`COLLINEAR_SEGMENTS` | High — core promise      |
+| `canTurn` for disabling Next               | Bounds only; not fold success               | High — chrome lies       |
+| `flippingTime: 0` / reduced motion instant | Instant path still runs broken last frame   | High — a11y path         |
+| Opaque `pageBackground`                    | Unknown tokens → white                      | Medium — brand           |
+| Façade is the whole API                    | Dead-end public methods remain              | Medium — adopters cast   |
+| MIGRATION lists current getters            | Stale `getUI` etc.                          | Medium — copy-paste fail |
+| `Settings` for validation                  | Not importable from entry                   | Low–medium — CMS only    |
+
+---
+
+## 7. Suggested product order (re-ranked by consumer value)
+
+1. **P7** — Make `flipNext` / instant fold complete without `COLLINEAR_SEGMENTS`.  
+   _Unlocks the product._
+2. **Align `canTurn` / rejection reasons** so chrome can trust the API.
+3. **P0** — Honest `pageBackground` for real design tokens.
+4. **P10** — Docs = live façade (stop sending adopters into deleted APIs).
+5. **P8** — Supported settings preflight for config pipelines.
+6. **P11 / P9** — One portal getter; hide dead-end methods.
+7. **Controls styling seam** — optional, high leverage for design-system hosts.
+8. **P2** — Quiet successful `forwardRef` pages.
+
+---
+
+## 8. Test anchors
 
 | File                                         | Role                                         |
 | -------------------------------------------- | -------------------------------------------- |
-| `packages/core/tests/consumer-audit.test.ts` | Public-API-only consumer scenarios + P7 pin  |
-| `packages/core/tests/engine-access.ts`       | Test-only symbol seams for engine unit tests |
-| `packages/core/tests/public-surface.test.ts` | Allowlist freeze after façade collapse       |
-| `packages/core/tests/ssr-import.test.ts`     | Entry loads without `window`; no Settings    |
-| `packages/core/tests/html-book-fixture.ts`   | Uses `getBlockElement`                       |
+| `packages/core/tests/consumer-audit.test.ts` | Public-API consumer scenarios; **P7 pin**    |
+| `packages/core/tests/public-surface.test.ts` | Façade allowlist freeze                      |
+| `packages/core/tests/ssr-import.test.ts`     | Entry without `window`; no `Settings` export |
+| `packages/core/tests/engine-access.ts`       | Test-only symbol seams (not public API)      |
+| `packages/core/tests/html-book-fixture.ts`   | Shared harness using `getBlockElement`       |
 
 ---
 
-## Suggested fix order (owner / product)
+## 9. One-sentence summary
 
-1. **P7** — fold / `flipNext` collinear failure (highest user impact)
-2. **P10** — MIGRATION + README alignment with live façade
-3. **P9 / P11** — remove or internalize dead-end public methods
-4. **P0** — D3 unknown-syntax `pageBackground`
-5. **P8** — optional `validateSettings(options)` export if CMS configs matter
-6. **P2** — quiet `forwardRef` warning
+A real consumer needs to **theme the shell**, **set product policy as
+settings**, and **drive chrome from truthful runtime signals**; today the
+biggest gap is that the **turn verb can fail while the library claims the turn
+is available**, which makes every control, keyboard path, and analytics hook
+built on top of it unreliable until P7 is fixed.
