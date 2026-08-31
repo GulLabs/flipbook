@@ -532,6 +532,18 @@ export class UI {
     this.items = items;
 
     this.setHandlers();
+
+    // B3.1: adopt/release may restore consumer cssText or bring a leaf whose
+    // inline styles changed while the engine was not looking. Bust every
+    // leaf memo so the next draw re-stamps (no-op if the collection is empty
+    // mid-updateFromHtml — new Pages start with a fresh cache anyway).
+    if (!this.app.isDestroyed()) {
+      try {
+        this.app[GET_COLLECTION]().invalidateDrawCache();
+      } catch {
+        // NOT_LOADED
+      }
+    }
   }
 
   public update(): void {

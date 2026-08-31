@@ -338,6 +338,19 @@ export class PageCollection {
   }
 
   /**
+   * Bust every leaf's `applyEngineStyle` memo (PLAN-3.1 B3.1).
+   *
+   * Called from `Render.update` / `reload` so a resize, orientation change, or
+   * settings rewrite (including `pageBackground`) re-stamps inline styles on
+   * the next draw rather than trusting a cache keyed on the previous geometry.
+   *
+   * @internal
+   */
+  public invalidateDrawCache(): void {
+    for (const page of this.pages) page.invalidateDrawCache();
+  }
+
+  /**
    * Get page by index
    *
    * @param {number} pageIndex

@@ -75,75 +75,8 @@ const ENGINE_STYLE_PROPS = [
   '-webkit-backface-visibility',
 ] as const;
 
-/**
- * Apply the engine's declarations without disturbing the consumer's.
- *
- * Parses rather than taking an object because the draw paths compose their
- * declarations as strings and several are conditional; converting all three to
- * property maps would be a much larger change to the hot path for the same
- * result. The parse is ~15 declarations on at most four leaves per frame.
- */
-function applyEngineStyle(element: HTMLElement, css: string, background?: string): void {
-  const next = new Map<string, string>();
-
-  for (const declaration of css.split(';')) {
-    const colon = declaration.indexOf(':');
-    if (colon <= 0) continue;
-
-    const property = declaration.slice(0, colon).trim();
-    if (property !== '') next.set(property, declaration.slice(colon + 1).trim());
-  }
-
-  // Clear only what the engine itself may have written on an earlier frame.
-  for (const property of ENGINE_STYLE_PROPS) {
-    if (!next.has(property)) element.style.removeProperty(property);
-  }
-
-  for (const [property, value] of next) element.style.setProperty(property, value);
-
-  // The BACKGROUND is applied separately, never through the parsed string.
-  //
-  // It is the one declaration whose value comes from consumer input, and this
-  // function splits on `;` — so embedding it made a semicolon in the colour a
-  // second declaration. The settings boundary rejects `;` and `foldFill`
-  // rejects it again at draw, so it could not actually inject; but a rule that
-  // holds only because two other checks happen to be right is the wrong shape
-  // for the one value an attacker controls. Passing it as its own argument
-  // removes the class of bug rather than guarding it.
-  // The paper is stamped ON THE ELEMENT ITSELF, as the same structural pair
-  // the `::before` layer uses: an opaque `#fff` base with the consumer's
-  // `--stf-paper` composited over it as an image layer. The value still
-  // travels only through the custom property — the gradient references
-  // `var(--stf-paper)`, so no consumer input is ever interpolated into a
-  // declaration string.
-  //
-  // Why the element and not only the pseudo (consumer report, Puddlebend
-  // Issue 1): the fold puts `transform` + `clip-path` on this element, and a
-  // root whose only opacity lives on a `z-index:-1` pseudo is fragile against
-  // compositor behavior — measured in landscape as a band at the fold line
-  // where the turning page alpha-blended with the leaf beneath. Painting the
-  // transformed element itself is the guarantee; the pseudo stays as the
-  // backstop (and as the paint for any state the engine has not drawn).
-  //
-  // This does NOT change which colour a consumer sees: every drawn leaf
-  // carries an inline z-index (and the stylesheet's `preserve-3d`), so the
-  // leaf is a stacking context and the negative-z pseudo already painted
-  // ABOVE the root's own background. Per-page colour goes through
-  // `pageBackground` / `--stf-paper`, or on an inner element — the root's
-  // background has always lost to the paper in a drawn state.
-  //
-  // The same pair also covers replaced-element roots (`img`, `video`,
-  // `canvas`, `iframe`, `embed`), where pseudo-elements never render — the
-  // inline write is the only opaque backing such a root can have.
-  if (background !== undefined) {
-    element.style.setProperty('--stf-paper', background);
-    element.style.setProperty('background-color', '#fff');
-    element.style.setProperty(
-      'background-image',
-      'linear-gradient(var(--stf-paper,#fff),var(--stf-paper,#fff))',
-    );
-  }
-}
+// applyEngineStyle lives on Page as a method so it can memoize last-written
+// css + background per leaf (PLAN-3.1 B3.1). See Page.applyEngineStyle.
 
 /**
  * Every class this renderer puts on a consumer's leaf element.
@@ -189,6 +122,15 @@ export class Page {
   private copiedElement: HTMLElement | null = null;
 
   private temporaryCopy: Page | null = null;
+
+  /**
+   * Last css string + background this leaf wrote via `applyEngineStyle`
+   * (PLAN-3.1 B3.1). `null` means "no cache" — next draw always stamps.
+   * Invalidated on orientation/density changes, adopt/release, and collection
+   * `invalidateDrawCache()` (resize / settings / reload).
+   */
+  private lastEngineCss: string | null = null;
+  private lastBackground: string | undefined = undefined;
 
   /**
    * True only for the throwaway leaf built by `newTemporaryCopy()`.
@@ -395,11 +337,10 @@ export class Page {
         ? `transform-origin:${rect.pageWidth}px 0;transform:translate3d(${spine - rect.pageWidth}px,${top}px,0) rotateY(${angle}deg);`
         : `transform-origin:0 0;transform:translate3d(${spine}px,${top}px,0) rotateY(${angle}deg);`;
 
-    applyEngineStyle(
-      this.element,
+    this.applyEngineStyle(
       `${commonStyle}backface-visibility:hidden;-webkit-backface-visibility:hidden;` +
         `clip-path:none;-webkit-clip-path:none;${transform}`,
-      foldFill(this.render.getSettings().pageBackground),
+      this.render.getSettings().pageBackground,
     );
   }
 
@@ -451,10 +392,9 @@ export class Page {
         ? `transform:translate(${position.x}px,${position.y}px);`
         : `transform:translate3d(${position.x}px,${position.y}px,0) rotate(${this.state.angle}rad);`;
 
-    applyEngineStyle(
-      this.element,
+    this.applyEngineStyle(
       `${commonStyle}transform-origin:0 0;clip-path:${polygon};-webkit-clip-path:${polygon};${transform}`,
-      foldFill(this.render.getSettings().pageBackground),
+      this.render.getSettings().pageBackground,
     );
   }
 
@@ -469,13 +409,113 @@ export class Page {
     this.element.classList.add('--shown');
     // Static pages are opaque too: a transparent leaf lets the page under
     // the fold read through at the start / end of a turn.
-    applyEngineStyle(
-      this.element,
+    this.applyEngineStyle(
       `position:absolute;height:${pageHeight}px;left:${x}px;top:${y}px;` +
         `width:${pageWidth}px;` +
         `z-index:${this.render.getSettings().startZIndex + 1};`,
-      foldFill(this.render.getSettings().pageBackground),
+      this.render.getSettings().pageBackground,
     );
+  }
+
+  /**
+   * Apply the engine's declarations without disturbing the consumer's.
+   *
+   * Parses rather than taking an object because the draw paths compose their
+   * declarations as strings and several are conditional; converting all three to
+   * property maps would be a much larger change to the hot path for the same
+   * result. The parse is ~15 declarations on at most four leaves per frame.
+   *
+   * B3.1: skip the DOM write when css + background match the last stamp on
+   * this leaf. Invalidation is the other half of correctness — see
+   * {@link invalidateDrawCache}.
+   */
+  private applyEngineStyle(css: string, background?: string): void {
+    if (this.lastEngineCss === css && this.lastBackground === background) {
+      return;
+    }
+
+    const element = this.element;
+    const next = new Map<string, string>();
+
+    for (const declaration of css.split(';')) {
+      const colon = declaration.indexOf(':');
+      if (colon <= 0) continue;
+
+      const property = declaration.slice(0, colon).trim();
+      if (property !== '') next.set(property, declaration.slice(colon + 1).trim());
+    }
+
+    // Clear only what the engine itself may have written on an earlier frame.
+    for (const property of ENGINE_STYLE_PROPS) {
+      if (!next.has(property)) element.style.removeProperty(property);
+    }
+
+    for (const [property, value] of next) element.style.setProperty(property, value);
+
+    // The BACKGROUND is applied separately, never through the parsed string.
+    //
+    // It is the one declaration whose value comes from consumer input, and this
+    // function splits on `;` — so embedding it made a semicolon in the colour a
+    // second declaration. The settings boundary rejects `;` and `foldFill`
+    // rejects it again at draw, so it could not actually inject; but a rule that
+    // holds only because two other checks happen to be right is the wrong shape
+    // for the one value an attacker controls. Passing it as its own argument
+    // removes the class of bug rather than guarding it.
+    // The paper is stamped ON THE ELEMENT ITSELF, as the same structural pair
+    // the `::before` layer uses: an opaque `#fff` base with the consumer's
+    // `--stf-paper` composited over it as an image layer. The value still
+    // travels only through the custom property — the gradient references
+    // `var(--stf-paper)`, so no consumer input is ever interpolated into a
+    // declaration string.
+    //
+    // Why the element and not only the pseudo (consumer report, Puddlebend
+    // Issue 1): the fold puts `transform` + `clip-path` on this element, and a
+    // root whose only opacity lives on a `z-index:-1` pseudo is fragile against
+    // compositor behavior — measured in landscape as a band at the fold line
+    // where the turning page alpha-blended with the leaf beneath. Painting the
+    // transformed element itself is the guarantee; the pseudo stays as the
+    // backstop (and as the paint for any state the engine has not drawn).
+    //
+    // This does NOT change which colour a consumer sees: every drawn leaf
+    // carries an inline z-index (and the stylesheet's `preserve-3d`), so the
+    // leaf is a stacking context and the negative-z pseudo already painted
+    // ABOVE the root's own background. Per-page colour goes through
+    // `pageBackground` / `--stf-paper`, or on an inner element — the root's
+    // background has always lost to the paper in a drawn state.
+    //
+    // The same pair also covers replaced-element roots (`img`, `video`,
+    // `canvas`, `iframe`, `embed`), where pseudo-elements never render — the
+    // inline write is the only opaque backing such a root can have.
+    // foldFill AFTER the memo check: jsdom's CSS.supports (used inside
+    // foldFill) writes setProperty/cssText on a throwaway element, which would
+    // defeat the per-frame write budget on every cache hit.
+    if (background !== undefined) {
+      const fill = foldFill(background);
+      element.style.setProperty('--stf-paper', fill);
+      element.style.setProperty('background-color', '#fff');
+      element.style.setProperty(
+        'background-image',
+        'linear-gradient(var(--stf-paper,#fff),var(--stf-paper,#fff))',
+      );
+    }
+
+    this.lastEngineCss = css;
+    this.lastBackground = background;
+  }
+
+  /**
+   * Drop the memoized engine-style stamp so the next draw rewrites the DOM.
+   *
+   * Called from density/orientation setters, UI adopt/release, and collection
+   * `invalidateDrawCache()` (Render.update / reload). Also walks the temporary
+   * copy — it is not in the collection.
+   *
+   * @internal
+   */
+  public invalidateDrawCache(): void {
+    this.lastEngineCss = null;
+    this.lastBackground = undefined;
+    this.temporaryCopy?.invalidateDrawCache();
   }
 
   public getElement(): HTMLElement {
@@ -503,6 +543,8 @@ export class Page {
     this.element.classList.remove('--left', '--right');
 
     this.element.classList.add(orientation === PageOrientation.RIGHT ? '--right' : '--left');
+    // Class change changes what the next draw means — bust the style memo.
+    this.invalidateDrawCache();
   }
 
   /**
@@ -515,6 +557,7 @@ export class Page {
     this.element.classList.add(`--${density}`);
 
     this.nowDrawingDensity = density;
+    this.invalidateDrawCache();
   }
 
   /**
@@ -547,6 +590,7 @@ export class Page {
 
     this.element.classList.remove('--soft', '--hard');
     this.element.classList.add(`--${density}`);
+    this.invalidateDrawCache();
   }
   /**
    * Set page position

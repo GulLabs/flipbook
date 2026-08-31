@@ -156,6 +156,7 @@ describe('the engine public surface is frozen', () => {
         'getPages',
         'getSpreadCount',
         'getSpreadIndexByPage',
+        'invalidateDrawCache',
         'load',
         'nextBy',
         'prevBy',

@@ -211,7 +211,12 @@ describe('frame discipline (B1)', () => {
    * `MEASURED_POST_FIX` to the new number, ceiling = measured * 1.25, and
    * drop `test.fails`.
    */
-  test.fails('mid-fold write count is bounded', () => {
+  /**
+   * B3.1 alone drops mid-fold writes under the post-fix aspiration ceiling
+   * (pre-fix measured 106). Still `test` not `test.fails` — keep the pin live
+   * while B3.2–B3.4 land. Re-measure and tighten after the full campaign.
+   */
+  test('mid-fold write count is bounded', () => {
     const { book } = landscape10();
     recorder = installStyleWriteRecorder();
 
@@ -223,7 +228,7 @@ describe('frame discipline (B1)', () => {
     book.userMove({ x: 480, y: 150 }, false);
     drawFrame(book);
 
-    // Post-fix aspiration (pre-fix measured 106). Ceiling = measured + 25%.
+    // Post-B3.1 aspiration (pre-fix measured 106). Ceiling = measured + 25%.
     const MEASURED_POST_FIX_ASPIRATION = 80;
     const ceiling = Math.ceil(MEASURED_POST_FIX_ASPIRATION * 1.25);
 
@@ -231,6 +236,149 @@ describe('frame discipline (B1)', () => {
       recorder.count(),
       `mid-fold writes ${recorder.count()} exceed budget ${ceiling}: ${summarize(recorder)}`,
     ).toBeLessThanOrEqual(ceiling);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * B3.1 — applyEngineStyle memoization + invalidation sites
+ * ------------------------------------------------------------------ */
+
+describe('applyEngineStyle memoization (B3.1)', () => {
+  /**
+   * Resting second frame must not re-stamp setProperty/removeProperty on the
+   * drawn leaves. Class writes still fire (B3.4); style writes must not.
+   * Pre-B3.1 resting style writes were ~36–40 (two simpleDraw leaves × ~18).
+   */
+  test('resting redraw skips unchanged applyEngineStyle writes', () => {
+    const { book } = landscape10();
+    recorder = installStyleWriteRecorder();
+
+    drawFrame(book);
+    recorder.reset();
+    drawFrame(book);
+
+    expect(
+      styleWriteCount(recorder),
+      `resting style writes should be 0 after B3.1 memoization: ${summarize(recorder)}`,
+    ).toBe(0);
+  });
+
+  test('updateSettings({ pageBackground }) restamps --stf-paper on visible leaves', () => {
+    const { book } = landscape10();
+    drawFrame(book);
+
+    book.updateSettings({ pageBackground: '#f5f0e6' });
+    drawFrame(book);
+
+    const leaf = visibleLeaf(book);
+    const paper = leaf.style.getPropertyValue('--stf-paper').trim().toLowerCase();
+    expect(paper === '#f5f0e6' || paper === 'rgb(245, 240, 230)').toBe(true);
+  });
+
+  test('update() after size change restamps width on visible leaves', () => {
+    const { book } = landscape10();
+    drawFrame(book);
+
+    const leaf = visibleLeaf(book);
+    const beforeWidth = leaf.style.width;
+
+    // LiveSetting width/height — updateSettings → Render.update busts the memo
+    // and recomputes page geometry under fixed sizing.
+    book.updateSettings({ width: 320, height: 400 });
+    drawFrame(book);
+
+    expect(leaf.style.width).not.toBe(beforeWidth);
+    expect(leaf.style.width).not.toBe('');
+  });
+
+  test('setDensity restamps on the next draw', () => {
+    const { book } = landscape10();
+    drawFrame(book);
+
+    const page = testCollection(book).getPage(1);
+    const el = page.getElement();
+    // Corrupt the memo path: clear a property the next soft simpleDraw must
+    // rewrite. Without invalidateDrawCache the memo would skip and leave it gone.
+    el.style.removeProperty('width');
+    page.setDensity(PageDensity.SOFT);
+    drawFrame(book);
+
+    expect(el.style.width).not.toBe('');
+  });
+
+  test('setDrawingDensity restamps on the next draw', () => {
+    const { book } = landscape10();
+    drawFrame(book);
+
+    const page = testCollection(book).getPage(1);
+    const el = page.getElement();
+    el.style.removeProperty('width');
+    page.setDrawingDensity(PageDensity.SOFT);
+    drawFrame(book);
+
+    expect(el.style.width).not.toBe('');
+  });
+
+  test('newTemporaryCopy draws fully on its first frame (fresh cache)', () => {
+    // Portrait soft turn is what builds a temporary copy.
+    const made = makeHtmlBook({
+      pageCount: 6,
+      flippingTime: 0,
+      usePortrait: true,
+      hostWidth: 200,
+      hostHeight: 300,
+      width: 200,
+      height: 300,
+      drawShadow: true,
+    });
+    books.push(made);
+
+    made.book.startUserTouch({ x: 180, y: 150 });
+    made.book.userMove({ x: 100, y: 150 }, false);
+
+    const owner = testCollection(made.book).getPage(made.book.getCurrentPageIndex());
+    const copy = owner.getTemporaryCopy() ?? owner.newTemporaryCopy();
+    expect(copy).not.toBe(owner);
+
+    // First draw on a fresh copy must write engine styles (cache starts null).
+    recorder = installStyleWriteRecorder();
+    copy.draw();
+    expect(
+      styleWriteCount(recorder),
+      `temporary copy first draw wrote nothing: ${summarize(recorder)}`,
+    ).toBeGreaterThan(0);
+    expect(copy.getElement().style.width).not.toBe('');
+  });
+
+  test('updateFromHtml with the same nodes repaints after rebuild', () => {
+    const { book, pages } = landscape10();
+    drawFrame(book);
+
+    book.updateFromHtml(pages);
+    drawFrame(book);
+
+    const leaf = visibleLeaf(book);
+    expect(leaf.style.width).not.toBe('');
+    expect(leaf.style.getPropertyValue('--stf-paper').trim()).not.toBe('');
+  });
+
+  test('updateFromHtml with replaced nodes repaints the new leaves', () => {
+    const { book } = landscape10();
+    drawFrame(book);
+
+    const replacements = Array.from({ length: 10 }, (_, i) => {
+      const el = document.createElement('div');
+      el.dataset.page = `new-${i}`;
+      el.textContent = `new-${i}`;
+      return el;
+    });
+    book.updateFromHtml(replacements);
+    drawFrame(book);
+
+    const leaf = visibleLeaf(book);
+    expect(leaf.dataset.page?.startsWith('new-')).toBe(true);
+    expect(leaf.style.width).not.toBe('');
+    expect(leaf.style.getPropertyValue('--stf-paper').trim()).not.toBe('');
   });
 });
 
@@ -247,4 +395,26 @@ function summarize(rec: StyleWriteRecorder): string {
   }
   const kinds = [...byKind.entries()].map(([k, n]) => `${k}=${n}`).join(', ');
   return `${rec.count()} writes (${kinds}); elements=[${[...rec.elements()].map(describeEl).join(', ')}]`;
+}
+
+function styleWriteCount(rec: StyleWriteRecorder): number {
+  let n = 0;
+  for (const r of rec.records) {
+    if (
+      r.kind === 'setProperty' ||
+      r.kind === 'removeProperty' ||
+      r.kind === 'cssText' ||
+      r.kind === 'zIndex'
+    ) {
+      n += 1;
+    }
+  }
+  return n;
+}
+
+function visibleLeaf(book: PageFlip): HTMLElement {
+  const render = renderOf(book);
+  const page = render.leftPage ?? render.rightPage;
+  if (!page) throw new Error('no visible leaf');
+  return page.getElement();
 }

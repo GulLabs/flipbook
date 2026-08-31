@@ -86,6 +86,8 @@ console.log(`html-engine.js ${files.join('+')} ${bytes} B (${(bytes / 1000).toFi
 // the size-limit ceilings in packages/core/package.json. Both numbers exist and
 // both must move together; a mismatch fails the build with the other one's text,
 // which is how this was found. See docs/ROUND-CODE-COMPLETE.md.
+// 62_000 holds post-B3.1 (measured 61_761 B). size-limit in package.json is
+// the transfer-size twin — keep them honest together.
 const RAW_ALARM_BYTES = 62_000;
 
 if (bytes > RAW_ALARM_BYTES) {

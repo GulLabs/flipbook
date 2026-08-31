@@ -309,10 +309,28 @@ export class Render {
    * Reload the render area, after update pages
    */
   public reload(): void {
+    // B3.1: new or replaced leaves must not inherit a stale style memo from a
+    // prior collection generation (same DOM node reused after updateFromHtml).
+    this.bustPageDrawCaches();
+
     const testShadow = this.element.querySelector('.stf__outerShadow');
 
     if (!testShadow) {
       this.createShadows();
+    }
+  }
+
+  /**
+   * Bust every leaf's applyEngineStyle memo when a collection is attached.
+   * No-op for render-loop harnesses that stub `app` without GET_COLLECTION.
+   */
+  private bustPageDrawCaches(): void {
+    const getCollection = this.app[GET_COLLECTION];
+    if (typeof getCollection !== 'function') return;
+    try {
+      getCollection.call(this.app).invalidateDrawCache();
+    } catch {
+      // NOT_LOADED — nothing to bust.
     }
   }
 
@@ -745,6 +763,11 @@ export class Render {
     // reaches that return on the pass that measured zero and the real box
     // arrives on the next one.
     this.requestFrame();
+
+    // B3.1: geometry / settings / orientation all funnel through here. Bust
+    // every leaf's applyEngineStyle memo so the next draw rewrites width/left
+    // / --stf-paper rather than skipping on a stale cache key.
+    this.bustPageDrawCaches();
 
     const { rect, orientation, observed } = this.computeBounds();
 

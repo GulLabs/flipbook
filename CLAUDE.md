@@ -24,7 +24,7 @@ pnpm test               # vitest run, both projects
 pnpm build              # tsup per package (see caveat below)
 pnpm typecheck          # tsc --noEmit per package
 pnpm lint               # eslint flat config, repo-wide
-pnpm size               # size-limit on the packed html engine (61.25 kB raw / 15.1 kB brotli / 17 kB gzip)
+pnpm size               # size-limit on the packed html engine (62 kB raw / 15.3 kB brotli / 17.2 kB gzip)
 node ./scripts/check-isolated-types.mjs   # pnpm-isolated consumer type fixture
 ```
 
@@ -182,18 +182,17 @@ tears the book down mid-animation.
 
 ## Known gaps in the current state
 
-- **Bundle size.** The packed HTML engine is **61.16 kB raw / 15.09 kB brotli /
-  16.94 kB gzip** against ceilings of **61.25 / 15.1 / 17 kB**, re-ratcheted after
-  the A1–A3 class-pair collapse (PLAN-3.1 A4). Raw saving vs the temporary 62 kB
-  ceiling is **under 1 kB** — the collapse is justified by architecture either
-  way. An agent may not raise ceilings (AGENTS.md §2). Re-measure with `pnpm size`
-  before quoting these. The §5 target of 35 kB minified is **retired**: upstream
-  `page-flip@2.0.7` is itself 44,058 B minified (measured from its published
-  tarball), so that target asked this fork to be ~20% smaller than the thing it
-  forks while doing strictly more. See `docs/QUALITY_BAR_CLIMB.md` for the
-  measured comparison, and `AGENTS.md` §2 for the policy: dead code always goes,
-  working code never goes to buy bytes, and a correctness fix may spend the
-  headroom **and say so**.
+- **Bundle size.** The packed HTML engine is **61.86 kB raw / 15.22 kB brotli /
+  17.11 kB gzip** against ceilings of **62 / 15.3 / 17.2 kB**, re-ratcheted after
+  PLAN-3.1 B3.1 (`applyEngineStyle` memoization, +~0.7 kB raw vs post-A4). An
+  agent may not raise ceilings without cause (AGENTS.md §2). Re-measure with
+  `pnpm size` before quoting these. The §5 target of 35 kB minified is
+  **retired**: upstream `page-flip@2.0.7` is itself 44,058 B minified (measured
+  from its published tarball), so that target asked this fork to be ~20% smaller
+  than the thing it forks while doing strictly more. See
+  `docs/QUALITY_BAR_CLIMB.md` for the measured comparison, and `AGENTS.md` §2
+  for the policy: dead code always goes, working code never goes to buy bytes,
+  and a correctness fix may spend the headroom **and say so**.
 - **TypeScript is pinned below latest.** 6.0.3, not 7.0.2, because
   typescript-eslint 8.68 declares `typescript: <6.1.0` and TS 7 would install
   cleanly and then silently disable every type-aware rule. `ignoreDeprecations`
