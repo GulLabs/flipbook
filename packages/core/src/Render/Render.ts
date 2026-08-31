@@ -110,6 +110,16 @@ export function foldSide(direction: FlipDirection, rtl: boolean): FlipDirection 
   return direction === FlipDirection.FORWARD ? FlipDirection.BACK : FlipDirection.FORWARD;
 }
 
+/** Stamp z-index only when the value changes (PLAN-3.1 B3.3). */
+function setZIndexIfChanged(el: HTMLElement, value: string): void {
+  if (el.style.zIndex !== value) el.style.zIndex = value;
+}
+
+/** ClassList remove that no-ops when the class is already absent (B3.4). */
+function removeClass(el: HTMLElement, cls: string): void {
+  if (el.classList.contains(cls)) el.classList.remove(cls);
+}
+
 /**
  * Class responsible for rendering the book.
  *
@@ -1513,7 +1523,7 @@ export class Render {
       this.flippingPage !== null &&
       this.flippingPage.getDrawingDensity() === PageDensity.HARD
     ) {
-      this.leftPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 5);
+      setZIndexIfChanged(this.leftPage.getElement(), String(this.getSettings().startZIndex + 5));
 
       this.leftPage.setHardDrawingAngle(180 + this.flippingPage.getHardAngle());
       this.leftPage.draw(this.flippingPage.getDrawingDensity());
@@ -1533,7 +1543,7 @@ export class Render {
       this.flippingPage !== null &&
       this.flippingPage.getDrawingDensity() === PageDensity.HARD
     ) {
-      this.rightPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 5);
+      setZIndexIfChanged(this.rightPage.getElement(), String(this.getSettings().startZIndex + 5));
 
       this.rightPage.setHardDrawingAngle(180 + this.flippingPage.getHardAngle());
       this.rightPage.draw(this.flippingPage.getDrawingDensity());
@@ -1556,7 +1566,7 @@ export class Render {
     const tempDensity =
       this.flippingPage !== null ? this.flippingPage.getDrawingDensity() : undefined;
 
-    bottomPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 3);
+    setZIndexIfChanged(bottomPage.getElement(), String(this.getSettings().startZIndex + 3));
 
     bottomPage.draw(tempDensity);
   }
@@ -1580,7 +1590,7 @@ export class Render {
     const flippingPage = this.flippingPage;
 
     if (flippingPage !== null) {
-      flippingPage.getElement().style.zIndex = String(this.getSettings().startZIndex + 5);
+      setZIndexIfChanged(flippingPage.getElement(), String(this.getSettings().startZIndex + 5));
 
       flippingPage.draw();
     }
@@ -1628,7 +1638,7 @@ export class Render {
       // Hide by REMOVING the shown class, not by writing `display:none`
       // inline — and certainly not by wiping cssText, which took the
       // consumer's own inline styles with it every frame.
-      page.getElement().classList.remove('--shown');
+      removeClass(page.getElement(), '--shown');
 
       // Temporary-copy trap: the mover is the CLONE; cleanup runs on the owner.
       const owner = page.getCopyOwner();
@@ -1664,7 +1674,7 @@ export class Render {
     }
 
     for (const page of victims) {
-      page.getElement().classList.remove('--shown');
+      removeClass(page.getElement(), '--shown');
       const owner = page.getCopyOwner();
       if (owner !== null) {
         owner.hideTemporaryCopy();

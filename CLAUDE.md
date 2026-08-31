@@ -24,7 +24,7 @@ pnpm test               # vitest run, both projects
 pnpm build              # tsup per package (see caveat below)
 pnpm typecheck          # tsc --noEmit per package
 pnpm lint               # eslint flat config, repo-wide
-pnpm size               # size-limit on the packed html engine (62.75 kB raw / 15.4 kB brotli / 17.4 kB gzip)
+pnpm size               # size-limit on the packed html engine (63 kB raw / 15.5 kB brotli / 17.4 kB gzip)
 node ./scripts/check-isolated-types.mjs   # pnpm-isolated consumer type fixture
 ```
 
@@ -182,8 +182,8 @@ tears the book down mid-animation.
 
 ## Known gaps in the current state
 
-- **Bundle size.** The packed HTML engine is **62.62 kB raw / 15.36 kB brotli /
-  17.28 kB gzip** against ceilings of **62.75 / 15.4 / 17.4 kB**, re-ratcheted after
+- **Bundle size.** The packed HTML engine is **62.75 kB raw / 15.41 kB brotli /
+  17.35 kB gzip** against ceilings of **63 / 15.5 / 17.4 kB**, re-ratcheted after
   PLAN-3.1 B3.2 (delta `clear()` / `lastShown`, +~0.76 kB raw vs post-B3.1). An
   agent may not raise ceilings without cause (AGENTS.md §2). Re-measure with
   `pnpm size` before quoting these. The §5 target of 35 kB minified is

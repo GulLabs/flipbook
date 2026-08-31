@@ -97,6 +97,21 @@ export const ENGINE_LEAF_CLASSES = [
 ] as const;
 
 /**
+ * ClassList mutators that no-op when the class is already present/absent
+ * (PLAN-3.1 B3.4). Per-frame draw paths used unconditional add/remove, which
+ * the write recorder counts even when the DOM attribute is unchanged.
+ * Do NOT use these in setOrientation/setDensity/setDrawingDensity — those are
+ * per-event and their remove-then-add pattern is load-bearing.
+ */
+function addClass(el: HTMLElement, cls: string): void {
+  if (!el.classList.contains(cls)) el.classList.add(cls);
+}
+
+function removeClass(el: HTMLElement, cls: string): void {
+  if (el.classList.contains(cls)) el.classList.remove(cls);
+}
+
+/**
  * Class representing a book page as an HTML Element.
  *
  * COLLAPSED from an abstract `Page` plus a single `HTMLPage` subclass. The
@@ -267,7 +282,7 @@ export class Page {
     const pageWidth = this.render.getRect().pageWidth;
     const pageHeight = this.render.getRect().height;
 
-    this.element.classList.remove('--simple');
+    removeClass(this.element, '--simple');
 
     // The clone must not swallow input. `inert` already says so, but hit
     // testing is the half that matters to this engine: `UI.checkTarget` walks
@@ -307,7 +322,7 @@ export class Page {
     // draw paths agree, which is what made this asymmetry survivable.
     const commonStyle = `position:absolute;${zIndexStyle}left:0;top:0;width:${pageWidth}px;height:${pageHeight}px;${this.isTemporaryCopy ? 'pointer-events:none;' : ''}`;
 
-    this.element.classList.add('--shown');
+    addClass(this.element, '--shown');
 
     if (density === PageDensity.HARD) {
       this.drawHard(commonStyle);
@@ -425,8 +440,8 @@ export class Page {
     const x = orient === PageOrientation.RIGHT ? rect.left + rect.pageWidth : rect.left;
     const y = rect.top;
 
-    this.element.classList.add('--simple');
-    this.element.classList.add('--shown');
+    addClass(this.element, '--simple');
+    addClass(this.element, '--shown');
     // Static pages are opaque too: a transparent leaf lets the page under
     // the fold read through at the start / end of a turn.
     this.applyEngineStyle(

@@ -87,9 +87,9 @@ console.log(`html-engine.js ${files.join('+')} ${bytes} B (${(bytes / 1000).toFi
 // both must move together; a mismatch fails the build with the other one's text,
 // which is how this was found. See docs/ROUND-CODE-COMPLETE.md.
 // 62_000 held post-B3.1 (measured 61_761 B). B3.2 delta-clear + copyOwner
-// raised measured raw to ~62.62 kB — ceiling 62_750 with size-limit twins
-// 62.75 / 15.4 / 17.4 kB. Keep pack alarm and size-limit honest together.
-const RAW_ALARM_BYTES = 62_750;
+// B3.2 ~62.62 kB; B3.3–B3.4 elision helpers → 62_754 B. Ceiling 63_000 with
+// size-limit twins 63 / 15.5 / 17.5 kB. Keep pack alarm and size-limit honest together.
+const RAW_ALARM_BYTES = 63_000;
 
 if (bytes > RAW_ALARM_BYTES) {
   console.error(

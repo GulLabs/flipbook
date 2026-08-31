@@ -141,19 +141,18 @@ describe('style-write-recorder', () => {
 });
 
 /* ------------------------------------------------------------------ *
- * B1 budget pins — test.fails until B3.1–B3.4
+ * B1 budget pins — green after B3.1–B3.4
  * ------------------------------------------------------------------ */
 
 describe('frame discipline (B1)', () => {
   /**
    * Resting redraw writes nothing.
    *
-   * Pre-fix this fails loudly: measured **54** writes on a settled 10-leaf
-   * landscape redraw (`applyEngineStyle` ~setProperty/removeProperty per drawn
-   * leaf, plus unconditional classList add/remove). B3.1 + B3.4 are both
-   * required before this can pass.
+   * Pre-fix measured **54** writes on a settled 10-leaf landscape redraw.
+   * Passes after B3.1 (style memo) + B3.4 (class elision); B3.2/B3.3 also
+   * reduce mid-fold noise.
    */
-  test.fails('resting redraw writes nothing', () => {
+  test('resting redraw writes nothing', () => {
     const { book } = landscape10();
     recorder = installStyleWriteRecorder();
 
@@ -174,7 +173,7 @@ describe('frame discipline (B1)', () => {
    * soft left/right simpleDraw leaves and every non-working page that
    * `clear()` classList.removes.
    */
-  test.fails('mid-fold frame touches only the working set', () => {
+  test('mid-fold frame touches only the working set', () => {
     const { book } = landscape10();
     recorder = installStyleWriteRecorder();
 
@@ -192,7 +191,12 @@ describe('frame discipline (B1)', () => {
     drawFrame(book);
 
     const written = recorder.elements();
-    const extras = [...written].filter((el) => !allowed.has(el));
+    // foldFill() probes CSS.supports via a throwaway disconnected <div>; those
+    // writes are not engine paint. Only count elements attached to the book.
+    const block = book.getBlockElement();
+    const extras = [...written].filter(
+      (el) => !allowed.has(el) && (block.contains(el) || el === block),
+    );
     expect(
       extras,
       extras.length
@@ -205,16 +209,8 @@ describe('frame discipline (B1)', () => {
    * Write count is bounded.
    *
    * Pre-fix measured mid-fold frame (soft landscape, 10 leaves): **106**
-   * writes. Post-B3 ceiling is measured + 25% of the fixed count; the
-   * aspiration below is the post-fix budget so `test.fails` stays red until
-   * B3 lands. After B3, re-measure, set
-   * `MEASURED_POST_FIX` to the new number, ceiling = measured * 1.25, and
-   * drop `test.fails`.
-   */
-  /**
-   * B3.1 alone drops mid-fold writes under the post-fix aspiration ceiling
-   * (pre-fix measured 106). Still `test` not `test.fails` — keep the pin live
-   * while B3.2–B3.4 land. Re-measure and tighten after the full campaign.
+   * writes. Post-B3.1–B3.4 measured: **48** (includes foldFill probe noise on a
+   * throwaway div). Ceiling = measured + 25%.
    */
   test('mid-fold write count is bounded', () => {
     const { book } = landscape10();
@@ -228,9 +224,9 @@ describe('frame discipline (B1)', () => {
     book.userMove({ x: 480, y: 150 }, false);
     drawFrame(book);
 
-    // Post-B3.1 aspiration (pre-fix measured 106). Ceiling = measured + 25%.
-    const MEASURED_POST_FIX_ASPIRATION = 80;
-    const ceiling = Math.ceil(MEASURED_POST_FIX_ASPIRATION * 1.25);
+    // Post-B3.1–B3.4 measured 2026-08-31: 48. Ceiling = measured + 25%.
+    const MEASURED_POST_FIX = 48;
+    const ceiling = Math.ceil(MEASURED_POST_FIX * 1.25);
 
     expect(
       recorder.count(),

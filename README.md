@@ -94,12 +94,12 @@ Measured from the published artifacts, both terser-minified, zero runtime depend
 |                                            | raw (min) |    gzip |  brotli |
 | ------------------------------------------ | --------: | ------: | ------: |
 | `page-flip@2.0.7` (upstream)               |   44.1 kB | 10.4 kB |  9.3 kB |
-| `@gullabs/flipbook-core` HTML engine (3.0) |   61.9 kB | 17.1 kB | 15.2 kB |
+| `@gullabs/flipbook-core` HTML engine (3.0) |   62.8 kB | 17.4 kB | 15.4 kB |
 
 Larger than upstream because of RTL, reduced motion, typed errors, validation,
 and the portrait back-curl fix. This is not a smaller drop-in replacement; it is
-a maintained one. CI ceilings on the packed HTML engine are **62.75 kB raw /
-15.4 kB brotli / 17.4 kB gzip** (re-ratcheted after PLAN-3.1 B3.2).
+a maintained one. CI ceilings on the packed HTML engine are **63 kB raw /
+15.5 kB brotli / 17.4 kB gzip** (re-ratcheted after PLAN-3.1 B3.2).
 
 Reproduce with `npm pack page-flip@2.0.7` and `pnpm build && pnpm size`.
 
