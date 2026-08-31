@@ -32,6 +32,12 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
       live region and chrome. 3.0 recipe: `liveRegionText`.
 - [ ] **Shadow color tokens** (`--stf-shadow-*`) — brand the fold shadows the
       same way `--stf-paper` brands the paper.
+- [ ] **`--stf-paper-base` token** — the opaque ground under the paper is a
+      hard `#fff` today. Opaque `pageBackground` values cover it entirely, so
+      it only shows through TRANSLUCENT paper — where a dark-themed book
+      compositing over white gets washed out. A base token (validated opaque
+      at the boundary, structural guarantee preserved) lets dark themes keep
+      translucent paper. Additive, so 3.1.
 - [ ] **Built-in center seam / gutter shading** — an opt-in spine at the
       landscape gutter (`--stf-gutter-*` tokens or a `spine` setting).
       story-book overlays its own `BookSpine` today (the §8 recipe); every real
