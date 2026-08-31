@@ -215,18 +215,22 @@ export abstract class UI {
   }
 
   /**
-   * The wrapper reserves the book's aspect ratio with bottom padding while
-   * `autoSize` is on. It is derived from width/height, so a live size change
-   * has to recompute it — otherwise a 300×400 book resized to 320×400 keeps
-   * 133.33% and renders at the old proportions.
+   * The wrapper reserves the book's aspect ratio with bottom padding. It is
+   * derived from width/height, so a live size change has to recompute it —
+   * otherwise a 300×400 book resized to 320×400 keeps 133.33% and renders at
+   * the old proportions.
+   *
+   * NOT gated on `autoSize` (W2). `autoSize: false` means the engine does not
+   * own the HOST's width — it was never a statement about the engine's own
+   * wrapper, which no consumer can reasonably be asked to style. Upstream
+   * gated this and so collapsed the wrapper to zero height whenever a
+   * consumer sized the host themselves; `Render` then centred the book on the
+   * wrapper's top EDGE (`top: -height/2`) and the book drew half out of
+   * frame. The old story-book reader hid exactly this inside the
+   * monkey-patch layer this fork exists to delete.
    */
   private applyWrapperRatio(orientation?: Orientation): void {
     const setting = this.app.getSettings();
-
-    if (!setting.autoSize) {
-      this.wrapper.style.paddingBottom = '';
-      return;
-    }
 
     // The constructor runs before the render exists. Skipping is safe there:
     // `render.start()` calls `update()`, which reports the orientation back

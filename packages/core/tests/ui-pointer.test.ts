@@ -364,3 +364,60 @@ describe('W1 — host max-width is the two-page bound', () => {
     expect(app.getBoundsRect().width).toBe(1200);
   });
 });
+
+/**
+ * W2 — the wrapper reserves the book's aspect ratio with and without autoSize.
+ *
+ * `autoSize: false` means "the engine does not own the HOST's width" — it was
+ * never a statement about the engine's own wrapper. Gating the ratio padding
+ * on it collapsed `.stf__wrapper` to zero height, and `Render.computeBounds`
+ * then centred the book on the wrapper's top edge (`top: -height/2`), drawing
+ * the book half out of frame. Upstream 2.0.7 had the same defect; the old
+ * story-book reader hid it inside the monkey-patch layer this fork deletes.
+ */
+describe('W2 — wrapper aspect ratio survives autoSize: false', () => {
+  test('autoSize: false still reserves the spread ratio on the wrapper', () => {
+    const { book: app, host } = book({
+      width: 300,
+      height: 400,
+      autoSize: false,
+      hostWidth: 600,
+      hostHeight: 400,
+      usePortrait: false,
+    });
+
+    const wrapper = host.querySelector('.stf__wrapper') as HTMLElement;
+    // Landscape spread: height / (width * 2).
+    expect(wrapper.style.paddingBottom).toBe(`${(400 / 600) * 100}%`);
+    expect(app.getSettings().autoSize).toBe(false);
+  });
+
+  test('the ratio recomputes on a live size change', () => {
+    const { book: app, host } = book({
+      width: 300,
+      height: 400,
+      autoSize: false,
+      hostWidth: 600,
+      hostHeight: 400,
+      usePortrait: false,
+    });
+
+    app.updateSettings({ width: 320, height: 400 });
+    const wrapper = host.querySelector('.stf__wrapper') as HTMLElement;
+    expect(wrapper.style.paddingBottom).toBe(`${(400 / 640) * 100}%`);
+  });
+
+  test('autoSize: true keeps its ratio (no regression)', () => {
+    const { host } = book({
+      width: 300,
+      height: 400,
+      autoSize: true,
+      hostWidth: 600,
+      hostHeight: 400,
+      usePortrait: false,
+    });
+
+    const wrapper = host.querySelector('.stf__wrapper') as HTMLElement;
+    expect(wrapper.style.paddingBottom).toBe(`${(400 / 600) * 100}%`);
+  });
+});
