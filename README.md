@@ -10,6 +10,7 @@ Forked from [Nodlik/StPageFlip](https://github.com/Nodlik/StPageFlip) and [Nodli
 
 <p align="center">
   <a href="https://github.com/gul-labs/flipbook/actions/workflows/ci.yml"><img src="https://github.com/gul-labs/flipbook/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/gul-labs/flipbook"><img src="https://api.scorecard.dev/projects/github.com/gul-labs/flipbook/badge" alt="OpenSSF Scorecard"></a>
   <a href="https://www.npmjs.com/package/@gullabs/flipbook-core"><img src="https://img.shields.io/npm/v/%40gullabs%2Fflipbook-core.svg" alt="npm @gullabs/flipbook-core"></a>
   <a href="https://www.npmjs.com/package/@gullabs/react-flipbook"><img src="https://img.shields.io/npm/v/%40gullabs%2Freact-flipbook.svg" alt="npm @gullabs/react-flipbook"></a>
   <a href="https://www.npmjs.com/package/@gullabs/flipbook-core"><img src="https://img.shields.io/npm/types/%40gullabs%2Fflipbook-core.svg" alt="TypeScript types"></a>
