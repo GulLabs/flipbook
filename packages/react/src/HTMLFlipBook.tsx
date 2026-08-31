@@ -321,6 +321,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       onLoaded,
       onPagesChanged,
       onTurnRejected,
+      onTurnProgress,
       pageTransition = 'animate',
       controls = 'auto',
       controlLabels = { previous: 'Previous page', next: 'Next page' },
@@ -650,6 +651,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       onLoaded,
       onPagesChanged,
       onTurnRejected,
+      onTurnProgress,
     });
 
     useEffect(() => {
@@ -661,6 +663,7 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
         onLoaded,
         onPagesChanged,
         onTurnRejected,
+        onTurnProgress,
       };
     });
 
@@ -727,6 +730,9 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       });
       flip.on('turnRejected', (e: WidgetEvent<FlipbookEventMap['turnRejected']>) => {
         eventHandlersRef.current.onTurnRejected?.(e.data);
+      });
+      flip.on('turnProgress', (e: WidgetEvent<FlipbookEventMap['turnProgress']>) => {
+        eventHandlersRef.current.onTurnProgress?.(e.data);
       });
     }, []);
 
