@@ -52,6 +52,10 @@ const ENGINE_SETTING_KEYS = [
   'pageBackground',
   'respectReducedMotion',
   'readingDirection',
+  // C5: construction-time — it also sits in `remountKeyOf`, so a change
+  // rebuilds the engine rather than silently no-opping, and the settings
+  // effect never pushes it (the engine would warn and drop it anyway).
+  'injectStyles',
 ] as const satisfies readonly (keyof FlipOptions)[];
 
 /**
@@ -104,7 +108,9 @@ function remountKeyOf(props: HTMLFlipBookProps): string {
   // the current page and any in-flight turn — for a change the engine can
   // absorb. That is the exact cost this function's docblock explains that
   // `width`/`height` avoid.
-  return [props.hardCovers, props.initialPage].join(':');
+  // `injectStyles` is construction-time too (C5): styles are injected at
+  // load, so the only honest reading of a change is a rebuild.
+  return [props.hardCovers, props.initialPage, props.injectStyles].join(':');
 }
 
 /**
@@ -711,13 +717,30 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       engine.loadFromHTML([]);
       loadedNodes.current = [];
 
-      setPageHost(engine.getBlockElement());
+      const block = engine.getBlockElement();
+      setPageHost(block);
       setHydrated(true);
 
       return () => {
         handlersBoundRef.current = false;
         firstControlledApply.current = true;
+        const leaves = loadedNodes.current ?? [];
         engine.destroy();
+
+        // Put the leaves back under the block React still records as their
+        // parent. `destroy()` "restores" adopted leaves to where they were
+        // adopted from — and the pages effect hands them to the engine before
+        // the portal's first commit, so the engine adopted them DETACHED and
+        // the restore parks them on the host. React's next commit (a
+        // remount-key change re-targeting the portals, or unmount removing
+        // them) then calls `oldBlock.removeChild(leaf)` on a leaf that is no
+        // longer there: NotFoundError, measured on any runtime `hardCovers`
+        // change. The block is already out of the document; this only makes
+        // React's recorded parent true again so IT can move the leaves.
+        for (const leaf of leaves) {
+          if (leaf.parentElement !== block) block.appendChild(leaf);
+        }
+
         setPageHost(null);
         loadedNodes.current = null;
         if (engineRef.current === engine) {
@@ -738,6 +761,14 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       const {
         hardCovers: _hardCovers,
         initialPage: _initialPage,
+        // C5: construction-time like its two siblings. `pickSettings(_, true)`
+        // sends absent keys as EXPLICIT undefined ("back to the default"),
+        // which for a construction-time key silently rewrites the authored
+        // value the engine was built with — measured: `injectStyles={false}`
+        // flipped back to the default true here, and the first-content
+        // re-attach then built a UI that injected the stylesheet the mount
+        // had correctly withheld.
+        injectStyles: _injectStyles,
         ...live
       } = pickSettings(props, true);
       const liveSettings: Partial<LiveSetting> = live;
@@ -799,6 +830,16 @@ export const HTMLFlipBook = forwardRef<FlipBookHandle | null, Omit<HTMLFlipBookP
       // so it only carries this generation after the commit that fired the refs
       // filling `slotsRef` for it.
       if (pages.gen !== slotGeneration.current) return;
+
+      // A REMOUNT runs this effect once with the OLD `pageHost` closure and
+      // the NEW engine (the ref is live, the state is not): handing the nodes
+      // over here adopts them into the new block while React still records
+      // the old one as their parent, and React's portal re-target then throws
+      // NotFoundError removing them — measured on any runtime remount-key
+      // change (`hardCovers`, `injectStyles`). The engine may only adopt once
+      // the portal has committed into ITS block; until `pageHost` catches up,
+      // this pass is not ours.
+      if (engine.getBlockElement() !== pageHost) return;
 
       const nodes = readNodes();
       if (nodes.length === 0) return;

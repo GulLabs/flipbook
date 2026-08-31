@@ -90,7 +90,9 @@ export abstract class UI {
   private hostHadParentClass = false;
 
   protected constructor(inBlock: HTMLElement, app: PageFlip, setting: FlipSetting) {
-    ensureFlipbookStyles();
+    // C5: a strict-CSP host ships the exported stylesheet itself and tells
+    // the engine not to try — an injected <style> there is dead on arrival.
+    if (setting.injectStyles) ensureFlipbookStyles();
 
     this.parentElement = inBlock;
 

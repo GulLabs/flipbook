@@ -144,6 +144,15 @@ export interface FlipOptions {
 
   respectReducedMotion?: boolean;
   readingDirection?: ReadingDirection;
+
+  /**
+   * Inject the engine's stylesheet at load (default true). C5: under a strict
+   * CSP a runtime `<style>` tag is dead on arrival — set false and ship the
+   * exported `style.css` / `FLIPBOOK_CSS` yourself. Consumed while the book
+   * is BUILT, so it is construction-time: not in `LiveSetting`, refused by
+   * `updateSettings`, and the React binding remounts on a change to it.
+   */
+  injectStyles?: boolean;
 }
 
 /**
@@ -151,7 +160,7 @@ export interface FlipOptions {
  * `updateSettings` cannot make them take effect. Rejected at compile time
  * rather than warned about at runtime.
  */
-export type LiveSetting = Omit<FlipOptions, 'hardCovers' | 'initialPage'>;
+export type LiveSetting = Omit<FlipOptions, 'hardCovers' | 'initialPage' | 'injectStyles'>;
 
 /** The resolved, fully-populated settings the engine reads. Every key present. */
 export interface FlipSetting {
@@ -179,6 +188,7 @@ export interface FlipSetting {
   pageBackground: string;
   respectReducedMotion: boolean;
   readingDirection: ReadingDirection;
+  injectStyles: boolean;
 }
 
 /**
@@ -201,6 +211,7 @@ const BOOLEAN_SETTINGS = [
   'respectInteractiveContent',
   'foldCornerOnHover',
   'respectReducedMotion',
+  'injectStyles',
 ] as const satisfies readonly (keyof FlipSetting)[];
 
 /** Bounds that only mean something under `sizing: 'responsive'`. */
@@ -268,6 +279,7 @@ const DEFAULTS: Omit<FlipSetting, 'width' | 'height'> = {
   pageBackground: DEFAULT_PAGE_BACKGROUND,
   respectReducedMotion: true,
   readingDirection: 'ltr',
+  injectStyles: true,
 };
 
 export class Settings {

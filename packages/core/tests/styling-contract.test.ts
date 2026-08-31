@@ -113,6 +113,45 @@ describe('B3.3 — a replaced-element leaf root keeps its opaque backing', () =>
   });
 });
 
+describe('C5 — injectStyles is a construction-time CSP escape', () => {
+  test('injectStyles: false loads a book with no engine <style> tag', () => {
+    document.head.querySelector('style[data-gullabs-flipbook]')?.remove();
+
+    tracked(makeHtmlBook({ injectStyles: false }));
+    expect(document.head.querySelector('style[data-gullabs-flipbook]')).toBeNull();
+
+    // The default still injects, once.
+    tracked(makeHtmlBook({}));
+    expect(document.head.querySelectorAll('style[data-gullabs-flipbook]')).toHaveLength(1);
+  });
+
+  test('a runtime change is refused like its construction-time siblings (JS-shaped)', () => {
+    document.head.querySelector('style[data-gullabs-flipbook]')?.remove();
+    const warned: string[] = [];
+    const original = console.warn;
+    console.warn = (msg: string) => warned.push(String(msg));
+
+    try {
+      const { book } = tracked(makeHtmlBook({ injectStyles: false }));
+      // The type system forbids this (`LiveSetting` omits it); JS does not —
+      // so the runtime drops it with the same warning hardCovers gets, and
+      // the styles stay a construction fact.
+      (book.updateSettings as (s: Record<string, unknown>) => unknown)({
+        injectStyles: true,
+        drawShadow: false,
+      });
+
+      expect(warned.join(' ')).toMatch(/injectStyles/);
+      expect(document.head.querySelector('style[data-gullabs-flipbook]')).toBeNull();
+      // The live half of the same call still applied.
+      expect(book.getSettings().drawShadow).toBe(false);
+      expect(book.getSettings().injectStyles).toBe(false);
+    } finally {
+      console.warn = original;
+    }
+  });
+});
+
 function tracked(made: ReturnType<typeof makeHtmlBook>): ReturnType<typeof makeHtmlBook> {
   books.push(made.destroy);
   return made;

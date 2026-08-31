@@ -43,7 +43,7 @@ import { PageFlipError } from './errors';
  * `width` / `height`: `updateSettings` restamps those via `ui.applyHostSize`,
  * so they are live.
  */
-const CONSTRUCTION_TIME_SETTINGS = ['hardCovers', 'initialPage'] as const;
+const CONSTRUCTION_TIME_SETTINGS = ['hardCovers', 'initialPage', 'injectStyles'] as const;
 
 /**
  * Settings a turn in flight was built against, and cannot absorb a change to.
