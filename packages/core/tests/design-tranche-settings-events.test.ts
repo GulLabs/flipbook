@@ -8,8 +8,10 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { PageFlip, PageFlipError, Settings, ALL_POINTERS } from '@gullabs/flipbook-core';
+import { PageFlip, PageFlipError, ALL_POINTERS } from '@gullabs/flipbook-core';
+import { Settings } from '../src/Settings';
 import type { BookSnapshot, FlipSetting, LiveSetting, TurnRejected } from '@gullabs/flipbook-core';
+import { testUI } from './engine-access';
 import {
   installPointerCaptureShims,
   makeHtmlBook,
@@ -310,7 +312,7 @@ describe('updateSettings — pointerInput reorder is set equality, not array equ
       pointerInput: ['mouse', 'touch', 'pen'],
     });
 
-    const ui = book.getUI();
+    const ui = testUI(book);
     const spy = vi.spyOn(ui, 'refreshHandlers');
 
     book.updateSettings({ pointerInput: ['pen', 'mouse', 'touch'] });
@@ -328,7 +330,7 @@ describe('updateSettings — pointerInput reorder is set equality, not array equ
       pointerInput: ['mouse', 'touch', 'pen'],
     });
 
-    const ui = book.getUI();
+    const ui = testUI(book);
     const spy = vi.spyOn(ui, 'refreshHandlers');
 
     book.updateSettings({ pointerInput: ['touch'] });
@@ -343,7 +345,7 @@ describe('updateSettings — pointerInput reorder is set equality, not array equ
     const { book, destroy } = makeHtmlBook({ pageCount: 2, flippingTime: 0 });
     expect(book.getSettings().pointerInput).toEqual([...ALL_POINTERS]);
 
-    const spy = vi.spyOn(book.getUI(), 'refreshHandlers');
+    const spy = vi.spyOn(testUI(book), 'refreshHandlers');
     book.updateSettings({ pointerInput: [...ALL_POINTERS].reverse() });
     expect(spy).not.toHaveBeenCalled();
 

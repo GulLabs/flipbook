@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { EMIT_STATE, SET_SPREAD_INDEX } from '../src/internal';
-import { Flip, FlipCorner, FlipDirection } from '@gullabs/flipbook-core';
-import type { Render } from '@gullabs/flipbook-core';
+import { EMIT_STATE, SET_SPREAD_INDEX, GET_COLLECTION } from '../src/internal';
+import { FlipCorner } from '@gullabs/flipbook-core';
+import { Flip } from '../src/Flip/Flip';
+import { FlipDirection } from '../src/Flip/Flip';
+import type { Render } from '../src/Render/Render';
 
 type Options = {
   readingDirection?: 'ltr' | 'rtl';
@@ -75,7 +77,7 @@ function makeFlip(options?: Options) {
   };
 
   const app = {
-    getPageCollection: () => collection,
+    [GET_COLLECTION]: () => collection,
     getSettings: () => ({
       flipOnClick: 'anywhere',
       flippingTime: 0,

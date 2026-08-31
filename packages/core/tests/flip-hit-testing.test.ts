@@ -31,6 +31,7 @@ import { FlipCorner, FlipDirection, FlippingState } from '../src/Flip/enums';
 import { FlipCalculation } from '../src/Flip/FlipCalculation';
 import { Orientation } from '../src/Render/Render';
 import { makeHtmlBook } from './html-book-fixture';
+import { testFlip } from './engine-access';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -71,7 +72,7 @@ function assertPortraitFixture(app: ReturnType<typeof book>['book'], page: numbe
 describe('FL1 (F5) — the BACK corner-hover band belongs to the visible leaf', () => {
   test('the leaf’s own left edge is a corner; the phantom half is not', () => {
     const { book: app } = book({ pageCount: 6, flippingTime: 0, initialPage: 2 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     assertPortraitFixture(app, 2);
 
     // Where the OLD band sat: one operating distance in from `rect.left`, which
@@ -107,7 +108,7 @@ describe('FL1 (F5) — the BACK corner-hover band belongs to the visible leaf', 
 
   test('hovering that edge actually opens a BACK fold', () => {
     const { book: app } = book({ pageCount: 6, flippingTime: 1000, initialPage: 2 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     assertPortraitFixture(app, 2);
     expect(flip.getState()).toBe(FlippingState.READ);
 
@@ -130,7 +131,7 @@ describe('FL1 (F5) — the BACK corner-hover band belongs to the visible leaf', 
       usePortrait: false,
       hostWidth: 420,
     });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     expect(app.getOrientation()).toBe(Orientation.LANDSCAPE);
@@ -221,7 +222,7 @@ describe('FL2 — the portrait BACK zone is bounded at both ends', () => {
 describe('FL3 (F6) — showCorner seeds the corner it actually picked', () => {
   test('a BOTTOM hover’s first pose is at the bottom of the leaf', () => {
     const { book: app } = book({ pageCount: 6, flippingTime: 1000, initialPage: 2 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     assertPortraitFixture(app, 2);
 
     // A real duration, so `animateFlippingTo` installs frames instead of
@@ -264,7 +265,7 @@ describe('FL3 (F6) — showCorner seeds the corner it actually picked', () => {
 
   test('a TOP hover is unchanged', () => {
     const { book: app } = book({ pageCount: 6, flippingTime: 1000, initialPage: 2 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     assertPortraitFixture(app, 2);
 
     flip.showCorner({ x: LEAF_RIGHT - 2, y: RECT.top + 2 });
@@ -303,9 +304,9 @@ describe('FL4 — a fold with no shadow start clears the shadow it left behind',
       height: 50,
       drawShadow: true,
     });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
 
     expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
     expect(rect).toEqual({ left: -310, top: 0, width: 1200, height: 50, pageWidth: 600 });
@@ -371,7 +372,7 @@ describe('Z2 — the vertical corner band stops at the corner split', () => {
 
   test('the vertical middle of a wide leaf is not a corner', () => {
     const { book: app } = wideBook({ flippingTime: 0 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     assertWideFixture(app);
 
     const x = WIDE_LEAF_RIGHT - 2; // inside the FORWARD band, so only y varies
@@ -395,7 +396,7 @@ describe('Z2 — the vertical corner band stops at the corner split', () => {
     // 200x300: `operatingDistance` is 72.11 against a half-height of 150, so
     // the clamp changes nothing and the middle band is a real gap, not a line.
     const { book: app } = book({ pageCount: 6, flippingTime: 0, initialPage: 2 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     assertPortraitFixture(app, 2);
     expect(OPERATING_DISTANCE).toBeLessThan(RECT.height / 2);
 

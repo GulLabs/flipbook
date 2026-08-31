@@ -126,7 +126,7 @@ describe('EventObject.once', () => {
   });
 
   test('a once registered DURING a dispatch waits for the next emit', () => {
-    // `trigger` snapshots the listener list, which is `EventEmitter`'s rule and
+    // `trigger` snapshots the listener list, which is `EventEmitter`'s rule and'
     // what stops a self-registering handler looping forever. If `once` bypassed
     // the snapshot, the re-registration below would fire within the same emit
     // and recurse without end — this test would hang rather than fail.

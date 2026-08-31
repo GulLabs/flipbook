@@ -17,9 +17,11 @@
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import { FlipCorner, FlipDirection, Orientation } from '@gullabs/flipbook-core';
+import { FlipCorner, Orientation } from '@gullabs/flipbook-core';
 import type { PageFlip } from '@gullabs/flipbook-core';
 import { makeHtmlBook } from './html-book-fixture';
+import { testFlip, testRender, testPage } from './engine-access';
+import { FlipDirection } from '../src/Flip/Flip';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -77,7 +79,7 @@ function edgePoint(
 
 /** Open a fold at `point` and report what the engine made of it. */
 function foldAt(book: PageFlip, point: { x: number; y: number }) {
-  const flip = book.getFlipController();
+  const flip = testFlip(book);
   if (flip === null) throw new Error('no flip controller');
 
   flip.fold(point);
@@ -88,7 +90,7 @@ function foldAt(book: PageFlip, point: { x: number; y: number }) {
   return {
     flip,
     calc,
-    localX: book.getRender().convertToPage(point).x,
+    localX: testRender(book).convertToPage(point).x,
     progress: calc.getFlippingProgress(),
   };
 }
@@ -190,7 +192,7 @@ describe('the fold follows the finger under rtl (I2)', () => {
     const book = landscapeBook('rtl');
     const { calc } = foldAt(book, edgePoint(book, 'left', 30));
 
-    expect(book.getRender().getDirection()).toBe(calc.getDirection());
+    expect(testRender(book).getDirection()).toBe(calc.getDirection());
     // The left edge under rtl is a FORWARD *turn*, folded as a BACK *side*.
     expect(calc.getDirection()).toBe(FlipDirection.BACK);
   });
@@ -199,7 +201,7 @@ describe('the fold follows the finger under rtl (I2)', () => {
     const book = landscapeBook('ltr');
     const { calc } = foldAt(book, edgePoint(book, 'left', 30));
 
-    expect(book.getRender().getDirection()).toBe(FlipDirection.BACK);
+    expect(testRender(book).getDirection()).toBe(FlipDirection.BACK);
     expect(calc.getDirection()).toBe(FlipDirection.BACK);
   });
 });
@@ -208,7 +210,7 @@ describe('rtl still mirrors what it is supposed to mirror', () => {
   /** Drag from `edge` across the spine and release, so `stopMove` commits. */
   function dragAcross(book: PageFlip, edge: 'left' | 'right'): void {
     const rect = book.getBoundsRect();
-    const flip = book.getFlipController();
+    const flip = testFlip(book);
     if (flip === null) throw new Error('no flip controller');
 
     flip.fold(edgePoint(book, edge, 10));
@@ -245,7 +247,7 @@ describe('rtl still mirrors what it is supposed to mirror', () => {
     // coordinate *and* the page selection lands on the right page while
     // animating the wrong one. Identity of the mover is the only witness.
     const book = landscapeBook('rtl');
-    const render = book.getRender();
+    const render = testRender(book);
 
     let flipping: unknown = null;
     let bottom: unknown = null;
@@ -267,12 +269,12 @@ describe('rtl still mirrors what it is supposed to mirror', () => {
     // mover and which the page underneath is the open landscape-RTL question
     // recorded alongside this fix; that the pair comes from the destination
     // spread at all is not open, and is what a geometric page selection breaks.
-    expect(new Set([flipping, bottom])).toEqual(new Set([book.getPage(4), book.getPage(5)]));
+    expect(new Set([flipping, bottom])).toEqual(new Set([testPage(book, 4), testPage(book, 5)]));
   });
 
   test('programmatic turns stay index-ordered under rtl', () => {
     const book = landscapeBook('rtl');
-    const flip = book.getFlipController();
+    const flip = testFlip(book);
     if (flip === null) throw new Error('no flip controller');
 
     expect(flip.flipNext(FlipCorner.TOP)).toBe(true);

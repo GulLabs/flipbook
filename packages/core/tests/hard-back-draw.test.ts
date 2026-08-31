@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import { PageFlip } from '@gullabs/flipbook-core';
 import { makePages, sizeElement } from './html-book-fixture';
+import { testFlip, testRender } from './engine-access';
 
 /**
  * Hard-cover BACK turns — closing a cover, rather than opening one.
@@ -41,7 +42,7 @@ function hardBook(): PageFlip {
     hardCovers: true,
   });
   book.loadFromHTML(pages);
-  sizeElement(book.getUI().getDistElement(), 520, 300);
+  sizeElement(book.getBlockElement(), 520, 300);
   book.update();
 
   books.push({
@@ -64,7 +65,7 @@ type Internals = {
   drawFrame: () => void;
 };
 
-const inner = (book: PageFlip): Internals => book.getRender() as unknown as Internals;
+const inner = (book: PageFlip): Internals => testRender(book) as unknown as Internals;
 
 /** Fold inward from an edge and paint one frame. */
 function fold(book: PageFlip, edge: 'left' | 'right', depth = 60): void {
@@ -72,7 +73,7 @@ function fold(book: PageFlip, edge: 'left' | 'right', depth = 60): void {
   const y = rect.top + rect.height / 2;
   const x = edge === 'right' ? rect.left + rect.width - 6 : rect.left + 6;
 
-  const flip = book.getFlipController()!;
+  const flip = testFlip(book)!;
   flip.fold({ x, y });
   flip.fold({ x: edge === 'right' ? x - depth : x + depth, y });
 
@@ -152,21 +153,21 @@ describe('a HARD back fold: the stamp comes from setFlippingPage, not setBottomP
   // SHAPE if not its value.
   //
   // Codex said `--right` is correct because on a hard BACK fold the flipping
-  // page and the bottom page are the same leaf, and RIGHT selects `drawHard`'s
+  // page and the bottom page are the same leaf, and RIGHT selects `drawHard`'s'
   // right-leaf base, whose origin is the spine. That is right. But the first
   // version of this test asserted it through `bottomPage` under a describe
   // block about "the leaf under a BACK fold", which made it look like a
   // `setBottomPage` test. It is not, and the mutation sweep proved it:
   //
   //   * make `setBottomPage` stamp nothing at all — this test still PASSES;
-  //   * invert `setFlippingPage`'s ternary — this is the ONLY test in the suite
+  //   * invert `setFlippingPage`'s ternary — this is the ONLY test in the suite'
   //     that fails.
   //
   // Probed directly: `bottomPage === flippingPage`, and it is neither static
   // leaf. `setBottomPage` stamps LEFT, `setFlippingPage` immediately overwrites
   // it with RIGHT, and `drawBottomPage` never runs — `shouldDrawBottomPage`
   // returns false exactly when the two are the same object. So
-  // `setBottomPage`'s hard-BACK stamp is written, overwritten, and never read.
+  // `setBottomPage`'s hard-BACK stamp is written, overwritten, and never read.'
   //
   // That dead stamp is recorded rather than deleted: removing it is a behaviour
   // change to a shared method, and this batch is about making the test say what
@@ -188,7 +189,7 @@ describe('a HARD back fold: the stamp comes from setFlippingPage, not setBottomP
 describe('the leaf under a BACK fold', () => {
   // `setBottomPage` picks the orientation from the fold direction, and that
   // stamp drives the `--left` / `--right` classes — declared public surface in
-  // `ENGINE_LEAF_CLASSES` — and `drawHard`'s transform-origin.
+  // `ENGINE_LEAF_CLASSES` — and `drawHard`'s transform-origin.'
   //
   // Asserted on a SOFT fold, which is where the sweep found it and which is the
   // flagship mobile back-flip.
@@ -198,7 +199,7 @@ describe('the leaf under a BACK fold', () => {
   // pinning a value nobody had justified is how a bug gets certified as the
   // contract. Codex answered it, and the answer is that `--right` is CORRECT:
   // on a hard BACK fold the flipping page and the bottom page are the same
-  // leaf, and RIGHT selects `drawHard`'s right-leaf base, whose transform
+  // leaf, and RIGHT selects `drawHard`'s right-leaf base, whose transform'
   // origin is the spine. LEFT would rotate the closing cover about its outer
   // edge instead. It is now pinned below.
 
@@ -218,7 +219,7 @@ describe('the leaf under a BACK fold', () => {
       drawShadow: true,
     });
     book.loadFromHTML(pages);
-    sizeElement(book.getUI().getDistElement(), 520, 300);
+    sizeElement(book.getBlockElement(), 520, 300);
     book.update();
 
     books.push({

@@ -44,7 +44,7 @@ function pointer(
 describe('UI pointer paths', () => {
   test('pointerdown + move + up performs a corner click turn', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, swipeDistance: 80 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
     const x = rect.left + rect.width - 6;
     const y = rect.top + 6;
@@ -58,7 +58,7 @@ describe('UI pointer paths', () => {
 
   test('horizontal swipe past swipeDistance calls flipNext', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, swipeDistance: 40 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
     const y = rect.top + 40;
     const startX = rect.left + rect.width - 20;
@@ -77,7 +77,7 @@ describe('UI pointer paths', () => {
       swipeDistance: 40,
       readingDirection: 'rtl',
     });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
     const y = rect.top + 30;
     const startX = rect.left + 40;
@@ -90,7 +90,7 @@ describe('UI pointer paths', () => {
 
   test('pointerleave while idle after a corner fold restores READ', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, foldCornerOnHover: true });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
 
     // Hover corner (no pointerdown) → showCorner.
@@ -114,7 +114,7 @@ describe('UI pointer paths', () => {
 
   test('pointerleave during an active drag is ignored (no double stopMove)', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
     const x = rect.left + rect.width - 8;
     const y = rect.top + 12;
@@ -167,7 +167,7 @@ describe('UI pointer paths', () => {
       flippingTime: 0,
       pointerInput: [],
     });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
 
     pointer('pointerdown', dist, {
@@ -191,7 +191,7 @@ describe('UI pointer paths', () => {
 
     app.updateSettings({ pointerInput: ['mouse', 'touch', 'pen'] });
 
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
     pointer('pointerdown', dist, {
       clientX: rect.left + rect.width - 5,
@@ -236,7 +236,7 @@ describe('UI pointer paths', () => {
       flippingTime: 0,
       allowTouchScroll: true,
     });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
     const start = { x: rect.left + rect.width - 10, y: rect.top + 20 };
 
@@ -278,7 +278,7 @@ describe('UI pointer paths', () => {
 
   test('non-primary mouse button is ignored', () => {
     const { book: app } = book({ pageCount: 3, flippingTime: 0 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
 
     dist.dispatchEvent(
@@ -355,7 +355,7 @@ describe('W1 — host max-width is the two-page bound', () => {
     // The bound is tight, not slack: at exactly `maxWidth * 2` the spread fills
     // the host and each page is at its own maximum.
     const { book: app } = book({ ...stretch, hostWidth: 1200, hostHeight: 900 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     sizeElement(dist, 1200, 900);
     app.update();
 

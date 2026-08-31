@@ -10,9 +10,10 @@
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { PageFlip, PageFlipError, FlippingState, HTMLPageCollection } from '@gullabs/flipbook-core';
+import { PageFlip, PageFlipError, FlippingState } from '@gullabs/flipbook-core';
 import type { BookSnapshot, FlipSetting } from '@gullabs/flipbook-core';
-
+import { HTMLPageCollection } from '../src/Collection/HTMLPageCollection';
+import { testCollection, testFlip, testRender, testUI, testPage } from './engine-access';
 import {
   installPointerCaptureShims,
   makeHtmlBook,
@@ -53,10 +54,10 @@ describe('PageFlip lifecycle', () => {
 
     // The published .d.ts promises non-null here; the guard is what makes that
     // promise honest instead of handing callers `undefined`.
-    expect(() => book.getPageCollection()).toThrow(PageFlipError);
-    expect(() => book.getRender()).toThrow(PageFlipError);
-    expect(() => book.getUI()).toThrow(PageFlipError);
-    expect(book.getFlipController()).toBeNull();
+    expect(() => testCollection(book)).toThrow(PageFlipError);
+    expect(() => testRender(book)).toThrow(PageFlipError);
+    expect(() => testUI(book)).toThrow(PageFlipError);
+    expect(testFlip(book)).toBeNull();
 
     book.destroy();
   });
@@ -92,7 +93,7 @@ describe('a refused turn is a boolean, a broken one is not', () => {
     book.on('turnRejected', (e) => rejected.push(e.data));
 
     // Force the engine's own index guard to fire inside the turn.
-    const collection = book.getPageCollection() as unknown as Record<string, unknown>;
+    const collection = testCollection(book) as unknown as Record<string, unknown>;
     collection['getFlippingPage'] = () => {
       throw new PageFlipError('corrupt spread', 'INVALID_SPREAD');
     };
@@ -112,7 +113,7 @@ describe('a refused turn is a boolean, a broken one is not', () => {
     const rejected: unknown[] = [];
     book.on('turnRejected', (e) => rejected.push(e.data));
 
-    const collection = book.getPageCollection() as unknown as Record<string, unknown>;
+    const collection = testCollection(book) as unknown as Record<string, unknown>;
     collection['getFlippingPage'] = () => {
       throw new TypeError('renderer blew up');
     };
@@ -143,7 +144,7 @@ describe('a refused click is reported, not swallowed', () => {
 
   /**
    * `turnRejected` exists to say "your turn was refused". It used to fire only
-   * for programmatic turns: `userStop` discarded `flip()`'s boolean, so the
+   * for programmatic turns: `userStop` discarded `flip()`'s boolean, so the'
    * most common way a turn gets refused — a click — was silent. And
    * `reason: 'disabled'` was declared in the public event type while nothing
    * anywhere emitted it.
@@ -229,7 +230,7 @@ describe('a refused click is reported, not swallowed', () => {
 describe('updateFromHtml clamps the retained index (RB4)', () => {
   /** The renderer's own page references, which outlive a collection swap. */
   function renderRefs(book: PageFlip): unknown[] {
-    const render = book.getRender() as unknown as {
+    const render = testRender(book) as unknown as {
       leftPage: unknown;
       rightPage: unknown;
     };
@@ -237,7 +238,7 @@ describe('updateFromHtml clamps the retained index (RB4)', () => {
   }
 
   function expectRenderInsideCollection(book: PageFlip): void {
-    const live = book.getPageCollection().getPages() as unknown[];
+    const live = testCollection(book).getPages() as unknown[];
     const refs = renderRefs(book);
 
     // Something must be shown — an empty render would satisfy "no stale page"
@@ -350,11 +351,11 @@ describe('updateFromHtml abandons an in-flight turn (P2 / I9)', () => {
   }
 
   function renderInternals(book: PageFlip): RenderInternals {
-    return book.getRender() as unknown as RenderInternals;
+    return testRender(book) as unknown as RenderInternals;
   }
 
   function livePages(book: PageFlip): unknown[] {
-    return book.getPageCollection().getPages() as unknown[];
+    return testCollection(book).getPages() as unknown[];
   }
 
   // Landscape on purpose: in portrait the mover is a *temporary copy* of the
@@ -367,7 +368,7 @@ describe('updateFromHtml abandons an in-flight turn (P2 / I9)', () => {
       hardCovers: false,
       flippingTime: 1000,
     });
-    const flip = book.getFlipController()!;
+    const flip = testFlip(book)!;
     const rect = book.getBoundsRect();
     const inside = { x: rect.left + rect.width - 40, y: rect.top + 40 };
 
@@ -408,7 +409,7 @@ describe('updateFromHtml abandons an in-flight turn (P2 / I9)', () => {
       usePortrait: true,
       flippingTime: 1000,
     });
-    const flip = book.getFlipController()!;
+    const flip = testFlip(book)!;
 
     expect(book.flipNext()).toBe(true);
     expect(flip.getState()).toBe(FlippingState.FLIPPING);
@@ -460,7 +461,7 @@ describe('updateFromHtml is inert after destroy (P1)', () => {
 
     // Captured before teardown: after `destroy()` the engine no longer exposes
     // its UI, but the host element it was listening on is still right here.
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const added = vi.spyOn(dist, 'addEventListener');
 
     const rebuilt: unknown[] = [];
@@ -476,7 +477,7 @@ describe('updateFromHtml is inert after destroy (P1)', () => {
     expect(added).not.toHaveBeenCalled();
     expect(rebuilt).toEqual([]);
     // Nothing was rebuilt, so there is no collection to hand back.
-    expect(() => book.getPageCollection()).toThrow(PageFlipError);
+    expect(() => testCollection(book)).toThrow(PageFlipError);
 
     added.mockRestore();
     destroy();
@@ -512,10 +513,10 @@ describe('a destroyed engine is observably dead (P3)', () => {
     const { book } = makeHtmlBook({ pageCount: 4, usePortrait: true });
     book.destroy();
 
-    expectDestroyed('getPageCollection', () => book.getPageCollection());
-    expectDestroyed('getRender', () => book.getRender());
-    expectDestroyed('getUI', () => book.getUI());
-    expectDestroyed('getPage', () => book.getPage(0));
+    expectDestroyed('getPageCollection', () => testCollection(book));
+    expectDestroyed('getRender', () => testRender(book));
+    expectDestroyed('getUI', () => testUI(book));
+    expectDestroyed('getPage', () => testPage(book, 0));
     expectDestroyed('getPageCount', () => book.getPageCount());
     expectDestroyed('getCurrentPageIndex', () => book.getCurrentPageIndex());
     expectDestroyed('getOrientation', () => book.getOrientation());
@@ -563,7 +564,7 @@ describe('a destroyed engine is observably dead (P3)', () => {
 
     expect(book.isDestroyed()).toBe(true);
     expect(book.getState()).toBe(FlippingState.READ);
-    expect(book.getFlipController()).toBeNull();
+    expect(testFlip(book)).toBeNull();
     expect(book.getSettings().flippingTime).toBe(500);
     expect(book.getBlock()).toBeInstanceOf(HTMLElement);
   });
@@ -573,7 +574,7 @@ describe('a destroyed engine is observably dead (P3)', () => {
     // "load first" and "this instance is gone" the same message.
     const book = new PageFlip(host(), { width: 200, height: 300 });
     try {
-      book.getPageCollection();
+      testCollection(book);
       expect.unreachable('getPageCollection must throw before a load');
     } catch (err) {
       expect((err as PageFlipError).code).toBe('NOT_LOADED');
@@ -629,7 +630,7 @@ describe('loaded reports the resolved start page (I13)', () => {
 
     book.loadFromHTML(pages);
     if (pageCount > 0) {
-      sizeElement(book.getUI().getDistElement(), hostW, height);
+      sizeElement(book.getBlockElement(), hostW, height);
       book.update();
     }
 
@@ -724,7 +725,7 @@ describe('loaded reports the index the book actually settled on (I13)', () => {
     book.on('loaded', (e) => loaded.push(e.data));
 
     book.loadFromHTML(pages);
-    sizeElement(book.getUI().getDistElement(), 520, 300);
+    sizeElement(book.getBlockElement(), 520, 300);
     book.update();
 
     expect(book.getOrientation()).toBe('landscape');
@@ -762,7 +763,7 @@ describe('emptying a book releases the renderer (Codex round 2)', () => {
     flip.loadFromHTML(pages);
     flip.turnToPage(2);
 
-    const render = flip.getRender() as unknown as { leftPage: unknown; rightPage: unknown };
+    const render = testRender(flip) as unknown as { leftPage: unknown; rightPage: unknown };
 
     // BOTH must be populated before the update, or a fix that clears only one
     // of them passes vacuously — which is exactly what the first version of
@@ -821,7 +822,7 @@ describe('PageFlip lifecycle — load, loaded, clear and settings', () => {
 
     // Still dead, and still refusing to serve state.
     expect(book.isDestroyed()).toBe(true);
-    expect(() => book.getPageCollection()).toThrow(PageFlipError);
+    expect(() => testCollection(book)).toThrow(PageFlipError);
 
     origin.remove();
     hostEl.remove();
@@ -977,7 +978,7 @@ describe('U6 — no trailing frame after a teardown from onAnimateEnd', () => {
     const flip = new PageFlip(host, { width: 200, height: 300, sizing: 'fixed' });
     flip.loadFromHTML(pages);
 
-    const render = flip.getRender() as unknown as {
+    const render = testRender(flip) as unknown as {
       drawFrame: () => void;
       startAnimation: (f: (() => void)[], d: number, cb: () => void) => void;
     };
@@ -1034,7 +1035,7 @@ describe('U6 — no trailing frame after a teardown from onAnimateEnd', () => {
 
 describe('L6 — a collection swap forgets the pointer gesture', () => {
   function flippingPageOf(book: PageFlip): unknown {
-    return (book.getRender() as unknown as { flippingPage: unknown }).flippingPage;
+    return (testRender(book) as unknown as { flippingPage: unknown }).flippingPage;
   }
 
   /**
@@ -1055,7 +1056,7 @@ describe('L6 — a collection swap forgets the pointer gesture', () => {
       hardCovers: false,
       flippingTime: 1000,
     });
-    const flip = book.getFlipController()!;
+    const flip = testFlip(book)!;
     const rect = book.getBoundsRect();
 
     // Anchored on the right corner of the OLD book, as a pointerdown would.
@@ -1087,15 +1088,15 @@ describe('L6 — a collection swap forgets the pointer gesture', () => {
       hardCovers: false,
       flippingTime: 1000,
     });
-    const flip = book.getFlipController()!;
+    const flip = testFlip(book)!;
     const rect = book.getBoundsRect();
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
 
     book.startUserTouch({ x: rect.left + rect.width - 10, y: rect.top + 10 });
 
     const items = makePages(6);
     for (const el of items) dist.appendChild(el);
-    book.replacePages(new HTMLPageCollection(book, book.getRender(), dist, items), 0);
+    book.replacePages(new HTMLPageCollection(book, testRender(book), dist, items), 0);
 
     book.userMove({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, true);
 
@@ -1134,10 +1135,10 @@ describe('PF3 — a rebuild after clear() opens where clear() said it was', () =
 
     // Not vacuous: the renderer is showing the FIRST page, not merely
     // reporting 0 while painting page 3.
-    const render = book.getRender() as unknown as { rightPage: unknown; leftPage: unknown };
+    const render = testRender(book) as unknown as { rightPage: unknown; leftPage: unknown };
     const shown = [render.leftPage, render.rightPage].filter((p) => p !== null);
     expect(shown.length).toBeGreaterThan(0);
-    expect(shown).toContain(book.getPage(0));
+    expect(shown).toContain(testPage(book, 0));
 
     destroy();
   });
@@ -1400,12 +1401,12 @@ describe('initialPage resolution at load', () => {
  */
 describe('Y1 — a second load forgets the pointer gesture', () => {
   function flippingPageOf(book: PageFlip): unknown {
-    return (book.getRender() as unknown as { flippingPage: unknown }).flippingPage;
+    return (testRender(book) as unknown as { flippingPage: unknown }).flippingPage;
   }
 
   /** Size the block the CURRENT load created, so geometry is real again. */
   function relayout(book: PageFlip, width: number, height: number): void {
-    sizeElement(book.getUI().getDistElement(), width, height);
+    sizeElement(book.getBlockElement(), width, height);
     book.update();
   }
 
@@ -1433,7 +1434,7 @@ describe('Y1 — a second load forgets the pointer gesture', () => {
     book.userMove({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, true);
 
     // The controller is a new one: `attachMode` builds it with the new render.
-    const flip = book.getFlipController()!;
+    const flip = testFlip(book)!;
     expect(flip.getState()).toBe(FlippingState.READ);
     expect(flip.getCalculation()).toBeNull();
     expect(flippingPageOf(book)).toBeNull();
@@ -1457,7 +1458,7 @@ describe('Y1 — a second load forgets the pointer gesture', () => {
       hostWidth: 400,
       hostHeight: 300,
     });
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const rect = book.getBoundsRect();
 
     const pointer = (type: string, target: EventTarget, x: number, y: number): void => {
@@ -1490,12 +1491,12 @@ describe('Y1 — a second load forgets the pointer gesture', () => {
     // The physical pointer moves on, landing on the block the new load built.
     pointer(
       'pointermove',
-      book.getUI().getDistElement(),
+      book.getBlockElement(),
       rect.left + rect.width / 2,
       rect.top + rect.height / 2,
     );
 
-    const flip = book.getFlipController()!;
+    const flip = testFlip(book)!;
     expect(flip.getState()).toBe(FlippingState.READ);
     expect(flip.getCalculation()).toBeNull();
 
@@ -1580,7 +1581,7 @@ describe('Y2 — the listeners survive until the teardown is finished', () => {
       hostWidth: 400,
       hostHeight: 300,
     });
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const rect = book.getBoundsRect();
 
     const pointer = (type: string, x: number, y: number): void => {
@@ -1667,7 +1668,7 @@ describe('L8 — destroy() completes even when a listener throws', () => {
 
     // The natural shape: a listener that mirrors engine state into consumer UI.
     book.on('changeState', () => {
-      book.getPageCollection().getCurrentSpreadIndex();
+      testCollection(book).getCurrentSpreadIndex();
     });
 
     // Reverted fix: throws `PageFlipError('DESTROYED')`. `destroy()` sets
@@ -1682,7 +1683,7 @@ describe('L8 — destroy() completes even when a listener throws', () => {
 
     // …and the teardown actually FINISHED rather than bailing out midway.
     expect(book.isDestroyed()).toBe(true);
-    expect(() => book.getPageCollection()).toThrow(PageFlipError);
+    expect(() => testCollection(book)).toThrow(PageFlipError);
     expect(book.flipNext()).toBe(false);
 
     // The listener's `DESTROYED` is still out there, on the task L8 put it on.
@@ -1772,8 +1773,8 @@ describe('round 9 — lifecycle ownership', () => {
     // and a programmatic turn has none.
     const index = book.getCurrentPageIndex();
     expect(index).toBeLessThan(book.getPageCount());
-    expect(book.getPageCollection().getSpreadIndexByPage(index)).toBe(
-      book.getPageCollection().getCurrentSpreadIndex(),
+    expect(testCollection(book).getSpreadIndexByPage(index)).toBe(
+      testCollection(book).getCurrentSpreadIndex(),
     );
 
     book.destroy();
@@ -1800,7 +1801,7 @@ describe('round 9 — lifecycle ownership', () => {
     // Reverted fix: `abandon()` sat before `HTMLUI.clear()`, so the throw
     // aborted with six leaves still parented to `.stf__block` and none handed
     // back — a half-cleared book that every listener still believes is whole.
-    const block = book.getUI().getDistElement();
+    const block = book.getBlockElement();
     expect(block.querySelectorAll('.stf__item').length).toBe(0);
     expect(book.getPageCount()).toBe(0);
 
@@ -1849,7 +1850,7 @@ describe('round 9 — lifecycle ownership', () => {
         throw new Error('second listener');
       });
 
-      // Reverted fix: `deferErrors` was a boolean, so the INNER `destroy()`'s
+      // Reverted fix: `deferErrors` was a boolean, so the INNER `destroy()`'s'
       // `finally` cleared the deferral while the OUTER teardown was still
       // running. The second listener's error then took the synchronous path and
       // escaped `destroy()` — the precise failure L8 exists to prevent, and it
@@ -1956,7 +1957,7 @@ describe('RE-1 — a listener during the first paint cannot leave a zombie loop'
     expect(book.isDestroyed()).toBe(true);
 
     // Run whatever was queued. THIS is the assertion: the zombie frame called
-    // `HTMLRender.clear()`, which reaches `app.getPageCollection()` on a
+    // `HTMLRender.clear()`, which reaches `testCollection(app)` on a
     // destroyed engine and throws.
     expect(() => {
       for (const cb of queued.splice(0, queued.length)) cb(0);
@@ -2000,9 +2001,9 @@ describe('RE-1 — a listener during the first paint cannot leave a zombie loop'
     // `stop()`, since `stop()` bumps the generation itself. That variant
     // shipped for several minutes and was caught by an unrelated test, not by
     // this one.
-    expect(book.getRender().isAnimating() || scheduled.length > 0).toBe(true);
+    expect(testRender(book).isAnimating() || scheduled.length > 0).toBe(true);
 
-    const pages = book.getPageCollection().getPages();
+    const pages = testCollection(book).getPages();
     const hidden = pages.filter(
       (p) => (p as unknown as { element?: HTMLElement }).element?.style.display === 'none',
     );
@@ -2050,7 +2051,7 @@ describe('RE-4 — a teardown supersedes a turn, and the refusal says so', () =>
     // AN4 path it shares a counter with.
     expect(book.flipNext()).toBe(false);
     expect(book.getState()).toBe(FlippingState.FLIPPING);
-    expect(book.getFlipController()!.getCalculation()).not.toBeNull();
+    expect(testFlip(book)!.getCalculation()).not.toBeNull();
 
     book.destroy();
   });
@@ -2161,7 +2162,7 @@ describe('RE-3 — updateSettings survives a listener destroying mid-call', () =
       hostWidth: 400,
       hostHeight: 300,
     });
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const rect = book.getBoundsRect();
 
     const pointer = (type: string, x: number, y: number): void => {
@@ -2221,7 +2222,7 @@ describe('RE-3 — updateSettings survives a listener destroying mid-call', () =
       hostWidth: 400,
       hostHeight: 300,
     });
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const rect = book.getBoundsRect();
 
     const pointer = (type: string, x: number, y: number): void => {

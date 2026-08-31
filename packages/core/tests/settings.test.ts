@@ -1,10 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import {
-  Settings,
-  DEFAULT_PAGE_BACKGROUND,
-  isOpaquePageBackground,
-  PageFlipError,
-} from '@gullabs/flipbook-core';
+import { PageFlipError } from '@gullabs/flipbook-core';
+import { DEFAULT_PAGE_BACKGROUND } from '../src/Render/pageBackground';
+import { isOpaquePageBackground } from '../src/Render/pageBackground';
+import { Settings } from '../src/Settings';
 import type { FlipOptions } from '@gullabs/flipbook-core';
 import { foldFill } from '../src/Render/pageBackground';
 

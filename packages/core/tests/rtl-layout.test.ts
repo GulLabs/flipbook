@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest';
-import { FlippingState, PageOrientation } from '@gullabs/flipbook-core';
-import type { Page, Render } from '@gullabs/flipbook-core';
+import { FlippingState } from '@gullabs/flipbook-core';
+import { PageOrientation } from '../src/Page/Page';
+import type { Page } from '../src/Page/Page';
 import { makeHtmlBook } from './html-book-fixture';
+import { testRender, testPage } from './engine-access';
+import type { Render } from '../src/Render/Render';
 
 /**
  * `leftPage`/`rightPage` are protected with no public getters, and `drawFrame`
@@ -21,12 +24,12 @@ const inner = (render: Render): Internals => render as unknown as Internals;
 
 /** The render's in-flight animation slot — protected, no getter, like the pages. */
 function renderAnimation(book: ReturnType<typeof makeHtmlBook>): unknown {
-  return (book.book.getRender() as unknown as { animation: unknown }).animation;
+  return (testRender(book.book) as unknown as { animation: unknown }).animation;
 }
 
 /** Force the frame that writes the inline styles, then hand back the internals. */
 function drawn(book: ReturnType<typeof makeHtmlBook>): Internals {
-  const render = inner(book.book.getRender());
+  const render = inner(testRender(book.book));
   render.drawFrame();
   return render;
 }
@@ -41,7 +44,7 @@ function drawn(book: ReturnType<typeof makeHtmlBook>): Internals {
  *
  * WHY THIS FILE EXISTS AT ALL, and it is the point: when the mirror landed, all
  * 664 existing tests still passed. `rtl-and-spreads.test.ts` and
- * `rtl-drag.test.ts` only ever asserted `Flip`'s direction decisions — nothing
+ * `rtl-drag.test.ts` only ever asserted `Flip`'s direction decisions — nothing'
  * anywhere asserted which page ends up on which SIDE. A behaviour this visible
  * had no test, so the change could not have been proven right or wrong by the
  * suite. That is the fifteenth instance of this repo's recurring failure and it
@@ -92,7 +95,7 @@ describe('RTL spread layout is mirrored', () => {
 
   test('landscape: the PageOrientation stamped on each leaf mirrors too', () => {
     // `setLeftPage`/`setRightPage` stamp the orientation that drives the
-    // `--left`/`--right` classes and `drawHard`'s transform-origin. If only the
+    // `--left`/`--right` classes and `drawHard`'s transform-origin. If only the'
     // pixel moved and the stamp did not, hard pages would rotate about the
     // wrong edge — visible only on a cover, and only mid-turn.
     const rtl = makeHtmlBook({ ...landscape, readingDirection: 'rtl' });
@@ -102,8 +105,8 @@ describe('RTL spread layout is mirrored', () => {
     expect(render.rightPage?.orientation).toBe(PageOrientation.RIGHT);
     expect(render.leftPage?.orientation).toBe(PageOrientation.LEFT);
     // The head (index 0) must be the RIGHT page under rtl.
-    expect(render.rightPage).toBe(rtl.book.getPage(0));
-    expect(render.leftPage).toBe(rtl.book.getPage(1));
+    expect(render.rightPage).toBe(testPage(rtl.book, 0));
+    expect(render.leftPage).toBe(testPage(rtl.book, 1));
 
     rtl.destroy();
   });
@@ -125,11 +128,11 @@ describe('RTL spread layout is mirrored', () => {
       readingDirection: 'rtl',
     });
 
-    expect(drawn(ltr).rightPage).toBe(ltr.book.getPage(0));
-    expect(inner(ltr.book.getRender()).leftPage).toBeNull();
+    expect(drawn(ltr).rightPage).toBe(testPage(ltr.book, 0));
+    expect(inner(testRender(ltr.book)).leftPage).toBeNull();
 
-    expect(drawn(rtl).leftPage).toBe(rtl.book.getPage(0));
-    expect(inner(rtl.book.getRender()).rightPage).toBeNull();
+    expect(drawn(rtl).leftPage).toBe(testPage(rtl.book, 0));
+    expect(inner(testRender(rtl.book)).rightPage).toBeNull();
 
     ltr.destroy();
     rtl.destroy();
@@ -144,10 +147,10 @@ describe('RTL spread layout is mirrored', () => {
     const rtl = makeHtmlBook({ pageCount: 4, readingDirection: 'rtl' });
 
     expect(drawn(ltr).rightPage).not.toBeNull();
-    expect(inner(ltr.book.getRender()).leftPage).toBeNull();
+    expect(inner(testRender(ltr.book)).leftPage).toBeNull();
 
     expect(drawn(rtl).rightPage).not.toBeNull();
-    expect(inner(rtl.book.getRender()).leftPage).toBeNull();
+    expect(inner(testRender(rtl.book)).leftPage).toBeNull();
 
     // Same pixel, both readings. This is the assertion that fails for a naive
     // whole-method swap.
@@ -169,11 +172,11 @@ describe('RTL spread layout is mirrored', () => {
     ltr.book.turnToPage(2);
     rtl.book.turnToPage(2);
 
-    expect(drawn(ltr).leftPage).toBe(ltr.book.getPage(2));
-    expect(inner(ltr.book.getRender()).rightPage).toBe(ltr.book.getPage(3));
+    expect(drawn(ltr).leftPage).toBe(testPage(ltr.book, 2));
+    expect(inner(testRender(ltr.book)).rightPage).toBe(testPage(ltr.book, 3));
 
-    expect(drawn(rtl).rightPage).toBe(rtl.book.getPage(2));
-    expect(inner(rtl.book.getRender()).leftPage).toBe(rtl.book.getPage(3));
+    expect(drawn(rtl).rightPage).toBe(testPage(rtl.book, 2));
+    expect(inner(testRender(rtl.book)).leftPage).toBe(testPage(rtl.book, 3));
 
     // …and the pixels swapped, not just the slots.
     expect(drawnLeft(rtl.pages[2]!)).toBe(drawnLeft(ltr.pages[3]!));
@@ -197,11 +200,11 @@ describe('RTL spread layout is mirrored', () => {
     ltr.book.turnToPage(4);
     rtl.book.turnToPage(4);
 
-    expect(drawn(ltr).leftPage).toBe(ltr.book.getPage(4));
-    expect(inner(ltr.book.getRender()).rightPage).toBeNull();
+    expect(drawn(ltr).leftPage).toBe(testPage(ltr.book, 4));
+    expect(inner(testRender(ltr.book)).rightPage).toBeNull();
 
-    expect(drawn(rtl).rightPage).toBe(rtl.book.getPage(4));
-    expect(inner(rtl.book.getRender()).leftPage).toBeNull();
+    expect(drawn(rtl).rightPage).toBe(testPage(rtl.book, 4));
+    expect(inner(testRender(rtl.book)).leftPage).toBeNull();
 
     ltr.destroy();
     rtl.destroy();
@@ -234,11 +237,11 @@ describe('RTL spread layout is mirrored', () => {
     expect(ltr.book.getCurrentPageIndex()).toBe(1);
     expect(rtl.book.getCurrentPageIndex()).toBe(1);
 
-    expect(drawn(ltr).leftPage).toBe(ltr.book.getPage(1));
-    expect(inner(ltr.book.getRender()).rightPage).toBe(ltr.book.getPage(2));
+    expect(drawn(ltr).leftPage).toBe(testPage(ltr.book, 1));
+    expect(inner(testRender(ltr.book)).rightPage).toBe(testPage(ltr.book, 2));
 
-    expect(drawn(rtl).rightPage).toBe(rtl.book.getPage(1));
-    expect(inner(rtl.book.getRender()).leftPage).toBe(rtl.book.getPage(2));
+    expect(drawn(rtl).rightPage).toBe(testPage(rtl.book, 1));
+    expect(inner(testRender(rtl.book)).leftPage).toBe(testPage(rtl.book, 2));
 
     ltr.destroy();
     rtl.destroy();
@@ -265,11 +268,11 @@ describe('RTL spread layout is mirrored', () => {
       readingDirection: 'rtl',
     });
 
-    expect(drawn(ltr).rightPage).toBe(ltr.book.getPage(0));
-    expect(inner(ltr.book.getRender()).leftPage).toBeNull();
+    expect(drawn(ltr).rightPage).toBe(testPage(ltr.book, 0));
+    expect(inner(testRender(ltr.book)).leftPage).toBeNull();
 
-    expect(drawn(rtl).leftPage).toBe(rtl.book.getPage(0));
-    expect(inner(rtl.book.getRender()).rightPage).toBeNull();
+    expect(drawn(rtl).leftPage).toBe(testPage(rtl.book, 0));
+    expect(inner(testRender(rtl.book)).rightPage).toBeNull();
 
     ltr.destroy();
     rtl.destroy();
@@ -300,8 +303,8 @@ describe('RTL spread layout is mirrored', () => {
 
     // And the settled book is coherently mirrored — not left mid-fold.
     drawn(book);
-    expect(inner(book.book.getRender()).rightPage).toBe(
-      book.book.getPage(book.book.getCurrentPageIndex()),
+    expect(inner(testRender(book.book)).rightPage).toBe(
+      testPage(book.book, book.book.getCurrentPageIndex()),
     );
 
     book.destroy();
@@ -331,7 +334,7 @@ describe('RTL spread layout is mirrored', () => {
     // means the NEXT pointermove resumes a fold with no fresh pointerdown:
     // the page follows the cursor with no button held.
     const book = makeHtmlBook({ ...landscape, readingDirection: 'ltr', flippingTime: 400 });
-    const dist = book.book.getUI().getDistElement();
+    const dist = book.book.getBlockElement();
     const rect = book.book.getBoundsRect();
     const y = rect.top + rect.height / 2;
     const startX = rect.left + rect.width - 10;
@@ -469,7 +472,7 @@ describe('RTL spread layout is mirrored', () => {
     drawn(book);
 
     expect(drawnLeft(book.pages[0]!)).not.toBe(before);
-    expect(inner(book.book.getRender()).rightPage).toBe(book.book.getPage(0));
+    expect(inner(testRender(book.book)).rightPage).toBe(testPage(book.book, 0));
 
     book.destroy();
   });
@@ -487,7 +490,7 @@ describe('a COMPLETED swipe lands on the right page in both readings', () => {
   // physical finger movement must move the index in opposite directions. Pinned
   // constants would break on an unrelated change to spread layout.
   function swipe(book: ReturnType<typeof makeHtmlBook>, dx: number): void {
-    const dist = book.book.getUI().getDistElement();
+    const dist = book.book.getBlockElement();
     const rect = book.book.getBoundsRect();
     const y = rect.top + rect.height / 2;
     const startX = rect.left + rect.width / 2 + (dx < 0 ? 60 : -60);

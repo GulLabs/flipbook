@@ -7,7 +7,7 @@
  *  - A **fix**: `pointsBetween` could not survive a non-finite endpoint — it
  *    looped until the heap died. Reverting the guard does not make these tests
  *    fail; it kills the worker (see the note on the first one).
- *  - A **characterization**: `FlipCalculation`'s per-frame constants were
+ *  - A **characterization**: `FlipCalculation`'s per-frame constants were'
  *    hoisted into the constructor and its rotation stopped evaluating `cos`
  *    and `sin` twice per point. Both are supposed to be bit-for-bit invisible,
  *    which is not something a red-on-revert test can express. The digest below

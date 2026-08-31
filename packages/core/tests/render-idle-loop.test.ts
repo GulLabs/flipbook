@@ -23,12 +23,13 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ADOPT_ORIENTATION } from '../src/internal';
+import { ADOPT_ORIENTATION, GET_UI } from '../src/internal';
 
 import { PageFlip } from '@gullabs/flipbook-core';
 import { Render } from '../src/Render/Render';
 import type { PageFlip as PageFlipType } from '../src/PageFlip';
 import { Settings, type FlipSetting } from '../src/Settings';
+import { testRender } from './engine-access';
 import {
   installPointerCaptureShims,
   makeHtmlBook,
@@ -142,7 +143,7 @@ function settledBook(opts: Parameters<typeof makeHtmlBook>[0] = {}): PageFlip {
   const ran = settle();
 
   // FIXTURE CHECK, and the C1 assertion itself: the loop converged. Against the
-  // unfixed engine this is 200 — `settle`'s limit — because `loop` re-arms
+  // unfixed engine this is 200 — `settle`'s limit — because `loop` re-arms'
   // whether or not anything changed.
   expect(ran).toBeLessThan(20);
   expect(scheduled()).toBe(false);
@@ -156,19 +157,16 @@ function pointer(
   type: string,
   init: PointerEventInit & { clientX: number; clientY: number },
 ): void {
-  book
-    .getUI()
-    .getDistElement()
-    .dispatchEvent(
-      new PointerEvent(type, {
-        bubbles: true,
-        cancelable: true,
-        pointerId: 1,
-        button: 0,
-        pointerType: 'mouse',
-        ...init,
-      }),
-    );
+  book.getBlockElement().dispatchEvent(
+    new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      pointerId: 1,
+      button: 0,
+      pointerType: 'mouse',
+      ...init,
+    }),
+  );
 }
 
 describe('R8 — an untouched book stops drawing', () => {
@@ -187,7 +185,7 @@ describe('R8 — an untouched book stops drawing', () => {
     // been implemented as `stop()`.
     const book = settledBook();
 
-    book.getRender().update();
+    testRender(book).update();
 
     expect(scheduled()).toBe(true);
   });
@@ -300,9 +298,9 @@ describe('R8 — every wake-up path', () => {
 
     // Widen past two page widths: landscape. `UI.setOrientationStyle` →
     // `UI.update()` → `Render.update()` is the path under test.
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     Object.defineProperty(dist, 'offsetWidth', { configurable: true, get: () => 900 });
-    book.getRender().update();
+    testRender(book).update();
 
     expect(book.getOrientation()).not.toBe(before);
     expect(scheduled()).toBe(true);
@@ -340,7 +338,7 @@ describe('R8 — every wake-up path', () => {
     expect(book.getCurrentPageIndex()).toBeGreaterThan(0);
     expect(scheduled()).toBe(true);
 
-    const render = book.getRender() as unknown as { drawFrame: () => void };
+    const render = testRender(book) as unknown as { drawFrame: () => void };
     let draws = 0;
     const realDraw = render.drawFrame.bind(render);
     render.drawFrame = (): void => {
@@ -372,7 +370,7 @@ describe('R8 — every wake-up path', () => {
 describe('R8 — the loop must not park one frame early', () => {
   test('the frame that ends a turn is drawn before the loop parks', () => {
     const book = settledBook();
-    const render = book.getRender() as unknown as { drawFrame: () => void };
+    const render = testRender(book) as unknown as { drawFrame: () => void };
 
     // ONE trace for both, because the ordering is the assertion. Counting
     // draws separately proves nothing: the broken variants draw plenty of
@@ -406,7 +404,7 @@ describe('R8 — a stopped loop stays stopped', () => {
     const b = makeHtmlBook({ pageCount: 4, flippingTime: 1000 });
     settle();
 
-    const render = b.book.getRender();
+    const render = testRender(b.book);
     b.book.destroy();
     queue = [];
 
@@ -447,7 +445,7 @@ function probeOn(dist: HTMLElement): ProbeRender {
   Object.defineProperty(dist, 'offsetHeight', { configurable: true, get: () => 300 });
 
   const app = {
-    getUI: () => ({ getDistElement: () => dist }),
+    [GET_UI]: () => ({ getDistElement: () => dist }),
     getSettings: () => setting,
     [ADOPT_ORIENTATION]: () => undefined,
   } as unknown as PageFlipType;
@@ -483,7 +481,7 @@ describe('R8 — an idle HTML renderer parks', () => {
 describe('a frame action runs at most once per frame index', () => {
   test('several ticks landing on the same index replay nothing', () => {
     const book = settledBook();
-    const render = book.getRender();
+    const render = testRender(book);
     const played: number[] = [];
 
     render.startAnimation([() => played.push(0), () => played.push(1)], 1000, () => {

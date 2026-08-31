@@ -11,13 +11,11 @@
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import {
-  ensureFlipbookStyles,
-  HTMLPage,
-  PageDensity,
-  PageOrientation,
-} from '@gullabs/flipbook-core';
+import { ensureFlipbookStyles, PageDensity } from '@gullabs/flipbook-core';
+import { PageOrientation } from '../src/Page/Page';
 import { makeHtmlBook } from './html-book-fixture';
+import { testRender, testPage } from './engine-access';
+import { HTMLPage } from '../src/Page/HTMLPage';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -63,7 +61,7 @@ describe('C12 — hard pages rotate about the spine, not block-local pageWidth',
       flippingTime: 0,
     });
 
-    const rect = app.getRender().getRect();
+    const rect = testRender(app).getRect();
     expect(rect.left).toBe(60);
     expect(rect.pageWidth).toBe(200);
     const spine = rect.left + rect.width / 2;
@@ -73,13 +71,13 @@ describe('C12 — hard pages rotate about the spine, not block-local pageWidth',
     pages[1]!.dataset.density = 'hard';
     app.updateFromHtml(pages);
 
-    const right = app.getPage(0) as HTMLPage;
+    const right = testPage(app, 0) as HTMLPage;
     right.setDrawingDensity(PageDensity.HARD);
     right.setOrientation(PageOrientation.RIGHT);
     right.setHardDrawingAngle(30);
     right.draw(PageDensity.HARD);
 
-    const left = app.getPage(1) as HTMLPage;
+    const left = testPage(app, 1) as HTMLPage;
     left.setDrawingDensity(PageDensity.HARD);
     left.setOrientation(PageOrientation.LEFT);
     left.setHardDrawingAngle(-30);
@@ -108,13 +106,13 @@ describe('C12 — hard pages rotate about the spine, not block-local pageWidth',
       flippingTime: 0,
     });
 
-    const rect = app.getRender().getRect();
+    const rect = testRender(app).getRect();
     expect(rect.left).toBe(0);
 
     pages[0]!.dataset.density = 'hard';
     app.updateFromHtml(pages);
 
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
     page.setDrawingDensity(PageDensity.HARD);
     page.setOrientation(PageOrientation.LEFT);
     page.setHardDrawingAngle(0);

@@ -32,6 +32,7 @@ import { PageFlipError } from '@gullabs/flipbook-core';
 import { intersectLines, limitToCircle } from '../src/Helper';
 import type { Point } from '../src/BasicTypes';
 import { makeHtmlBook, makePages } from './html-book-fixture';
+import { testFlip, testRender } from './engine-access';
 
 /* ------------------------------------------------------------------ *
  * RD1 / RD2 — abandoning a turn drops ALL of the turn's state
@@ -51,7 +52,7 @@ interface RenderInternals {
 }
 
 function internals(book: PageFlip): RenderInternals {
-  return book.getRender() as unknown as RenderInternals;
+  return testRender(book) as unknown as RenderInternals;
 }
 
 const SHADOW_CLASSES = [
@@ -89,7 +90,7 @@ function foldedBook(): PageFlip {
   });
   books.push(destroy);
 
-  const flip = book.getFlipController()!;
+  const flip = testFlip(book)!;
   const rect = book.getBoundsRect();
 
   flip.fold({ x: rect.left + rect.width - 40, y: rect.top + 40 });
@@ -129,7 +130,7 @@ describe('RD1 — cancelAnimation clears the shadow ELEMENTS, not just the field
     const book = foldedBook();
     expect(isPainted('stf__outerShadow')).toBe(true);
 
-    book.getRender().releasePages();
+    testRender(book).releasePages();
 
     for (const cls of SHADOW_CLASSES) {
       expect(isPainted(cls), `${cls} is still painted`).toBe(false);
@@ -153,7 +154,7 @@ describe('RD2 — the fold rect belongs to the turn, not to the renderer', () =>
     const book = foldedBook();
     expect(internals(book).pageRect).not.toBeNull();
 
-    book.getRender().releasePages();
+    testRender(book).releasePages();
 
     expect(internals(book).pageRect).toBeNull();
   });

@@ -5,9 +5,9 @@ import {
   FLIPBOOK_INTERACTIVE_SELECTOR,
   PageFlip,
   PageFlipError,
-  prefersReducedMotion,
-  effectiveFlippingTime,
 } from '@gullabs/flipbook-core';
+import { prefersReducedMotion } from '../src/reducedMotion';
+import { effectiveFlippingTime } from '../src/reducedMotion';
 
 describe('isInteractivePointerTarget (shipped)', () => {
   test('detects nested control and ARIA widget', () => {

@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest';
-import { DEFAULT_PAGE_BACKGROUND, PageFlip, safePageBackground } from '@gullabs/flipbook-core';
+import { PageFlip } from '@gullabs/flipbook-core';
+import { DEFAULT_PAGE_BACKGROUND } from '../src/Render/pageBackground';
+import { safePageBackground } from '../src/Render/pageBackground';
+import { testPage } from './engine-access';
 
 /**
  * The safe-colour pattern accepts any short word as a named colour, but only
@@ -68,7 +71,7 @@ describe('the guards hold where the platform is odd or the caller misbehaves', (
     // renderer without passing through `Settings.getSettings` at all.
     book.getSettings().pageBackground = 'rgba(0, 0, 0, 0.4)';
 
-    const page = book.getPage(0);
+    const page = testPage(book, 0);
     page.simpleDraw(1);
     expect(leaves[0]?.style.backgroundColor).toBe('rgb(255, 255, 255)');
 

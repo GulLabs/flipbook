@@ -87,7 +87,8 @@ export function makeHtmlBook(opts: BookOpts = {}): {
 
   book.loadFromHTML(pages);
 
-  const dist = book.getUI().getDistElement();
+  // Public façade: the leaves live in `.stf__block` (getBlockElement).
+  const dist = book.getBlockElement();
   sizeElement(dist, hostW, hostH);
   // Bounds depend on dist offset*; force a layout pass.
   book.update();

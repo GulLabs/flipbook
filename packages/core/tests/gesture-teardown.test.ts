@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import { HTMLPageCollection, PageFlip } from '@gullabs/flipbook-core';
+import { PageFlip } from '@gullabs/flipbook-core';
 import { makePages, sizeElement } from './html-book-fixture';
+import { testRender } from './engine-access';
+import { HTMLPageCollection } from '../src/Collection/HTMLPageCollection';
 
 /**
  * C1 — every path that tears down or re-lays the book drops the POINTER
@@ -68,7 +70,7 @@ function makeBook(settings: Record<string, unknown> = {}): Book {
   });
   book.loadFromHTML(pages);
 
-  const dist = book.getUI().getDistElement();
+  const dist = book.getBlockElement();
   sizeElement(dist, 520, 300);
   book.update();
 
@@ -106,7 +108,7 @@ function shim(el: HTMLElement, captured: Set<number>): void {
  * did, on the first run.
  */
 function refresh(b: Book): void {
-  const current = b.book.getUI().getDistElement();
+  const current = b.book.getBlockElement();
   if (current === b.dist) return;
 
   b.dist = current;
@@ -160,7 +162,7 @@ const TEARDOWNS: Array<{ name: string; run: (b: Book) => void }> = [
       const next = makePages(6);
       for (const p of next) b.host.appendChild(p);
       b.book.replacePages(
-        new HTMLPageCollection(b.book, b.book.getRender(), b.dist, next),
+        new HTMLPageCollection(b.book, testRender(b.book), b.dist, next),
         b.book.getCurrentPageIndex(),
       );
     },
@@ -216,7 +218,7 @@ describe('a teardown drops the pointer gesture, whichever path reaches it', () =
       pointer(b, 'pointermove', startX - 40);
 
       run(b);
-      flips.length = 0; // the teardown's own announcements are not what is under test
+      flips.length = 0; // the teardown's own announcements are not what is under test'
 
       // Well past `swipeDistance` (default 30) and inside `swipeTimeout`:
       // exactly the input the swipe branch commits on.

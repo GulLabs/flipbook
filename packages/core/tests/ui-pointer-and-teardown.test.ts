@@ -9,6 +9,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { FlipCorner, FlippingState } from '@gullabs/flipbook-core';
 import { installPointerCaptureShims, makeHtmlBook } from './html-book-fixture';
+import { testFlip } from './engine-access';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -67,7 +68,7 @@ describe('I4 destroy() must not take the caller’s pages with it', () => {
 
     // Precondition: the engine really did adopt them (otherwise the test
     // proves nothing about release).
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     for (const page of pages) expect(page.parentElement).toBe(dist);
 
     // A node the engine did NOT adopt: this is what React's portal does —
@@ -116,7 +117,7 @@ describe('I6 swipe corner is decided in book space', () => {
     expect(rect.top).toBeGreaterThan(0);
     expect(rect.height).toBe(300);
 
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const flipNext = vi.spyOn(app, 'flipNext');
 
     // 30px below the book's top edge: element y = 180, book y = 30.
@@ -145,7 +146,7 @@ describe('I6 swipe corner is decided in book space', () => {
     const rect = app.getBoundsRect();
     expect(rect.top).toBeGreaterThan(0);
 
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const flipNext = vi.spyOn(app, 'flipNext');
 
     // book y = 280: genuinely the bottom half.
@@ -162,7 +163,7 @@ describe('I6 swipe corner is decided in book space', () => {
 describe('I10 unbinding handlers mid-gesture cancels the gesture', () => {
   test('a settings toggle during a drag does not leave the fold glued to the cursor', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
 
     pointer('pointerdown', dist, { clientX: rect.left + rect.width - 6, clientY: rect.top + 6 });
@@ -190,7 +191,7 @@ describe('I10 unbinding handlers mid-gesture cancels the gesture', () => {
 describe('I11 only the pointer that started the gesture drives it', () => {
   test('a second pointer neither captures, drives, nor ends the gesture', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
 
     const capture = vi.spyOn(dist, 'setPointerCapture');
@@ -208,7 +209,7 @@ describe('I11 only the pointer that started the gesture drives it', () => {
     });
     expect(app.getState()).toBe(FlippingState.USER_FOLD);
 
-    const flip = app.getFlipController();
+    const flip = testFlip(app);
     const held = { ...flip!.getCalculation()!.getPosition() };
 
     // Finger 2 lands. It must not take the capture...
@@ -251,7 +252,7 @@ describe('I11 only the pointer that started the gesture drives it', () => {
 
   test('hover still works with no gesture in progress', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
 
     // An arbitrary pointer id, never seen in a pointerdown.

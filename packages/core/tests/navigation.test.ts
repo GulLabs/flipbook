@@ -1,13 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { EMIT_STATE, SET_SPREAD_INDEX } from '../src/internal';
-import {
-  Flip,
-  FlipCorner,
-  FlipDirection,
-  FlippingState,
-  PageFlipError,
-} from '@gullabs/flipbook-core';
-import type { Render } from '@gullabs/flipbook-core';
+import { EMIT_STATE, SET_SPREAD_INDEX, GET_COLLECTION } from '../src/internal';
+import { FlipCorner, FlippingState, PageFlipError } from '@gullabs/flipbook-core';
+import type { Render } from '../src/Render/Render';
+import { Flip, FlipDirection } from '../src/Flip/Flip';
 
 type CollectionStub = {
   spread: number;
@@ -77,7 +72,7 @@ function makeFlip(options?: { pageCount?: number; currentPage?: number }) {
   };
 
   const app = {
-    getPageCollection: () => collection,
+    [GET_COLLECTION]: () => collection,
     getSettings: () => ({
       flipOnClick: 'anywhere',
       flippingTime: 0,

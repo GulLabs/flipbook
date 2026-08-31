@@ -27,9 +27,11 @@
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import { FlipDirection, PageDensity, PageFlip } from '@gullabs/flipbook-core';
-import type { HTMLPage } from '@gullabs/flipbook-core';
+import { PageDensity, PageFlip } from '@gullabs/flipbook-core';
+import { HTMLPage } from '../src/Page/HTMLPage';
 import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
+import { testCollection, testRender, testPage } from './engine-access';
+import { FlipDirection } from '../src/Flip/Flip';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -57,7 +59,7 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
     // that it has no covers.
     const { book: app } = book({ pageCount: 3, hardCovers: false, flippingTime: 0 });
 
-    const last = app.getPage(2);
+    const last = testPage(app, 2);
     expect(last.getDensity()).toBe(PageDensity.SOFT);
     expect(last.getDrawingDensity()).toBe(PageDensity.SOFT);
   });
@@ -67,10 +69,10 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
 
     // FIXTURE CHECK — the whole test is void in landscape: `getFlippingPage`
     // takes a completely different branch there.
-    expect(app.getRender().getOrientation()).toBe('portrait');
+    expect(testRender(app).getOrientation()).toBe('portrait');
 
     app.turnToPage(2);
-    const pages = app.getPageCollection();
+    const pages = testCollection(app);
     expect(pages.getCurrentPageIndex()).toBe(2);
 
     const flipping = pages.getFlippingPage(FlipDirection.BACK);
@@ -81,26 +83,30 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
     // handed back `pages[1]` — upstream's slide-in.
     // Compared as booleans, not with `toBe(page)`: a failed identity assertion
     // on a `Page` makes vitest pretty-print the whole engine graph.
-    expect(flipping === app.getPage(1), 'mover is the PREVIOUS leaf (upstream slide-in)').toBe(
+    expect(flipping === testPage(app, 1), 'mover is the PREVIOUS leaf (upstream slide-in)').toBe(
       false,
     );
-    expect(flipping === app.getPage(2), 'mover is the current leaf itself, not a copy').toBe(false);
-    expect(app.getPage(2).getTemporaryCopy() === flipping, 'mover is not page 2’s copy').toBe(true);
+    expect(flipping === testPage(app, 2), 'mover is the current leaf itself, not a copy').toBe(
+      false,
+    );
+    expect(testPage(app, 2).getTemporaryCopy() === flipping, 'mover is not page 2’s copy').toBe(
+      true,
+    );
 
     // …and the leaf underneath is the previous page, distinct from the mover,
     // so `shouldDrawBottomPage` draws it. Pre-fix both were `pages[1]`, so the
     // curl revealed nothing.
-    expect(bottom === app.getPage(1), 'bottom page is not the previous leaf').toBe(true);
+    expect(bottom === testPage(app, 1), 'bottom page is not the previous leaf').toBe(true);
     expect(bottom === flipping, 'mover IS the bottom page — the curl reveals nothing').toBe(false);
 
-    app.getPage(2).hideTemporaryCopy();
+    testPage(app, 2).hideTemporaryCopy();
   });
 
   test('an even-length book is unchanged (it never had a singleton)', () => {
     const { book: app } = book({ pageCount: 4, hardCovers: false, flippingTime: 0 });
 
     for (let i = 0; i < 4; i++) {
-      expect(app.getPage(i).getDensity(), `page ${i}`).toBe(PageDensity.SOFT);
+      expect(testPage(app, i).getDensity(), `page ${i}`).toBe(PageDensity.SOFT);
     }
   });
 
@@ -109,13 +115,13 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
     pages[2]!.dataset['density'] = 'hard';
     app.updateFromHtml(pages);
 
-    expect(app.getPage(2).getDensity()).toBe(PageDensity.HARD);
+    expect(testPage(app, 2).getDensity()).toBe(PageDensity.HARD);
 
     // And such a page keeps the documented hard-cover contract: it returns
     // itself from `newTemporaryCopy()` and stays on the previous-leaf path.
     app.turnToPage(2);
     expect(
-      app.getPageCollection().getFlippingPage(FlipDirection.BACK) === app.getPage(1),
+      testCollection(app).getFlippingPage(FlipDirection.BACK) === testPage(app, 1),
       'a declared hard page left the previous-leaf path',
     ).toBe(true);
   });
@@ -124,10 +130,10 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
     // 6 pages + cover ⇒ spreads [0] [1,2] [3,4] [5]; page 5 is the singleton.
     const { book: app } = book({ pageCount: 6, hardCovers: true, flippingTime: 0 });
 
-    expect(app.getPage(0).getDensity()).toBe(PageDensity.HARD);
-    expect(app.getPage(5).getDensity()).toBe(PageDensity.HARD);
+    expect(testPage(app, 0).getDensity()).toBe(PageDensity.HARD);
+    expect(testPage(app, 5).getDensity()).toBe(PageDensity.HARD);
     for (const i of [1, 2, 3, 4]) {
-      expect(app.getPage(i).getDensity(), `page ${i}`).toBe(PageDensity.SOFT);
+      expect(testPage(app, i).getDensity(), `page ${i}`).toBe(PageDensity.SOFT);
     }
   });
 
@@ -145,8 +151,8 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
     // has two.
     const odd = book({ pageCount: 5, hardCovers: true, flippingTime: 0 }).book;
 
-    expect(odd.getPage(0).getDensity()).toBe(PageDensity.HARD);
-    expect(odd.getPage(4).getDensity()).toBe(PageDensity.HARD);
+    expect(testPage(odd, 0).getDensity()).toBe(PageDensity.HARD);
+    expect(testPage(odd, 4).getDensity()).toBe(PageDensity.HARD);
 
     // The parity partner, asserted in the SAME test: the whole defect was that
     // these two disagreed, so proving them equal is the actual invariant. A
@@ -154,16 +160,16 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
     // everything.
     const even = book({ pageCount: 6, hardCovers: true, flippingTime: 0 }).book;
 
-    expect(even.getPage(0).getDensity()).toBe(PageDensity.HARD);
-    expect(even.getPage(5).getDensity()).toBe(PageDensity.HARD);
+    expect(testPage(even, 0).getDensity()).toBe(PageDensity.HARD);
+    expect(testPage(even, 5).getDensity()).toBe(PageDensity.HARD);
 
     // …and nothing in between hardened. This is the negative control, and it is
     // what fails for "harden every leaf", which satisfies everything above.
     for (const i of [1, 2, 3]) {
-      expect(odd.getPage(i).getDensity(), `odd page ${i}`).toBe(PageDensity.SOFT);
+      expect(testPage(odd, i).getDensity(), `odd page ${i}`).toBe(PageDensity.SOFT);
     }
     for (const i of [1, 2, 3, 4]) {
-      expect(even.getPage(i).getDensity(), `even page ${i}`).toBe(PageDensity.SOFT);
+      expect(testPage(even, i).getDensity(), `even page ${i}`).toBe(PageDensity.SOFT);
     }
   });
 
@@ -175,7 +181,7 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
     for (const pageCount of [4, 5]) {
       const { book: app } = book({ pageCount, hardCovers: false, flippingTime: 0 });
       for (let i = 0; i < pageCount; i += 1) {
-        expect(app.getPage(i).getDensity(), `page ${i} of ${pageCount}`).toBe(PageDensity.SOFT);
+        expect(testPage(app, i).getDensity(), `page ${i} of ${pageCount}`).toBe(PageDensity.SOFT);
       }
     }
   });
@@ -187,7 +193,7 @@ describe('PC1 — a book with no covers gets no inferred hard leaf', () => {
     const { book: app } = book({ pageCount: 1, hardCovers: true, flippingTime: 0 });
 
     expect(app.getPageCount()).toBe(1);
-    expect(app.getPage(0).getDensity()).toBe(PageDensity.HARD);
+    expect(testPage(app, 0).getDensity()).toBe(PageDensity.HARD);
   });
 });
 
@@ -217,7 +223,7 @@ describe('PC2 — a single-leaf landscape spread is placed by what it IS', () =>
       flippingTime: 0,
     });
 
-    const render = app.getRender();
+    const render = testRender(app);
     expect(render.getOrientation()).toBe('landscape');
     const rect = render.getRect();
     expect(rect.left).toBe(60);
@@ -241,7 +247,7 @@ describe('PC2 — a single-leaf landscape spread is placed by what it IS', () =>
       flippingTime: 0,
     });
 
-    const render = app.getRender();
+    const render = testRender(app);
     expect(render.getOrientation()).toBe('landscape');
     const rect = render.getRect();
 
@@ -262,7 +268,7 @@ describe('PC2 — a single-leaf landscape spread is placed by what it IS', () =>
 describe('PC3 — a destroyed collection describes an empty book', () => {
   test('the spread tables go with the pages', () => {
     const { book: app } = book({ pageCount: 4, hardCovers: false, flippingTime: 0 });
-    const pages = app.getPageCollection();
+    const pages = testCollection(app);
 
     expect(pages.getSpreadCount()).toBe(4);
     expect(pages.getSpreadIndexByPage(3)).toBe(3);
@@ -279,8 +285,8 @@ describe('PC3 — a destroyed collection describes an empty book', () => {
     // Same method, the part that already worked: `dispose()` hides the clone.
     // Kept adjacent so a change to `destroy()` cannot drop it unnoticed.
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const pages = app.getPageCollection();
-    const page = app.getPage(1) as HTMLPage;
+    const pages = testCollection(app);
+    const page = testPage(app, 1) as HTMLPage;
 
     const copy = page.newTemporaryCopy() as HTMLPage;
     expect(copy.getElement().isConnected).toBe(true);
@@ -304,7 +310,7 @@ describe('NF1 — the density class follows the density', () => {
    * `makeHtmlBook` calls `makePages(pageCount, Boolean(opts.hardCovers))`, so
    * asking it for `hardCovers: true` also stamps `data-density="hard"` on page 0
    * — the cover is DECLARED hard, its class is `--hard` from the constructor,
-   * and `createSpread`'s inference never changes anything. Every assertion here
+   * and `createSpread`'s inference never changes anything. Every assertion here'
    * then passes against the unfixed engine. The first draft did exactly that,
    * and all three of its subtly-wrong variants passed too.
    *
@@ -327,7 +333,7 @@ describe('NF1 — the density class follows the density', () => {
   test('an inferred cover is `--hard`, not `--soft`', () => {
     const { engine, pages, host } = inferredCoverBook();
 
-    expect(engine.getPageCollection().getPage(0).getDensity()).toBe(PageDensity.HARD);
+    expect(testCollection(engine).getPage(0).getDensity()).toBe(PageDensity.HARD);
 
     // Reverted fix, measured: `class="stf__item --soft --right"` on a page the
     // engine draws through `drawHard`. Consumer CSS on `.stf__item.--hard` never
@@ -342,7 +348,7 @@ describe('NF1 — the density class follows the density', () => {
   test('a soft page is still `--soft`, and the classes stay exclusive', () => {
     const { engine, pages, host } = inferredCoverBook();
 
-    expect(engine.getPageCollection().getPage(2).getDensity()).toBe(PageDensity.SOFT);
+    expect(testCollection(engine).getPage(2).getDensity()).toBe(PageDensity.SOFT);
 
     // The control: a variant that ADDS `--hard` without removing `--soft`
     // satisfies the assertion above and fails here.
@@ -371,7 +377,7 @@ describe('NF1 — the density class follows the density', () => {
 
     // `data-density="hard"` is the DECLARED input; the class is engine output.
     // Both must agree.
-    expect(engine.getPageCollection().getPage(0).getDensity()).toBe(PageDensity.HARD);
+    expect(testCollection(engine).getPage(0).getDensity()).toBe(PageDensity.HARD);
     expect(declared[0]!.classList.contains('--hard')).toBe(true);
     expect(declared[0]!.classList.contains('--soft')).toBe(false);
 

@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest';
 import {
-  FlipDirection,
   backCurlAppearsRight,
   convertPageToGlobal,
   curlGoesLeft,
   portraitCurlLocal,
-} from '@gullabs/flipbook-core';
+} from '../src/geometry';
+import { FlipDirection } from '../src/Flip/Flip';
 
 const PAGE_WIDTH = 400;
 const HEIGHT = 600;

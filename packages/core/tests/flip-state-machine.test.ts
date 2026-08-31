@@ -6,20 +6,16 @@
  *
  * Each test asserts what the CALLER ASKED FOR, not what the current pipeline
  * happens to produce — I5 in particular is masked in the live app by the
- * mirror-image bug in `UI.swipeDirection`'s corner test (I6), and a test
+ * mirror-image bug in `UI.swipeDirection`'s corner test (I6), and a test'
  * written against the composed behaviour would go green on either.
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import {
-  FlipCorner,
-  FlipDirection,
-  FlippingState,
-  Orientation,
-  PageDensity,
-} from '@gullabs/flipbook-core';
+import { FlipCorner, FlippingState, Orientation, PageDensity } from '@gullabs/flipbook-core';
 import { FlipCalculation } from '../src/Flip/FlipCalculation';
 import { makeHtmlBook } from './html-book-fixture';
+import { testCollection, testFlip, testRender } from './engine-access';
+import { FlipDirection } from '../src/Flip/Flip';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -52,7 +48,7 @@ function centredBook(opts?: Parameters<typeof makeHtmlBook>[0]) {
 describe('I1 — a refused fold must not strand the state machine', () => {
   test('a forward drag on the last page ends in READ, not USER_FOLD', () => {
     const { book: app } = book({ pageCount: 4, initialPage: 3, flippingTime: 0 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     expect(app.getCurrentPageIndex()).toBe(3);
@@ -83,7 +79,7 @@ describe('I1 — a refused fold must not strand the state machine', () => {
 
   test('a refused fold does not kill corner hover for the rest of the session', () => {
     const { book: app } = book({ pageCount: 4, initialPage: 3, flippingTime: 1000 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     const down = { x: rect.left + rect.width - 5, y: rect.top + 10 };
@@ -105,7 +101,7 @@ describe('I1 — a refused fold must not strand the state machine', () => {
 
   test('rtl: a right-edge drag at page 0 is refused and still returns to READ', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, readingDirection: 'rtl' });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     const down = { x: rect.left + rect.width - 5, y: rect.top + 10 };
@@ -124,7 +120,7 @@ describe('I1 — a refused fold must not strand the state machine', () => {
     // resets `calc` before it can refuse, so a caller can legitimately reach
     // "announced state, no calculation". The release path must still settle.
     const { book: app } = book({ pageCount: 4, flippingTime: 1000 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     const inside = { x: rect.left + rect.width - 40, y: rect.top + 40 };
@@ -152,7 +148,7 @@ describe('I1 — a refused fold must not strand the state machine', () => {
 describe('I3 — flipToPage must not publish a phantom spread index', () => {
   test('the public index and the spread agree while a turn is in flight', () => {
     const { book: app } = book({ pageCount: 8, flippingTime: 1000 });
-    const collection = app.getPageCollection();
+    const collection = testCollection(app);
 
     expect(app.getCurrentPageIndex()).toBe(0);
 
@@ -169,7 +165,7 @@ describe('I3 — flipToPage must not publish a phantom spread index', () => {
     app.flip(5);
     app.flip(2); // finish-then-restart: the first turn commits, then we go to 2
 
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
 
     expect(app.getCurrentPageIndex()).toBe(2);
   });
@@ -178,11 +174,11 @@ describe('I3 — flipToPage must not publish a phantom spread index', () => {
     const { book: app } = book({ pageCount: 8, flippingTime: 1000 });
 
     app.flip(6);
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
     expect(app.getCurrentPageIndex()).toBe(6);
 
     app.flip(1);
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
     expect(app.getCurrentPageIndex()).toBe(1);
   });
 });
@@ -199,7 +195,7 @@ describe('I5 — a programmatic corner survives the global→book conversion', (
 
   test('flipNext(BOTTOM) turns the BOTTOM corner on a centred book', () => {
     const { book: app } = centredBook({ pageCount: 6, flippingTime: 1000 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
 
     expect(app.getBoundsRect().top).toBe(150);
 
@@ -209,7 +205,7 @@ describe('I5 — a programmatic corner survives the global→book conversion', (
 
   test('flipNext(TOP) still turns the TOP corner', () => {
     const { book: app } = centredBook({ pageCount: 6, flippingTime: 1000 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
 
     expect(app.getBoundsRect().top).toBe(150);
 
@@ -219,7 +215,7 @@ describe('I5 — a programmatic corner survives the global→book conversion', (
 
   test('flipPrev(BOTTOM) turns the BOTTOM corner on a centred book', () => {
     const { book: app } = centredBook({ pageCount: 6, flippingTime: 1000, initialPage: 3 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
 
     expect(app.getBoundsRect().top).toBe(150);
 
@@ -249,7 +245,7 @@ describe('I8 — the landscape density override is temporary', () => {
     const { book: app } = landscapeBook(0);
     expect(app.getOrientation()).toBe(Orientation.LANDSCAPE);
 
-    const pages = app.getPageCollection();
+    const pages = testCollection(app);
     expect(pages.getPage(0).getDensity()).toBe(PageDensity.HARD);
     expect(pages.getPage(1).getDensity()).toBe(PageDensity.SOFT);
     expect(pages.getPage(5).getDensity()).toBe(PageDensity.HARD);
@@ -257,20 +253,20 @@ describe('I8 — the landscape density override is temporary', () => {
 
   test('the override IS applied while the turn is in flight', () => {
     const { book: app } = landscapeBook(1000);
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
 
     expect(flip.flipNext(FlipCorner.TOP)).toBe(true);
 
     // The soft page next to the hard cover has to bend like a hard page for the
     // duration of the turn — a "fix" that simply dropped this would be wrong.
-    expect(app.getPageCollection().getPage(1).getDrawingDensity()).toBe(PageDensity.HARD);
+    expect(testCollection(app).getPage(1).getDrawingDensity()).toBe(PageDensity.HARD);
   });
 
   test('every drawing density is back to its created value after the turn', () => {
     const { book: app } = landscapeBook(0);
-    const pages = app.getPageCollection();
+    const pages = testCollection(app);
 
-    expect(app.getFlipController()!.flipNext(FlipCorner.TOP)).toBe(true);
+    expect(testFlip(app)!.flipNext(FlipCorner.TOP)).toBe(true);
 
     for (let i = 0; i < pages.getPageCount(); i++) {
       const page = pages.getPage(i);
@@ -284,22 +280,22 @@ describe('I8 — the landscape density override is temporary', () => {
     // flipping page (whose created density is hard anyway) would look fine here
     // and still leave page 4 hard forever.
     const { book: app } = landscapeBook(0);
-    const pages = app.getPageCollection();
+    const pages = testCollection(app);
 
     app.turnToPage(3);
     expect(pages.getCurrentSpreadIndex()).toBe(2);
     expect(pages.getPage(4).getDensity()).toBe(PageDensity.SOFT);
     expect(pages.getPage(5).getDensity()).toBe(PageDensity.HARD);
 
-    expect(app.getFlipController()!.flipNext(FlipCorner.TOP)).toBe(true);
+    expect(testFlip(app)!.flipNext(FlipCorner.TOP)).toBe(true);
 
     expect(pages.getPage(4).getDrawingDensity()).toBe(PageDensity.SOFT);
   });
 
   test('a soft page can still curl after several landscape turns', () => {
     const { book: app } = landscapeBook(0);
-    const flip = app.getFlipController()!;
-    const pages = app.getPageCollection();
+    const flip = testFlip(app)!;
+    const pages = testCollection(app);
 
     flip.flipNext(FlipCorner.TOP);
     flip.flipNext(FlipCorner.TOP);
@@ -357,7 +353,7 @@ describe('I9 — leaving a corner must not announce READ over a live snap-back',
 
   test('the state stays FOLD_CORNER until the snap-back finishes', () => {
     const { book: app } = hoverBook();
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     const states: string[] = [];
@@ -370,7 +366,7 @@ describe('I9 — leaving a corner must not announce READ over a live snap-back',
 
     // Now move off the corner, into the vertical middle of the leaf — which is
     // not a corner by either band — while the fold-in animation is still
-    // running. `showCorner`'s exit branch starts the snap-back.
+    // running. `showCorner`'s exit branch starts the snap-back.'
     app.userMove({ x: rect.left + rect.width - 100, y: rect.top + rect.height / 2 }, false);
 
     // Reverted fix: `setState(READ)` ran BEFORE `stopMove()` started that
@@ -388,7 +384,7 @@ describe('I9 — leaving a corner must not announce READ over a live snap-back',
     // The guard against the lazy version of the fix — deleting the `setState`
     // and leaving nothing to hand the state back. The book must still settle.
     const { book: app } = hoverBook();
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     const states: string[] = [];
@@ -411,11 +407,11 @@ describe('I9 — leaving a corner must not announce READ over a live snap-back',
   });
 
   test('a corner hover with nothing to snap back still settles immediately', () => {
-    // `stopMove()`'s other path: the fold was refused, so there is no
+    // `stopMove()`'s other path: the fold was refused, so there is no'
     // calculation and no animation, and READ has to be handed back at once
     // rather than waiting for an animation that will never run.
     const { book: app } = book({ pageCount: 4, initialPage: 3, flippingTime: 1000 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     // Forward corner on the last spread: `start()` refuses it.
@@ -442,7 +438,7 @@ describe('I10 — the corner band and the direction split cannot disagree', () =
 
   test('the middle of a tall narrow leaf is not a corner', () => {
     const { book: app } = tallNarrowPortrait();
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
@@ -493,7 +489,7 @@ describe('I10 — the corner band and the direction split cannot disagree', () =
     // A band that reaches across the split is what makes an inner-edge hover
     // peel the opposite edge.
     const { book: app } = tallNarrowPortrait();
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     const visibleLeft = rect.width - rect.pageWidth;
@@ -550,7 +546,7 @@ describe('I10 — the corner band and the direction split cannot disagree', () =
     // not on the forward side. At ordinary proportions neither bound binds and
     // this fixture proves nothing, which is why it is not 200x300.
     const { book: app } = book({ pageCount: 6, width: 100, height: 200 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
@@ -585,7 +581,7 @@ describe('I10 — the corner band and the direction split cannot disagree', () =
     // The clamp must be inert where the diagonal already fits inside the leaf —
     // otherwise it is not a fix, it is a narrowing of every book's corners.
     const { book: app } = book({ pageCount: 6, width: 200, height: 300 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     // `operatingDistance` is 72.1 against a 200-wide leaf and a 2/5 split at 80.
@@ -635,7 +631,7 @@ describe('F7 — flipping to a page already on screen is a declared no-op', () =
 
   test('flip() to the partner half of the current spread does nothing, quietly', () => {
     const { book: app } = landscapeBook();
-    const pages = app.getPageCollection();
+    const pages = testCollection(app);
 
     expect(app.getOrientation()).toBe(Orientation.LANDSCAPE);
 
@@ -666,7 +662,7 @@ describe('F7 — flipping to a page already on screen is a declared no-op', () =
     // The discriminator: without it the test above is satisfied by an engine
     // that has stopped turning pages altogether.
     const { book: app } = landscapeBook();
-    const pages = app.getPageCollection();
+    const pages = testCollection(app);
 
     app.flip(3);
 
@@ -709,7 +705,7 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
     // The leaf is at most as wide as the old constant — that inequality IS the
     // defect's precondition.
     expect(NARROW.pageWidth).toBeLessThanOrEqual(50);
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     expect(flip.isPointOnCorners(HOVER)).toBe(true);
     expect(flip.isPointOnCorners(AWAY)).toBe(false);
   }
@@ -719,13 +715,13 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
     // them, and `finishAnimation()` below lands the last one — which is the
     // parked pose, and the same call the hover-exit path makes.
     const { book: app } = narrowBook({ flippingTime: 1000 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     assertNarrowFixture(app);
 
     flip.showCorner(HOVER);
     expect(flip.getState()).toBe(FlippingState.FOLD_CORNER);
 
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
 
     const calc = flip.getCalculation();
     expect(calc).not.toBeNull();
@@ -762,7 +758,7 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
 
   test('hovering a corner and moving away turns nothing', () => {
     const { book: app } = narrowBook({ flippingTime: 1000 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     assertNarrowFixture(app);
     expect(app.getCurrentPageIndex()).toBe(0);
 
@@ -775,7 +771,7 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
     // the index straight after the exit passes on a real duration whether or
     // not a turn was started.
     flip.showCorner(AWAY);
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
 
     expect(app.getCurrentPageIndex()).toBe(0);
     expect(flip.getState()).toBe(FlippingState.READ);
@@ -783,11 +779,11 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
   });
 
   test('a drag that really does cross the spine still commits', () => {
-    // The other end of the same test: `stopMove`'s `pos.x <= 0` is what makes a
+    // The other end of the same test: `stopMove`'s `pos.x <= 0` is what makes a'
     // genuine drag past the middle turn the page, so a "fix" that clamped or
     // qualified THAT test would pass the case above and fail here.
     const { book: app } = narrowBook({ flippingTime: 1000 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     assertNarrowFixture(app);
 
     flip.fold(HOVER);
@@ -797,7 +793,7 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
     expect(flip.getCalculation()!.getPosition().x).toBeLessThanOrEqual(0);
 
     flip.stopMove();
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
 
     expect(app.getCurrentPageIndex()).toBe(1);
     expect(flip.getState()).toBe(FlippingState.READ);
@@ -808,12 +804,12 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
     // 150) = 50`, so this is the assertion that the fix is a bound and not a
     // rewrite of the affordance.
     const { book: app } = book({ width: 200, height: 300, pageCount: 6, flippingTime: 1000 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
     expect(rect).toEqual({ left: -110, top: 0, width: 400, height: 300, pageWidth: 200 });
 
     flip.showCorner({ x: rect.left + rect.width - 2, y: rect.top + 2 });
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
 
     const reference = new FlipCalculation(
       FlipDirection.FORWARD,
@@ -829,7 +825,7 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
     // The vertical half of the same bound. On a 400x60 leaf the old flat 50 put
     // a BOTTOM peel's destination at `y = 10` — the TOP tenth of the leaf.
     const { book: app } = book({ width: 400, height: 60, pageCount: 6, flippingTime: 1000 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
     expect(rect.pageWidth).toBe(400);
     expect(rect.height).toBe(60);
@@ -839,7 +835,7 @@ describe('Z1 — a corner hover must not park the fold past the spine', () => {
     const calc = flip.getCalculation()!;
     expect(calc.getCorner()).toBe(FlipCorner.BOTTOM);
 
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
 
     // `min(50, 200, 30) = 30`, so the destination is `y = 60 - 30 = 30`: the
     // boundary of the bottom half, never above it.
@@ -905,7 +901,7 @@ describe('AN1 — a turn started from `flip` beats the call that finished it', (
     expect(app.getCurrentPageIndex()).toBe(1);
 
     // …and the nested turn is genuinely still running, not collateral damage.
-    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+    expect(testFlip(app)!.getCalculation()).not.toBeNull();
     expect(app.getState()).toBe(FlippingState.FLIPPING);
 
     // `boundary` would say the book is at its end. It is on page 1 of 8.
@@ -934,7 +930,7 @@ describe('AN1 — a turn started from `flip` beats the call that finished it', (
     // field would report `superseded` for the rest of the book's life — and
     // `superseded` says "a newer turn is running", which is the opposite of
     // what a consumer disabling a "previous" button needs to hear.
-    app.getFlipController()!.abandon();
+    testFlip(app)!.abandon();
     app.turnToPage(0); // instant, no turn — put the book on the first spread
     expect(app.flipPrev()).toBe(false);
 
@@ -1015,7 +1011,7 @@ describe('AN2 — the state is true before it is announced', () => {
     });
 
     app.flipNext();
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
 
     // Reverted fix: `setState(READ)` ran BEFORE `reset()`, so the listener's
     // `start()` installed a fresh calc, flipping page and animation and the
@@ -1024,7 +1020,7 @@ describe('AN2 — the state is true before it is announced', () => {
     // `calc` was null and the page had not moved — a turn that reported
     // success and never happened.
     expect(nestedStarted).toBe(true);
-    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+    expect(testFlip(app)!.getCalculation()).not.toBeNull();
     expect(app.getState()).toBe(FlippingState.FLIPPING);
   });
 });
@@ -1044,7 +1040,7 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
       height: 300,
       flippingTime: 400,
     });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
     const leafLeft = rect.left + rect.width - rect.pageWidth;
 
@@ -1057,7 +1053,7 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
     // whole of it. This is the window the defect lives in, so assert it exists.
     app.userMove({ x: leafLeft + rect.pageWidth / 2, y: rect.top + rect.height / 2 }, false);
     expect(flip.getCalculation()).not.toBeNull();
-    expect(app.getRender().isAnimating()).toBe(true);
+    expect(testRender(app).isAnimating()).toBe(true);
 
     return { app, flip, rect, leafLeft };
   }
@@ -1083,12 +1079,12 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
     app.userMove({ x: leafLeft + 45, y: rect.top + 8 }, false);
 
     // The drag owns the leaf now: nothing else is scheduled against it.
-    expect(app.getRender().isAnimating()).toBe(false);
+    expect(testRender(app).isAnimating()).toBe(false);
 
     // Reverted fix: the snap-back is still in flight, so its `needReset`
     // completion nulls `calc` while the finger is still down — the gesture
     // dies partway through with no release and no `changeState`.
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
     expect(flip.getCalculation()).not.toBeNull();
     expect(app.getState()).toBe(FlippingState.USER_FOLD);
   });
@@ -1106,13 +1102,13 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
 
     app.flipNext();
     expect(app.getState()).toBe(FlippingState.FLIPPING);
-    expect(app.getRender().isAnimating()).toBe(true);
+    expect(testRender(app).isAnimating()).toBe(true);
 
     // The reader catches the turning leaf and drags it back towards its edge.
     app.startUserTouch({ x: leafLeft + rect.pageWidth - 20, y: rect.top + 5 });
     app.userMove({ x: leafLeft + rect.pageWidth - 8, y: rect.top + 8 }, false);
     app.userStop({ x: leafLeft + rect.pageWidth - 8, y: rect.top + 8 });
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
 
     // Reverted fix: the turn's own animation was still running with
     // `isTurned: true`, so its completion committed regardless — the reader
@@ -1136,7 +1132,7 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
       height: 300,
       flippingTime: 400,
     });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
     const leafLeft = rect.left + rect.width - rect.pageWidth;
 
@@ -1150,7 +1146,7 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
 
     // The window: the snap-back is in flight, `calc` is live, and the state has
     // NOT been handed back yet.
-    expect(app.getRender().isAnimating()).toBe(true);
+    expect(testRender(app).isAnimating()).toBe(true);
     expect(flip.getCalculation()).not.toBeNull();
     expect(app.getState()).toBe(FlippingState.USER_FOLD);
 
@@ -1159,16 +1155,16 @@ describe('V1 — a drag never inherits a fold the renderer was animating', () =>
     app.userMove({ x: leafLeft + 45, y: rect.top + 8 }, false);
 
     expect(flip.getCalculation()?.getDirection()).toBe(FlipDirection.BACK);
-    expect(app.getRender().isAnimating()).toBe(false);
+    expect(testRender(app).isAnimating()).toBe(false);
   });
 
   test('an ordinary drag with nothing animating is untouched', () => {
     const { book: app } = book({ pageCount: 8, initialPage: 2, width: 200, height: 300 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
     const leafLeft = rect.left + rect.width - rect.pageWidth;
 
-    expect(app.getRender().isAnimating()).toBe(false);
+    expect(testRender(app).isAnimating()).toBe(false);
 
     app.startUserTouch({ x: leafLeft + rect.pageWidth - 5, y: rect.top + 5 });
     app.userMove({ x: leafLeft + rect.pageWidth - 45, y: rect.top + 8 }, false);
@@ -1198,7 +1194,7 @@ describe('V2 — the corner test and the direction test agree on the boundary', 
       initialPage: 2,
       flippingTime: 0,
     });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
@@ -1227,7 +1223,7 @@ describe('V2 — the corner test and the direction test agree on the boundary', 
 
   test('the far edges are inclusive too, and beyond them is still outside', () => {
     const { book: app } = book({ pageCount: 6, width: 200, height: 300, initialPage: 2 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     // The last column and the last row of the book.
@@ -1285,11 +1281,11 @@ describe('AN4 — a turn started from `changeState` cannot be overrun either', (
 
     // The nested turn is the one that owns the book, and it is intact.
     expect(app.getState()).toBe(FlippingState.FLIPPING);
-    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
-    expect(app.getRender().isAnimating()).toBe(true);
+    expect(testFlip(app)!.getCalculation()).not.toBeNull();
+    expect(testRender(app).isAnimating()).toBe(true);
 
     // …and it lands normally, once, when it finishes.
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
     expect(seen).toEqual([1]);
     expect(app.getCurrentPageIndex()).toBe(1);
   });
@@ -1314,10 +1310,10 @@ describe('AN4 — a turn started from `changeState` cannot be overrun either', (
     // The phantom spread index is the collection's PUBLIC state. Leaving it
     // installed is what made a later `flipToPage` compute its direction from a
     // spread the book was never on.
-    expect(app.getPageCollection().getCurrentSpreadIndex()).toBe(0);
+    expect(testCollection(app).getCurrentSpreadIndex()).toBe(0);
     expect(app.getCurrentPageIndex()).toBe(0);
 
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
     expect(app.getCurrentPageIndex()).toBe(1);
   });
 
@@ -1332,7 +1328,7 @@ describe('AN4 — a turn started from `changeState` cannot be overrun either', (
     expect(app.flipNext()).toBe(true);
     expect(states).toEqual(['flipping']);
 
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
     expect(app.getCurrentPageIndex()).toBe(1);
   });
 });
@@ -1348,19 +1344,19 @@ describe('AN4 — a turn started from `changeState` cannot be overrun either', (
 describe('AN6 — an interrupted turn takes its destination with it', () => {
   test('a drag that grabs a `flip(page)` makes its OWN one-step turn', () => {
     const { book: app } = book({ pageCount: 8, width: 200, height: 300, flippingTime: 400 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
     const leafLeft = rect.left + rect.width - rect.pageWidth;
 
     app.flip(5);
-    expect(app.getRender().isAnimating()).toBe(true);
+    expect(testRender(app).isAnimating()).toBe(true);
 
     // The reader catches the moving leaf and carries it across the spine.
     app.startUserTouch({ x: leafLeft + rect.pageWidth - 20, y: rect.top + 5 });
     app.userMove({ x: leafLeft + rect.pageWidth - 60, y: rect.top + 8 }, false);
     app.userMove({ x: leafLeft - rect.pageWidth, y: rect.top + 10 }, false);
     app.userStop({ x: leafLeft - rect.pageWidth, y: rect.top + 10 });
-    app.getRender().finishAnimation();
+    testRender(app).finishAnimation();
 
     // Reverted fix: 5. V1 cancels the `flip(5)` and resets the calculation, but
     // `pendingTarget` survived `reset()` — so the reader's own one-step turn
@@ -1391,10 +1387,10 @@ describe('AN6 — an interrupted turn takes its destination with it', () => {
     // after which the outer arm restored only the index. Two public getters
     // contradicting each other is not a state any consumer can reason about.
     const index = app.getCurrentPageIndex();
-    const spread = app.getPageCollection().getCurrentSpreadIndex();
+    const spread = testCollection(app).getCurrentSpreadIndex();
     expect(index).toBe(1);
     expect(spread).toBe(1);
-    expect(app.getPageCollection().getSpreadIndexByPage(index)).toBe(spread);
+    expect(testCollection(app).getSpreadIndexByPage(index)).toBe(spread);
   });
 
   test('the phantom spread is never observable from a `changeState` listener', () => {
@@ -1409,7 +1405,7 @@ describe('AN6 — an interrupted turn takes its destination with it', () => {
       // state throws `DESTROYED` — and since E2 rethrows the first listener
       // error synchronously, that throw comes out of `book.destroy()` itself.
       if (app.isDestroyed()) return;
-      seen.push(app.getPageCollection().getCurrentSpreadIndex());
+      seen.push(testCollection(app).getCurrentSpreadIndex());
     });
 
     app.flip(5);
@@ -1426,7 +1422,7 @@ describe('AN6 — an interrupted turn takes its destination with it', () => {
 describe('AN5 — the last two places turn setup calls out to consumer code', () => {
   test('a `user_fold` listener’s turn is not dragged by the finger that woke it', () => {
     const { book: app } = book({ pageCount: 8, width: 200, height: 300, flippingTime: 400 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
     const leafLeft = rect.left + rect.width - rect.pageWidth;
 
@@ -1477,7 +1473,7 @@ describe('AN5 — the last two places turn setup calls out to consumer code', ()
     // never be the thing that commits a page, least of all someone else's.
     expect(app.getCurrentPageIndex()).toBe(2);
     expect(app.getState()).toBe(FlippingState.FLIPPING);
-    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+    expect(testFlip(app)!.getCalculation()).not.toBeNull();
   });
 });
 
@@ -1499,20 +1495,17 @@ describe('AN5 — the last two places turn setup calls out to consumer code', ()
 describe('checkState — a hover arriving mid-turn is a no-op', () => {
   /** A hover: pointer up, no buttons, so `UI` routes it to `showCorner`. */
   function hover(app: ReturnType<typeof book>['book'], x: number, y: number): void {
-    app
-      .getUI()
-      .getDistElement()
-      .dispatchEvent(
-        new PointerEvent('pointermove', {
-          bubbles: true,
-          cancelable: true,
-          pointerId: 1,
-          pointerType: 'mouse',
-          buttons: 0,
-          clientX: x,
-          clientY: y,
-        }),
-      );
+    app.getBlockElement().dispatchEvent(
+      new PointerEvent('pointermove', {
+        bubbles: true,
+        cancelable: true,
+        pointerId: 1,
+        pointerType: 'mouse',
+        buttons: 0,
+        clientX: x,
+        clientY: y,
+      }),
+    );
   }
 
   test('a hover away from the corners during FLIPPING does not finish the turn', () => {
@@ -1532,12 +1525,12 @@ describe('checkState — a hover arriving mid-turn is a no-op', () => {
 
     expect(app.getCurrentPageIndex()).toBe(0);
     expect(app.getState()).toBe(FlippingState.FLIPPING);
-    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+    expect(testFlip(app)!.getCalculation()).not.toBeNull();
   });
 
   test('a hover ON a corner during FLIPPING does not drag the in-flight fold', () => {
     const { book: app } = book({ pageCount: 6, initialPage: 0, flippingTime: 400 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     expect(app.flipNext()).toBe(true);
@@ -1554,7 +1547,7 @@ describe('checkState — a hover arriving mid-turn is a no-op', () => {
 
   test('a hover during USER_FOLD does not steal the drag', () => {
     const { book: app } = book({ pageCount: 6, initialPage: 0, flippingTime: 400 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     // A real drag: down on the forward corner, then past the 5 px threshold.
@@ -1587,6 +1580,6 @@ describe('checkState — a hover arriving mid-turn is a no-op', () => {
     hover(app, rect.left + rect.width - 4, rect.top + 4);
 
     expect(app.getState()).toBe(FlippingState.FOLD_CORNER);
-    expect(app.getFlipController()!.getCalculation()).not.toBeNull();
+    expect(testFlip(app)!.getCalculation()).not.toBeNull();
   });
 });

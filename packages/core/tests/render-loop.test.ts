@@ -22,7 +22,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ADOPT_ORIENTATION } from '../src/internal';
+import { ADOPT_ORIENTATION, GET_UI } from '../src/internal';
 
 import { PageFlipError } from '../src/errors';
 import { FlipDirection } from '../src/Flip/Flip';
@@ -82,7 +82,7 @@ function makeHarness(
   const updateOrientation = vi.fn();
 
   const app = {
-    getUI: () => ({ getDistElement: () => box }),
+    [GET_UI]: () => ({ getDistElement: () => box }),
     getSettings: () => setting,
     [ADOPT_ORIENTATION]: updateOrientation,
   } as unknown as PageFlip;
@@ -647,7 +647,7 @@ describe('R4 — a turn chained from onAnimateEnd survives', () => {
     // The second site of the same defect, and the one most likely to fire in
     // production: `flippingTime: 0` / `prefers-reduced-motion` is exactly where
     // consumers auto-advance. A fix applied to `finishAnimation()` alone leaves
-    // `startAnimation`'s own trailing `this.animation = null` to discard the
+    // `startAnimation`'s own trailing `this.animation = null` to discard the'
     // chained turn.
     const { render, tick } = makeHarness();
     const trace: string[] = [];
@@ -793,7 +793,7 @@ describe('R6 — WebKit detection, not brand detection', () => {
    *
    * Provenance:
    *  - `playwright-webkit` / `playwright-chromium` were **measured** in this
-   *    repo on 2026-08-29 by launching `@playwright/test`'s bundled browsers
+   *    repo on 2026-08-29 by launching `@playwright/test`'s bundled browsers'
    *    and reading `navigator.userAgent`. These two are what `pnpm test:e2e`
    *    actually runs, so they are the only rows that are not transcriptions.
    *  - The Android System WebView row is the format documented by Chromium

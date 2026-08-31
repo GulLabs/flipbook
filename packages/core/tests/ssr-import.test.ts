@@ -1,20 +1,15 @@
 import { describe, expect, test } from 'vitest';
-import { PageFlip, Settings, effectiveFlippingTime } from '@gullabs/flipbook-core';
+import { PageFlip } from '@gullabs/flipbook-core';
 
 describe('SSR / Node import of shipped core', () => {
-  test('does not require window at import time', () => {
+  test('does not require window at import time', async () => {
     expect(typeof window).toBe('undefined');
-    const settings = new Settings().resolve({
-      width: 320,
-      height: 480,
-      flippingTime: 0,
-      respectReducedMotion: true,
-    });
-    expect(settings.flippingTime).toBe(0);
-    expect(settings.respectReducedMotion).toBe(true);
-    expect(effectiveFlippingTime(800, false)).toBe(800);
-    expect(effectiveFlippingTime(0, true)).toBe(0);
-    expect(typeof PageFlip).toBe('function');
+    // Dynamic import is the consumer path under SSR: the package entry must
+    // load without touching window/document.
+    const core = await import('@gullabs/flipbook-core');
+    expect(typeof core.PageFlip).toBe('function');
+    expect(core.SizeMode.FIXED).toBe('fixed');
+    expect(core.ALL_POINTERS.length).toBe(3);
   });
 
   test('constructor with flippingTime 0 returns a usable settings object', () => {
@@ -28,6 +23,7 @@ describe('SSR / Node import of shipped core', () => {
     expect(got.flippingTime).toBe(0);
     expect(got.width).toBe(200);
     expect(got.pageBackground.length).toBeGreaterThan(0);
+    expect(book.isReady()).toBe(false);
   });
 
   test('destroy is a no-op the second time; the engine stays dead', () => {
@@ -40,6 +36,7 @@ describe('SSR / Node import of shipped core', () => {
     book.destroy();
     book.destroy();
     expect(book.isDestroyed()).toBe(true);
-    expect(book.getFlipController()).toBeNull();
+    expect(book.isReady()).toBe(false);
+    expect(book.isAnimating()).toBe(false);
   });
 });

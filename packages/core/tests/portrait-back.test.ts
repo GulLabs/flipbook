@@ -1,9 +1,7 @@
 import { describe, expect, test } from 'vitest';
-import {
-  FlipDirection,
-  getPortraitFlippingPage,
-  shouldDrawBottomPage,
-} from '@gullabs/flipbook-core';
+import { getPortraitFlippingPage } from '../src/Collection/flippingPage';
+import { shouldDrawBottomPage } from '../src/Render/bottomPage';
+import { FlipDirection } from '../src/Flip/Flip';
 
 type Leaf = {
   id: string;

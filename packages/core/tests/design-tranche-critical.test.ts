@@ -8,13 +8,8 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import {
-  PageFlip,
-  PageFlipError,
-  Settings,
-  FlippingState,
-  ALL_POINTERS,
-} from '@gullabs/flipbook-core';
+import { PageFlip, PageFlipError, FlippingState, ALL_POINTERS } from '@gullabs/flipbook-core';
+import { Settings } from '../src/Settings';
 import type { BookSnapshot, TurnRejected } from '@gullabs/flipbook-core';
 import {
   installPointerCaptureShims,
@@ -182,7 +177,7 @@ describe('D2 — pointerInput filters each pointer, not just empty-vs-not', () =
       pointerInput: ['touch'],
     });
 
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const c = cornerForward(book);
 
     pointer('pointerdown', dist, {
@@ -210,7 +205,7 @@ describe('D2 — pointerInput filters each pointer, not just empty-vs-not', () =
       pointerInput: ['touch'],
     });
 
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const c = cornerForward(book);
 
     pointer('pointerdown', dist, {
@@ -241,7 +236,7 @@ describe('D2 — pointerInput filters each pointer, not just empty-vs-not', () =
       foldCornerOnHover: true,
     });
 
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const c = cornerForward(book);
 
     pointer('pointermove', dist, {
@@ -263,7 +258,7 @@ describe('D2 — pointerInput filters each pointer, not just empty-vs-not', () =
       pointerInput: [],
     });
 
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const c = cornerForward(book);
 
     pointer('pointerdown', dist, { clientX: c.x, clientY: c.y, pointerType: 'touch' });
@@ -278,7 +273,7 @@ describe('D2 — pointerInput filters each pointer, not just empty-vs-not', () =
     const { book, destroy } = makeHtmlBook({ pageCount: 4, flippingTime: 0 });
     expect(book.getSettings().pointerInput).toEqual([...ALL_POINTERS]);
 
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const c = cornerForward(book);
     pointer('pointerdown', dist, { clientX: c.x, clientY: c.y });
     pointer('pointerup', dist, { clientX: c.x, clientY: c.y });
@@ -295,7 +290,7 @@ describe('D2 — pointerInput filters each pointer, not just empty-vs-not', () =
       pointerInput: ['touch'],
     });
 
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const c = cornerForward(book);
     pointer('pointerdown', dist, { clientX: c.x, clientY: c.y, pointerType: 'pen', pointerId: 3 });
     pointer('pointerup', dist, { clientX: c.x, clientY: c.y, pointerType: 'pen', pointerId: 3 });
@@ -310,7 +305,7 @@ describe('D2 — pointerInput filters each pointer, not just empty-vs-not', () =
     // worse than one extra accepted pointer — but only while the consumer has
     // not narrowed the list.
     const open = makeHtmlBook({ pageCount: 4, flippingTime: 0 });
-    const distOpen = open.book.getUI().getDistElement();
+    const distOpen = open.book.getBlockElement();
     const cOpen = cornerForward(open.book);
     pointer('pointerdown', distOpen, {
       clientX: cOpen.x,
@@ -330,7 +325,7 @@ describe('D2 — pointerInput filters each pointer, not just empty-vs-not', () =
       flippingTime: 0,
       pointerInput: ['touch'],
     });
-    const distClosed = closed.book.getUI().getDistElement();
+    const distClosed = closed.book.getBlockElement();
     const cClosed = cornerForward(closed.book);
     pointer('pointerdown', distClosed, {
       clientX: cClosed.x,
@@ -355,7 +350,7 @@ describe('D2 — pointerInput filters each pointer, not just empty-vs-not', () =
       pointerInput: ['mouse', 'touch', 'pen'],
     });
 
-    const dist = book.getUI().getDistElement();
+    const dist = book.getBlockElement();
     const rect = book.getBoundsRect();
     const y = rect.top + rect.height / 2;
     const startX = rect.left + rect.width - 10;
@@ -657,7 +652,7 @@ describe('ready/loaded — generation guard and empty-shell deferral', () => {
 
     // The surviving announcement is the NEWER load. A missing generation check
     // ends with 6 last (or with both).
-    expect(loadedCounts.at(-1)).toBe(2);
+    expect(loadedCounts[loadedCounts.length - 1]).toBe(2);
     expect(loadedCounts).not.toContain(6);
     expect(book.getPageCount()).toBe(2);
 

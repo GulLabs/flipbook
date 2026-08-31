@@ -1,10 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import {
-  DEFAULT_PAGE_BACKGROUND,
-  isOpaquePageBackground,
-  safePageBackground,
-} from '@gullabs/flipbook-core';
 import { foldFill } from '../src/Render/pageBackground';
+import { DEFAULT_PAGE_BACKGROUND } from '../src/Render/pageBackground';
+import { isOpaquePageBackground } from '../src/Render/pageBackground';
+import { safePageBackground } from '../src/Render/pageBackground';
 
 describe('opaque fold fill (shipped)', () => {
   test('temporary copy / fold use opaque pageBackground', () => {

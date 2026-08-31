@@ -39,10 +39,12 @@
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import { FlipDirection, Orientation, PageDensity } from '@gullabs/flipbook-core';
-import type { HTMLPage } from '@gullabs/flipbook-core';
+import { Orientation, PageDensity } from '@gullabs/flipbook-core';
 import type { PageFlip } from '@gullabs/flipbook-core';
+import { HTMLPage } from '../src/Page/HTMLPage';
 import { makeHtmlBook } from './html-book-fixture';
+import { testFlip, testRender, testPage } from './engine-access';
+import { FlipDirection } from '../src/Flip/Flip';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -91,13 +93,13 @@ function leafEdges(book: PageFlip): { left: number; right: number } {
 }
 
 function flipOf(book: PageFlip) {
-  const flip = book.getFlipController();
+  const flip = testFlip(book);
   if (flip === null) throw new Error('no flip controller');
   return flip;
 }
 
 function drawOneFrame(book: PageFlip): void {
-  (book.getRender() as unknown as DrawableRender).drawFrame();
+  (testRender(book) as unknown as DrawableRender).drawFrame();
 }
 
 /**
@@ -123,7 +125,7 @@ function drag(book: PageFlip, xs: number[]) {
     flip,
     calc,
     side: calc.getDirection(),
-    localX: book.getRender().convertToPage(last).x,
+    localX: testRender(book).convertToPage(last).x,
     position: calc.getPosition(),
     progress: calc.getFlippingProgress(),
   };
@@ -158,7 +160,7 @@ describe('the fixtures are what the assertions assume', () => {
       // fix rests on: the visible leaf is the RIGHT half of the bounds rect,
       // so a BACK fold's spine is its right edge and not `left + width / 2`.
       drawOneFrame(book);
-      const el = (book.getPage(2) as HTMLPage | null)?.getElement();
+      const el = (testPage(book, 2) as HTMLPage | null)?.getElement();
       expect(el?.style.left, reading).toBe('90px');
       expect(el?.style.width, reading).toBe('200px');
       expect(leafEdges(book), reading).toEqual({ left: 90, right: 290 });
@@ -191,11 +193,11 @@ describe('the fixtures are what the assertions assume', () => {
     // broken code by accident.
     const back = portraitBook();
     expect(foldAt(back, leafEdges(back).left + 30).side).toBe(FlipDirection.BACK);
-    expect(back.getRender().getDirection()).toBe(FlipDirection.BACK);
+    expect(testRender(back).getDirection()).toBe(FlipDirection.BACK);
 
     const forward = portraitBook();
     expect(foldAt(forward, leafEdges(forward).right - 30).side).toBe(FlipDirection.FORWARD);
-    expect(forward.getRender().getDirection()).toBe(FlipDirection.FORWARD);
+    expect(testRender(forward).getDirection()).toBe(FlipDirection.FORWARD);
   });
 });
 
@@ -330,7 +332,7 @@ describe('X1 — the frame is re-anchored for DRAWING too, not only measuring', 
     // Re-anchoring `convertToPage` alone would leave the fold measuring
     // correctly and rendering a whole pageWidth to the left of the book.
     const book = portraitBook();
-    const render = book.getRender();
+    const render = testRender(book);
 
     for (const x of [90, 150, 289]) {
       const local = render.convertToPage({ x, y: 40 }, FlipDirection.BACK);
@@ -343,7 +345,7 @@ describe('X1 — the frame is re-anchored for DRAWING too, not only measuring', 
 
   test('the portrait BACK frame runs spine → free edge across the visible leaf', () => {
     const book = portraitBook();
-    const render = book.getRender();
+    const render = testRender(book);
     const edges = leafEdges(book);
 
     const spine = render.convertToGlobal({ x: 0, y: 0 }, FlipDirection.BACK);
@@ -364,8 +366,8 @@ describe('X1 — the frame is re-anchored for DRAWING too, not only measuring', 
     drag(book, [edges.left + 10, edges.left + 60]);
     drawOneFrame(book);
 
-    const under = (book.getPage(1) as HTMLPage | null)?.getElement();
-    expect(under?.style.display).toBe('block');
+    const under = (testPage(book, 1) as HTMLPage | null)?.getElement();
+    expect(under?.classList.contains('--shown')).toBe(true);
     expect(under?.style.transform).toContain(`translate3d(${edges.left}px,0px,0)`);
   });
 });
@@ -392,7 +394,7 @@ describe('X1 — landscape geometry is not touched', () => {
   test('the landscape BACK frame is still anchored on the book’s spine', () => {
     const book = landscapeBook();
     const rect = book.getBoundsRect();
-    const render = book.getRender();
+    const render = testRender(book);
 
     const spine = render.convertToGlobal({ x: 0, y: 0 }, FlipDirection.BACK);
     const free = render.convertToGlobal({ x: rect.pageWidth, y: 0 }, FlipDirection.BACK);
@@ -429,7 +431,7 @@ describe('X1 — landscape geometry is not touched', () => {
 describe('X3 — drawShadow: false mid-fold clears the shadow already drawn', () => {
   /** The HTML renderer's soft outer-shadow element. */
   function shadowDisplay(book: PageFlip): string {
-    const el = book.getUI().getDistElement().querySelector('.stf__outerShadow');
+    const el = book.getBlockElement().querySelector('.stf__outerShadow');
     return (el as HTMLElement | null)?.style.display ?? 'missing';
   }
 
@@ -445,7 +447,7 @@ describe('X3 — drawShadow: false mid-fold clears the shadow already drawn', ()
 
     // A hard leaf would take the hard-shadow path and never touch the element
     // inspected below.
-    expect(book.getPage(2)?.getDrawingDensity()).toBe(PageDensity.SOFT);
+    expect(testPage(book, 2)?.getDrawingDensity()).toBe(PageDensity.SOFT);
 
     drawOneFrame(book);
     expect(shadowDisplay(book)).toBe('block');

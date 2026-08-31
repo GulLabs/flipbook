@@ -4,8 +4,10 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { HTMLPage, PageDensity, PageFlip } from '@gullabs/flipbook-core';
+import { PageDensity, PageFlip } from '@gullabs/flipbook-core';
 import { installPointerCaptureShims, makeHtmlBook } from './html-book-fixture';
+import { HTMLPage } from '../src/Page/HTMLPage';
+import { testPage } from './engine-access';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -57,7 +59,7 @@ function pointer(
 function clonesIn(app: PageFlip, pages: HTMLElement[]): HTMLElement[] {
   // In HTML mode the dist element IS `.stf__block` — assert that rather than
   // assume it, so a structural change fails loudly instead of finding nothing.
-  const block = app.getUI().getDistElement();
+  const block = app.getBlockElement();
   expect(block.classList.contains('stf__block')).toBe(true);
 
   return [...block.querySelectorAll<HTMLElement>('.stf__item')].filter((el) => !pages.includes(el));
@@ -80,7 +82,7 @@ describe('RB6 — the temporary fold copy is out of the a11y tree and out of foc
 
     expect(clonesIn(app, pages)).toHaveLength(0);
 
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
     const y = rect.top + rect.height - 8;
     const press = (x: number, type = 'pointermove') =>
@@ -120,7 +122,7 @@ describe('RB6 — the temporary fold copy is out of the a11y tree and out of foc
   test('`draw()` re-emits pointer-events on every frame (cssText is rewritten wholesale)', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
 
-    const page = app.getPage(1) as HTMLPage;
+    const page = testPage(app, 1) as HTMLPage;
     const copy = page.newTemporaryCopy() as HTMLPage;
     expect(copy).not.toBe(page);
 
@@ -151,7 +153,7 @@ describe('RB6 — the temporary fold copy is out of the a11y tree and out of foc
     pages[1]!.id = 'chapter-1';
     app.updateFromHtml(pages);
 
-    const page = app.getPage(1) as HTMLPage;
+    const page = testPage(app, 1) as HTMLPage;
     const copy = page.newTemporaryCopy() as HTMLPage;
 
     expect(copy.getElement().id).toBe('chapter-1');
@@ -171,7 +173,7 @@ describe('RB6 — the temporary fold copy is out of the a11y tree and out of foc
 describe('H7 — HTMLPage has no field that pretends to gate drawing', () => {
   test('load() adds no state; `isLoad` is not an own property', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
 
     // TypeScript `private` is a compile-time notion — a class field is an own
     // property at runtime, so this is a real check that the field is gone and

@@ -44,7 +44,7 @@ afterEach(() => {
  * then be measuring the wrong mechanism.
  */
 function drag(app: PageFlip, dx: number): void {
-  const dist = app.getUI().getDistElement();
+  const dist = app.getBlockElement();
   const rect = app.getBoundsRect();
   // Mid-height: clear of both corner bands, so nothing here is a corner fold.
   const y = rect.top + rect.height / 2;
@@ -183,7 +183,7 @@ describe('runtime-updatable settings reach their collaborator', () => {
  * consistency fix and not a defect.
  *
  * What it does prove is the invariant that makes both readers correct: settings
- * reach `Render` live. Revert THAT — clone the object in `Render`'s constructor
+ * reach `Render` live. Revert THAT — clone the object in `Render`'s constructor'
  * — and this fails. That is the failure W2 was insurance against, and it is the
  * one worth a test.
  */
@@ -203,7 +203,7 @@ describe('settings reach Render live, not by value', () => {
     // orientation never moves at all. Stubbing the host looks right, changes
     // nothing, and lets every assertion below pass without reaching the branch
     // it names; the first two drafts of this test did exactly that.
-    const measured = book.getUI().getDistElement();
+    const measured = book.getBlockElement();
     sizeElement(measured, 250, 400);
     book.update();
     expect(book.getOrientation()).toBe(Orientation.PORTRAIT);

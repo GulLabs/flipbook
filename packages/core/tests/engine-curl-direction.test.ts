@@ -28,6 +28,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { PageFlip } from '@gullabs/flipbook-core';
 import type { Point } from '../src/BasicTypes';
 import { makeHtmlBook } from './html-book-fixture';
+import { testFlip, testRender } from './engine-access';
 
 /** `Render.FrameAction` is module-local; this is the same shape. */
 type Frame = () => void;
@@ -54,7 +55,7 @@ function book(opts?: Parameters<typeof makeHtmlBook>[0]) {
  * anything can read it (AGENTS.md §4).
  */
 function finalLocalPoint(app: PageFlip, turn: () => void): Point {
-  const render = app.getRender();
+  const render = testRender(app);
   const captured: Frame[][] = [];
   const original = render.startAnimation.bind(render);
 
@@ -78,7 +79,7 @@ function finalLocalPoint(app: PageFlip, turn: () => void): Point {
   // destination `animateFlippingTo` was given.
   frames[frames.length - 1]!();
 
-  const calc = app.getFlipController()!.getCalculation();
+  const calc = testFlip(app)!.getCalculation();
   expect(calc, 'the calculation must still be live mid-turn').not.toBeNull();
 
   return calc!.getPosition();

@@ -3,14 +3,11 @@
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import {
-  FlippingState,
-  HTMLPage,
-  PageDensity,
-  PageFlip,
-  PageOrientation,
-} from '@gullabs/flipbook-core';
+import { FlippingState, PageDensity, PageFlip } from '@gullabs/flipbook-core';
+import { PageOrientation } from '../src/Page/Page';
 import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
+import { testFlip, testRender, testPage } from './engine-access';
+import { HTMLPage } from '../src/Page/HTMLPage';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -50,7 +47,7 @@ function bookWithPages(
     ...opts,
   });
   book.loadFromHTML(pages);
-  sizeElement(book.getUI().getDistElement(), hostW, hostH);
+  sizeElement(book.getBlockElement(), hostW, hostH);
   book.update();
   return {
     book,
@@ -70,13 +67,16 @@ describe('HTMLRender + HTMLPage fold paint', () => {
     });
 
     app.update();
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
     page.simpleDraw(PageOrientation.RIGHT);
 
-    const css = page.getElement().style.cssText;
+    const el = page.getElement();
+    const css = el.style.cssText;
     expect(css.toLowerCase()).toMatch(/background-color:\s*(#f5f0e6|rgb\(245,\s*240,\s*230\))/i);
-    expect(page.getElement().classList.contains('--simple')).toBe(true);
-    expect(css).toMatch(/display:\s*block/i);
+    expect(el.classList.contains('--simple')).toBe(true);
+    // Visibility is class-based (`.stf__item.--shown{display:block}`), not an
+    // inline `display` — inline block was dropping consumer `display:flex`.
+    expect(el.classList.contains('--shown')).toBe(true);
   });
 
   test('temporary soft copy gets opaque fold fill on portrait BACK', () => {
@@ -86,7 +86,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
       initialPage: 2,
       pageBackground: '#fff',
     });
-    const current = app.getPage(2) as HTMLPage;
+    const current = testPage(app, 2) as HTMLPage;
     expect(current.getDensity()).toBe(PageDensity.SOFT);
 
     const copy = current.newTemporaryCopy() as HTMLPage;
@@ -99,9 +99,9 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
   test('soft fold draw paints clip-path; clearShadow hides overlay nodes', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, drawShadow: true });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
 
     // Drive fold through the real controller (not a stubbed animation).
     flip.fold({ x: rect.left + rect.width - 5, y: rect.top + 20 });
@@ -109,7 +109,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
     expect(flip.getCalculation()).not.toBeNull();
 
     // drawFrame only runs on rAF; paint the current leaf directly and assert cssText.
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
     page.setArea([
       { x: 0, y: 0 },
       { x: 180, y: 10 },
@@ -126,7 +126,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
     const outer = dist.querySelector<HTMLElement>('.stf__outerShadow');
     expect(outer).toBeTruthy();
-    app.getRender().clearShadow();
+    testRender(app).clearShadow();
     expect(outer!.style.cssText).toMatch(/display:\s*none/i);
 
     flip.stopMove();
@@ -138,7 +138,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
     pages[0]!.dataset.density = 'hard';
     // Rebuild so density is HARD.
     app.updateFromHtml(pages);
-    const hard = app.getPage(0) as HTMLPage;
+    const hard = testPage(app, 0) as HTMLPage;
     hard.setDrawingDensity(PageDensity.HARD);
     hard.setOrientation(PageOrientation.RIGHT);
     hard.setHardDrawingAngle(45);
@@ -153,8 +153,8 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
   test('drawBottomPage skips only when flippingPage === bottomPage (hard cover)', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, hardCovers: true });
-    const render = app.getRender();
-    const page = app.getPage(0) as HTMLPage;
+    const render = testRender(app);
+    const page = testPage(app, 0) as HTMLPage;
 
     // Same reference → shouldDrawBottomPage false → no draw crash.
     render.setFlippingPage(page);
@@ -166,7 +166,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
   test('updateFromHtml keeps shadow nodes (no wholesale innerHTML wipe)', () => {
     const { book: app, pages } = book({ pageCount: 3, flippingTime: 0 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     expect(dist.querySelector('.stf__outerShadow')).toBeTruthy();
 
     const next = [...pages, document.createElement('div')];
@@ -180,7 +180,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
   test('setDrawingDensity toggles --soft / --hard classes', () => {
     const { book: app } = book({ pageCount: 2, flippingTime: 0 });
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
     page.setDrawingDensity(PageDensity.HARD);
     expect(page.getElement().classList.contains('--hard')).toBe(true);
     page.setDrawingDensity(PageDensity.SOFT);
@@ -189,7 +189,7 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 
   test('soft draw includes foldFillCss and transform for a prepared area', () => {
     const { book: app } = book({ pageCount: 3, flippingTime: 0, pageBackground: '#eaeaea' });
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
     page.setArea([
       { x: 0, y: 0 },
       { x: 200, y: 0 },
@@ -210,9 +210,9 @@ describe('HTMLRender + HTMLPage fold paint', () => {
 describe('HTMLRender drawFrame via rAF (soft + hard shadows)', () => {
   test('soft fold paints outer/inner shadow cssText on animation frames', async () => {
     const { book: app } = book({ pageCount: 5, flippingTime: 200, drawShadow: true });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
 
     flip.fold({ x: rect.left + rect.width - 8, y: rect.top + 25 });
     expect(flip.getCalculation()).not.toBeNull();
@@ -258,7 +258,7 @@ describe('HTMLRender drawFrame via rAF (soft + hard shadows)', () => {
     });
     books.push({ destroy });
 
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     // Start on page 0 hard cover; FORWARD fold.
     const rect = app.getBoundsRect();
     flip.fold({ x: rect.left + rect.width - 6, y: rect.top + 30 });
@@ -267,11 +267,8 @@ describe('HTMLRender drawFrame via rAF (soft + hard shadows)', () => {
       requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
     });
 
-    const hard = app.getUI().getDistElement().querySelector<HTMLElement>('.stf__hardShadow');
-    const hardInner = app
-      .getUI()
-      .getDistElement()
-      .querySelector<HTMLElement>('.stf__hardInnerShadow');
+    const hard = app.getBlockElement().querySelector<HTMLElement>('.stf__hardShadow');
+    const hardInner = app.getBlockElement().querySelector<HTMLElement>('.stf__hardInnerShadow');
     expect(hard).toBeTruthy();
     expect(hardInner).toBeTruthy();
 
@@ -280,9 +277,9 @@ describe('HTMLRender drawFrame via rAF (soft + hard shadows)', () => {
 
   test('reload recreates missing shadow nodes', () => {
     const { book: app } = book({ pageCount: 3, flippingTime: 0 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     dist.querySelector('.stf__outerShadow')?.remove();
-    app.getRender().reload();
+    testRender(app).reload();
     expect(dist.querySelector('.stf__outerShadow')).toBeTruthy();
   });
 });

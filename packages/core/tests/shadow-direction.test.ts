@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import { PageFlip } from '@gullabs/flipbook-core';
 import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
+import { testFlip, testRender } from './engine-access';
 
 /** `flippingPage` is protected with no getter; same cast idiom as the other suites. */
 type HardLeaf = { getDrawingDensity: () => string };
@@ -70,7 +71,7 @@ function hardBook(): PageFlip {
     hardCovers: true,
   });
   book.loadFromHTML(pages);
-  sizeElement(book.getUI().getDistElement(), 520, 300);
+  sizeElement(book.getBlockElement(), 520, 300);
   book.update();
 
   books.push({
@@ -84,7 +85,7 @@ function hardBook(): PageFlip {
 
 /** The live cssText of a shadow node, after a frame has actually been drawn. */
 function shadowCss(book: PageFlip, selector: string): string {
-  const el = book.getUI().getDistElement().querySelector<HTMLElement>(selector);
+  const el = book.getBlockElement().querySelector<HTMLElement>(selector);
   expect(el, `no ${selector} in the dist element`).not.toBeNull();
   return el!.style.cssText;
 }
@@ -100,12 +101,12 @@ function foldFrom(book: PageFlip, edge: 'left' | 'right', depth = 60): void {
   const y = rect.top + rect.height / 2;
   const x = edge === 'right' ? rect.left + rect.width - 6 : rect.left + 6;
 
-  const flip = book.getFlipController()!;
+  const flip = testFlip(book)!;
   flip.fold({ x, y });
   // Move inward so the fold has real width and the shadows are painted.
   flip.fold({ x: edge === 'right' ? x - depth : x + depth, y });
 
-  (book.getRender() as unknown as { drawFrame: () => void }).drawFrame();
+  (testRender(book) as unknown as { drawFrame: () => void }).drawFrame();
 }
 
 describe('soft fold — inner shadow gradient direction', () => {
@@ -273,7 +274,7 @@ describe('hard fold — shadow face selection', () => {
 
     // The whole point is the HARD path — if the mover ever stopped being the
     // hard cover these would silently become soft-fold tests.
-    const mover = (book.getRender() as unknown as { flippingPage: HardLeaf | null }).flippingPage;
+    const mover = (testRender(book) as unknown as { flippingPage: HardLeaf | null }).flippingPage;
     expect(mover?.getDrawingDensity()).toBe('hard');
     return book;
   }

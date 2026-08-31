@@ -13,7 +13,7 @@ describe('HTMLUI.updateItems (shipped)', () => {
     b.textContent = 'B';
     const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
     book.loadFromHTML([a, b]);
-    const block = book.getUI().getDistElement();
+    const block = book.getBlockElement();
     const shadow = document.createElement('div');
     shadow.setAttribute('data-test-shadow', '1');
     block.appendChild(shadow);
@@ -46,7 +46,7 @@ describe('clear() and the framework that owns the leaves', () => {
     const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
     book.loadFromHTML([]);
 
-    const block = book.getUI().getDistElement();
+    const block = book.getBlockElement();
 
     // A framework-owned leaf: created inside the block, never adopted from
     // elsewhere — exactly what createPortal produces.
@@ -70,7 +70,7 @@ describe('clear() and the framework that owns the leaves', () => {
     const book = new PageFlip(host, { width: 200, height: 300, flippingTime: 0 });
     book.loadFromHTML([]);
 
-    const block = book.getUI().getDistElement();
+    const block = book.getBlockElement();
     const portalled = document.createElement('div');
     block.appendChild(portalled);
 

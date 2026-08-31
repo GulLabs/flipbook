@@ -27,8 +27,8 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
  * signatures rather than `import … from 'node:fs'`.
  *
  * `@types/node` is a ROOT devDependency, so it is in the root `tsconfig.json`
- * program but not in `packages/core/tsconfig.json`'s — and `pnpm typecheck`
- * runs both. A literal `node:` specifier here fails `packages/core`'s typecheck
+ * program but not in `packages/core/tsconfig.json`'s — and `pnpm typecheck`'
+ * runs both. A literal `node:` specifier here fails `packages/core`'s typecheck'
  * with TS2591. Putting @types/node into `packages/core/package.json` would fix
  * it properly and is the right change; it is a manifest edit, so it is proposed
  * rather than made here. The locally declared shapes below are narrower than

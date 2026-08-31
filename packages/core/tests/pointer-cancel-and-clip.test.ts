@@ -34,13 +34,9 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import {
-  FlippingState,
-  HTMLPage,
-  PageDensity,
-  PageFlip,
-  PageFlipError,
-} from '@gullabs/flipbook-core';
+import { FlippingState, PageDensity, PageFlip, PageFlipError } from '@gullabs/flipbook-core';
+import { testFlip, testPage } from './engine-access';
+import { HTMLPage } from '../src/Page/HTMLPage';
 import {
   installPointerCaptureShims,
   makeHtmlBook,
@@ -110,7 +106,7 @@ function hover(target: EventTarget, clientX: number, clientY: number): void {
  */
 function swipeGesture(endType: 'pointerup' | 'pointercancel'): PageFlip {
   const { book: app } = book({ pageCount: 6, flippingTime: 0, swipeDistance: 30 });
-  const dist = app.getUI().getDistElement();
+  const dist = app.getBlockElement();
   const rect = app.getBoundsRect();
 
   const y = rect.top + 20;
@@ -145,20 +141,20 @@ describe('U2 pointercancel abandons the gesture instead of completing it', () =>
     // state machine in USER_FOLD.
     expect(app.getState()).toBe(FlippingState.READ);
 
-    const flip = app.getFlipController();
+    const flip = testFlip(app);
     expect(flip?.getCalculation() ?? null).toBeNull();
 
     // ...and the engine no longer believes a finger is down. A button-less
     // hover in the MIDDLE of the spread (nowhere near a corner) must fold
     // nothing; if `isUserTouch` were still set it would drag the fold.
     const rect = app.getBoundsRect();
-    hover(app.getUI().getDistElement(), rect.left + rect.width / 2, rect.top + rect.height / 2);
+    hover(app.getBlockElement(), rect.left + rect.width / 2, rect.top + rect.height / 2);
     expect(app.getState()).toBe(FlippingState.READ);
   });
 
   test('a cancelled slow drag past the midpoint does not complete the turn either', () => {
     const { book: app } = book({ pageCount: 6, flippingTime: 0, swipeDistance: 30 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
     const y = rect.top + 20;
     const startX = rect.left + rect.width - 10;
@@ -184,7 +180,7 @@ describe('U2 pointercancel abandons the gesture instead of completing it', () =>
 
   test('a cancel from a pointer that never owned the gesture is ignored', () => {
     const { book: app } = book({ pageCount: 6, flippingTime: 0 });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
 
     pointer('pointerdown', dist, {
@@ -260,7 +256,7 @@ function polygonArea(points: Array<[number, number]>): number {
 describe('U7 drawSoft never emits an invalid clip-path', () => {
   test('a real fold area produces a polygon enclosing area (fixture precondition)', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
 
     page.setArea([
       { x: 0, y: 0 },
@@ -285,7 +281,7 @@ describe('U7 drawSoft never emits an invalid clip-path', () => {
 
   test('an empty area clips the leaf to nothing, not to the whole rectangle', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
 
     page.setArea([]);
     page.setPosition({ x: 20, y: 0 });
@@ -315,7 +311,7 @@ describe('U7 drawSoft never emits an invalid clip-path', () => {
 
   test('an area of only null points is the same case', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
 
     // PRECONDITION: these are the entries the renderers skip, so the loop
     // really does produce zero vertices from a non-empty array.
@@ -337,7 +333,7 @@ describe('U7 drawSoft never emits an invalid clip-path', () => {
 describe('U8 newTemporaryCopy refuses a detached page element', () => {
   test('an attached leaf clones next to itself (fixture precondition)', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, initialPage: 2 });
-    const page = app.getPage(2) as HTMLPage;
+    const page = testPage(app, 2) as HTMLPage;
 
     // The HARD branch returns `this` and never appends; this must be the SOFT
     // path or the test proves nothing about the append.
@@ -354,7 +350,7 @@ describe('U8 newTemporaryCopy refuses a detached page element', () => {
 
   test('a detached leaf throws PageFlipError instead of animating nothing', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, initialPage: 2 });
-    const page = app.getPage(2) as HTMLPage;
+    const page = testPage(app, 2) as HTMLPage;
     const el = page.getElement();
 
     // A React unmount racing the turn: the node leaves the block while the
@@ -430,7 +426,7 @@ function dressedBook(): { app: PageFlip; host: HTMLElement; pages: HTMLElement[]
   });
 
   app.loadFromHTML(pages);
-  sizeElement(app.getUI().getDistElement(), hostW, hostH);
+  sizeElement(app.getBlockElement(), hostW, hostH);
   app.update();
 
   return { app, host, pages };
@@ -466,10 +462,10 @@ describe('U1 destroy() returns the consumer’s nodes undressed', () => {
 
     // A node the engine never adopted: React's portal renders straight into
     // the block, and release must not touch it.
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const portalled = document.createElement('div');
     portalled.className = 'stf__item --soft';
-    portalled.style.cssText = 'position:absolute;left:12px;';
+    portalled.style.cssText = 'position:absolute;left:12px';
     dist.appendChild(portalled);
 
     app.destroy();
@@ -534,7 +530,9 @@ describe('U1 destroy() returns the consumer’s nodes undressed', () => {
 
     expect(dropped.classList.contains('stf__item')).toBe(true);
     expect(dropped.style.position).toBe('absolute');
-    expect(dropped.style.borderRadius).toBe('');
+    // Surgical engine styles (NF4) leave consumer declarations alone while the
+    // leaf is dressed — a cssText wipe would have blanked border-radius here.
+    expect(dropped.style.borderRadius).toBe('8px');
 
     app.updateFromHtml(pages.slice(0, 3));
 
@@ -562,7 +560,7 @@ describe('U1 destroy() returns the consumer’s nodes undressed', () => {
  */
 function uncapturedDragBook(): { app: PageFlip; dist: HTMLElement } {
   const { book: app } = book({ pageCount: 6, flippingTime: 0 });
-  const dist = app.getUI().getDistElement();
+  const dist = app.getBlockElement();
 
   // A UA that declines this particular capture without throwing — the case
   // `pointerCaptured` exists for.
@@ -594,7 +592,7 @@ describe('Y3 pointerleave only ends the gesture it belongs to', () => {
     dist.dispatchEvent(new PointerEvent('pointerleave', { pointerId: 1, pointerType: 'mouse' }));
 
     expect(app.getState()).toBe(FlippingState.READ);
-    expect(app.getFlipController()?.getCalculation() ?? null).toBeNull();
+    expect(testFlip(app)?.getCalculation() ?? null).toBeNull();
     expect(app.getCurrentPageIndex()).toBe(0);
   });
 
@@ -602,7 +600,7 @@ describe('Y3 pointerleave only ends the gesture it belongs to', () => {
     const { app, dist } = uncapturedDragBook();
     expect(app.getState()).toBe(FlippingState.USER_FOLD);
 
-    const progress = app.getFlipController()?.getCalculation()?.getFlippingProgress();
+    const progress = testFlip(app)?.getCalculation()?.getFlippingProgress();
     // The fold is genuinely open and part-way: "unchanged" has to mean
     // something, and 0 or 100 would be reached by a dropped fold too.
     expect(progress).toBeGreaterThan(0);
@@ -614,7 +612,7 @@ describe('Y3 pointerleave only ends the gesture it belongs to', () => {
     dist.dispatchEvent(new PointerEvent('pointerleave', { pointerId: 2, pointerType: 'mouse' }));
 
     expect(app.getState()).toBe(FlippingState.USER_FOLD);
-    expect(app.getFlipController()?.getCalculation()?.getFlippingProgress()).toBe(progress);
+    expect(testFlip(app)?.getCalculation()?.getFlippingProgress()).toBe(progress);
 
     // ...and the drag is still live: it keeps tracking its own pointer.
     const rect = app.getBoundsRect();
@@ -623,9 +621,7 @@ describe('Y3 pointerleave only ends the gesture it belongs to', () => {
       clientX: rect.left + rect.width - 140,
       clientY: rect.top + 60,
     });
-    expect(app.getFlipController()?.getCalculation()?.getFlippingProgress()).toBeGreaterThan(
-      progress!,
-    );
+    expect(testFlip(app)?.getCalculation()?.getFlippingProgress()).toBeGreaterThan(progress!);
 
     // And the owner's own leave still ends it.
     dist.dispatchEvent(new PointerEvent('pointerleave', { pointerId: 1, pointerType: 'mouse' }));
@@ -637,7 +633,7 @@ describe('Y3 pointerleave only ends the gesture it belongs to', () => {
     // e.pointerId` is the obvious wrong spelling of this fix and it fails here:
     // `null !== 2` would return early and leave the corner folded up forever.
     const { book: app } = book({ pageCount: 6, flippingTime: 0, foldCornerOnHover: true });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
 
     hover(dist, rect.left + rect.width - 4, rect.top + rect.height - 4);

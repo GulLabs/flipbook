@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { describe, expect, test } from 'vitest';
-import { HTMLPageCollection, PageFlip } from '@gullabs/flipbook-core';
+import { PageFlip } from '@gullabs/flipbook-core';
 import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
+import { testCollection, testRender, testUI } from './engine-access';
+import { HTMLPageCollection } from '../src/Collection/HTMLPageCollection';
 import {
   ADOPT_ORIENTATION,
   DROP_POINTER_GESTURE,
@@ -249,8 +251,8 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     book.book.replacePages(
       new HTMLPageCollection(
         book.book,
-        book.book.getRender(),
-        book.book.getUI().getDistElement(),
+        testRender(book.book),
+        book.book.getBlockElement(),
         replacement,
       ),
       2,
@@ -351,7 +353,7 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     const book = makeHtmlBook(landscape);
 
     const api = book.book as unknown as Record<string, unknown>;
-    const collection = book.book.getPageCollection() as unknown as Record<string, unknown>;
+    const collection = testCollection(book.book) as unknown as Record<string, unknown>;
 
     // Every engine-to-engine seam that used to be a named `public` member.
     // `@internal` on one of those is documentation, not a fence: it survives
@@ -359,7 +361,7 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     // The named seams are gone. Kept as a direct check because these four are
     // the ones that actually shipped public, but the real guard is the frozen
     // surface in `public-surface.test.ts` — see the note there.
-    const ui = book.book.getUI() as unknown as Record<string, unknown>;
+    const ui = testUI(book.book) as unknown as Record<string, unknown>;
     for (const name of ['updatePageIndex', 'updateState', 'updateOrientation']) {
       expect(typeof api[name], `PageFlip.${name} is reachable by name`).toBe('undefined');
     }
@@ -377,12 +379,12 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     expect(typeof seamed[ADOPT_ORIENTATION]).toBe('function');
     expect(typeof seamed[DROP_POINTER_GESTURE]).toBe('undefined'); // that one lives on UI
 
-    const coll = book.book.getPageCollection() as unknown as Record<symbol, unknown>;
+    const coll = testCollection(book.book) as unknown as Record<symbol, unknown>;
     expect(typeof coll[INHERIT_PAGE_INDEX]).toBe('function');
     expect(typeof coll[SEED_OPENING_INDEX]).toBe('function');
     expect(typeof coll[SET_SPREAD_INDEX]).toBe('function');
 
-    const uiSeams = book.book.getUI() as unknown as Record<symbol, unknown>;
+    const uiSeams = testUI(book.book) as unknown as Record<symbol, unknown>;
     expect(typeof uiSeams[SET_ORIENTATION_STYLE]).toBe('function');
     expect(typeof uiSeams[DROP_POINTER_GESTURE]).toBe('function');
 
@@ -453,8 +455,8 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
     book.book.replacePages(
       new HTMLPageCollection(
         book.book,
-        book.book.getRender(),
-        book.book.getUI().getDistElement(),
+        testRender(book.book),
+        book.book.getBlockElement(),
         replacement,
       ),
       4,
@@ -519,7 +521,7 @@ describe('ADR 0003 — flip announces a page change, not a repaint', () => {
   /** Re-measure the host at a new width and let the engine settle. */
   function resizeTo(book: ReturnType<typeof makeHtmlBook>, width: number): void {
     sizeElement(book.host, width, 300);
-    sizeElement(book.book.getUI().getDistElement(), width, 300);
+    sizeElement(book.book.getBlockElement(), width, 300);
     book.book.update();
   }
 

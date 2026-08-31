@@ -2,8 +2,9 @@
  * Coverage is a byproduct, not the goal — assert real fold geometry, not stubs.
  */
 import { describe, expect, test } from 'vitest';
-import { FlipCorner, FlipDirection } from '@gullabs/flipbook-core';
+import { FlipCorner } from '@gullabs/flipbook-core';
 import { FlipCalculation } from '../src/Flip/FlipCalculation';
+import { FlipDirection } from '../src/Flip/Flip';
 
 const W = 400;
 const H = 600;

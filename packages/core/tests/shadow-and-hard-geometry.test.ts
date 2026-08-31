@@ -9,8 +9,11 @@
  */
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
-import { HTMLPage, PageDensity, PageOrientation } from '@gullabs/flipbook-core';
+import { PageDensity } from '@gullabs/flipbook-core';
+import { PageOrientation } from '../src/Page/Page';
 import { makeHtmlBook } from './html-book-fixture';
+import { testRender, testPage } from './engine-access';
+import { HTMLPage } from '../src/Page/HTMLPage';
 
 /* ------------------------------------------------------------------ *
  * H6 — hard pages honour rect.top
@@ -74,7 +77,7 @@ describe('H6 — hard pages sit at rect.top, like every soft page', () => {
       flippingTime: 0,
     });
 
-    const rect = app.getRender().getRect();
+    const rect = testRender(app).getRect();
 
     // FIXTURE CHECK — the whole test is void if this is zero.
     expect(rect.top).toBe(80);
@@ -86,13 +89,13 @@ describe('H6 — hard pages sit at rect.top, like every soft page', () => {
     pages[1]!.dataset.density = 'hard';
     app.updateFromHtml(pages);
 
-    const right = app.getPage(0) as HTMLPage;
+    const right = testPage(app, 0) as HTMLPage;
     right.setDrawingDensity(PageDensity.HARD);
     right.setOrientation(PageOrientation.RIGHT);
     right.setHardDrawingAngle(30);
     right.draw(PageDensity.HARD);
 
-    const left = app.getPage(1) as HTMLPage;
+    const left = testPage(app, 1) as HTMLPage;
     left.setDrawingDensity(PageDensity.HARD);
     left.setOrientation(PageOrientation.LEFT);
     left.setHardDrawingAngle(-30);
@@ -103,7 +106,7 @@ describe('H6 — hard pages sit at rect.top, like every soft page', () => {
 
     // …and that is the same top a static soft leaf gets, which is the whole
     // point: no vertical jump when the cover starts turning.
-    const soft = app.getPage(2) as HTMLPage;
+    const soft = testPage(app, 2) as HTMLPage;
     soft.simpleDraw(PageOrientation.RIGHT);
     expect(cssTop(soft.getElement().style.cssText)).toBe(rect.top);
   });
@@ -128,12 +131,12 @@ describe('H6 — hard pages sit at rect.top, like every soft page', () => {
       },
     });
 
-    expect(app.getRender().getRect().top).toBe(50);
+    expect(testRender(app).getRect().top).toBe(50);
 
     pages[0]!.dataset.density = 'hard';
     app.updateFromHtml(pages);
 
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
     page.setDrawingDensity(PageDensity.HARD);
     page.setOrientation(PageOrientation.RIGHT);
     page.setHardDrawingAngle(0);
@@ -142,11 +145,11 @@ describe('H6 — hard pages sit at rect.top, like every soft page', () => {
 
     // Grow the block: rect.top moves, and so must the hard page. A hardcoded
     // constant would pass the first assertion and fail here.
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     Object.defineProperty(dist, 'offsetHeight', { configurable: true, get: () => 700 });
     app.update();
 
-    const grown = app.getRender().getRect();
+    const grown = testRender(app).getRect();
     expect(grown.top).toBe(200);
 
     page.draw(PageDensity.HARD);
@@ -163,12 +166,12 @@ describe('H6 — hard pages sit at rect.top, like every soft page', () => {
       flippingTime: 0,
     });
 
-    expect(app.getRender().getRect().top).toBe(0);
+    expect(testRender(app).getRect().top).toBe(0);
 
     pages[0]!.dataset.density = 'hard';
     app.updateFromHtml(pages);
 
-    const page = app.getPage(0) as HTMLPage;
+    const page = testPage(app, 0) as HTMLPage;
     page.setDrawingDensity(PageDensity.HARD);
     page.setOrientation(PageOrientation.LEFT);
     page.setHardDrawingAngle(0);

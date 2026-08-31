@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { PageFlip, PageFlipError, FlippingState } from '@gullabs/flipbook-core';
 
 import { installPointerCaptureShims, makeHtmlBook, makePages } from './html-book-fixture';
+import { testCollection, testUI } from './engine-access';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -137,8 +138,8 @@ describe('X4 destroying from an onFlip handler survives the frame already in fli
     // Synchronously, with no grace window of any kind. The engine no longer
     // keeps inert stand-ins alive for a trailing frame, because `Render`
     // declines that frame outright (see the test above).
-    expect(() => app.getPageCollection()).toThrow(PageFlipError);
-    expect(() => app.getUI()).toThrow(PageFlipError);
+    expect(() => testCollection(app)).toThrow(PageFlipError);
+    expect(() => testUI(app)).toThrow(PageFlipError);
   });
 });
 
@@ -157,7 +158,7 @@ describe('X4 destroying from an onFlip handler survives the frame already in fli
  */
 describe('X5 a drag that never captured must still end when it leaves the book', () => {
   function drag(app: PageFlip): { dist: HTMLElement; x: number; y: number } {
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const rect = app.getBoundsRect();
 
     return { dist, x: rect.left + rect.width - 8, y: rect.top + 12 };
@@ -342,7 +343,7 @@ describe('X6 destroy() hands the pages back where it found them', () => {
     app.loadFromHTML(pages);
 
     // Precondition: the engine adopted them, so releasing is meaningful.
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     for (const p of pages) expect(p.parentElement).toBe(dist);
 
     app.destroy();
@@ -382,7 +383,7 @@ describe('X6 destroy() hands the pages back where it found them', () => {
  */
 describe('X7 the native drag ghost is suppressed regardless of useMouseEvents', () => {
   function dragStartWasPrevented(app: PageFlip): boolean {
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const event = new Event('dragstart', { bubbles: true, cancelable: true });
 
     dist.dispatchEvent(event);
@@ -429,7 +430,7 @@ describe('X7 the native drag ghost is suppressed regardless of useMouseEvents', 
 
     const app = new PageFlip(host, { width: 200, height: 300, pointerInput: [] });
     app.loadFromHTML(pages);
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     app.destroy();
 
     const event = new Event('dragstart', { bubbles: true, cancelable: true });

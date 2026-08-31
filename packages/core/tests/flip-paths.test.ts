@@ -6,13 +6,14 @@
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   FlipCorner,
-  FlipDirection,
   FlippingState,
   Orientation,
   PageDensity,
   PageFlipError,
 } from '@gullabs/flipbook-core';
 import { makeHtmlBook } from './html-book-fixture';
+import { testFlip, testPage } from './engine-access';
+import { FlipDirection } from '../src/Flip/Flip';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -34,7 +35,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
 
   test('flipNext with flippingTime 0 advances the page and returns to READ', () => {
     const { book: app } = book({ pageCount: 5, flippingTime: 0 });
-    const flip = app.getFlipController();
+    const flip = testFlip(app);
     expect(flip).not.toBeNull();
 
     const before = app.getCurrentPageIndex();
@@ -46,7 +47,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
 
   test('flipPrev from an interior page restores the previous leaf via BACK', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, initialPage: 2 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     expect(app.getCurrentPageIndex()).toBe(2);
 
     expect(flip.flipPrev(FlipCorner.BOTTOM)).toBe(true);
@@ -56,7 +57,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
 
   test('fold via user drag enters USER_FOLD then stopMove settles to READ', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     const start = { x: rect.left + rect.width - 5, y: rect.top + 10 };
@@ -79,7 +80,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
 
   test('stopMove with fold still on the page side snaps back without turning', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     const corner = { x: rect.left + rect.width - 8, y: rect.top + 8 };
@@ -96,7 +97,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
 
   test('showCorner peels a corner then leaving the corner restores READ', () => {
     const { book: app } = book({ pageCount: 4, flippingTime: 0, foldCornerOnHover: true });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const rect = app.getBoundsRect();
 
     const onCorner = {
@@ -153,7 +154,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
 
   test('flipToPage advances toward the target with a real turn animation end', () => {
     const { book: app } = book({ pageCount: 6, flippingTime: 0 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     const before = app.getCurrentPageIndex();
 
     flip.flipToPage(1, FlipCorner.TOP);
@@ -163,7 +164,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
 
   test('no forward turn from the last page', () => {
     const { book: app } = book({ pageCount: 3, flippingTime: 0, initialPage: 2 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     expect(flip.flipNext(FlipCorner.TOP)).toBe(false);
     expect(app.getCurrentPageIndex()).toBe(2);
   });
@@ -174,7 +175,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
       flippingTime: 0,
       hardCovers: true,
     });
-    const cover = app.getPage(0);
+    const cover = testPage(app, 0);
     expect(cover.getDensity()).toBe(PageDensity.HARD);
     expect(cover.newTemporaryCopy()).toBe(cover);
   });
@@ -190,7 +191,7 @@ describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
 describe('Flip direction hit-testing under portrait', () => {
   test('left side of the portrait page starts a BACK fold', () => {
     const { book: app } = book({ pageCount: 5, flippingTime: 0, initialPage: 2 });
-    const flip = app.getFlipController()!;
+    const flip = testFlip(app)!;
     expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
     const rect = app.getBoundsRect();
 

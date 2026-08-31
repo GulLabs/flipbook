@@ -26,9 +26,12 @@
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { HTMLPage, PageDensity, PageFlip, PageOrientation } from '@gullabs/flipbook-core';
+import { PageDensity, PageFlip } from '@gullabs/flipbook-core';
+import { PageOrientation } from '../src/Page/Page';
 import type { Point } from '@gullabs/flipbook-core';
 import { installPointerCaptureShims, makeHtmlBook } from './html-book-fixture';
+import { testFlip, testRender, testUI, testPage } from './engine-access';
+import { HTMLPage } from '../src/Page/HTMLPage';
 
 const books: Array<{ destroy: () => void }> = [];
 
@@ -66,11 +69,11 @@ const IDENTITY: Transform = { scaleX: 1, scaleY: 1, originX: 0, originY: 0 };
  * observable: `getBoundingClientRect()` is transform-AWARE and reports the
  * VISUAL box, while `offsetWidth`/`offsetHeight` are transform-BLIND and keep
  * reporting the LAYOUT box. That split IS the defect, and the fixture leaves
- * `offsetWidth` exactly as `makeHtmlBook` set it so `Render`'s geometry is
+ * `offsetWidth` exactly as `makeHtmlBook` set it so `Render`'s geometry is'
  * untouched — only the pointer's view of the element moves.
  */
 function applyAncestorScale(app: PageFlip, t: Transform): void {
-  const el = app.getUI().getDistElement();
+  const el = app.getBlockElement();
   const layoutWidth = el.offsetWidth;
   const layoutHeight = el.offsetHeight;
 
@@ -123,7 +126,7 @@ function pressAt(app: PageFlip, p: Point, t: Transform): Point {
   const spy = vi.spyOn(app, 'startUserTouch');
   const c = toClient(p, t);
 
-  pointer('pointerdown', app.getUI().getDistElement(), { clientX: c.x, clientY: c.y });
+  pointer('pointerdown', app.getBlockElement(), { clientX: c.x, clientY: c.y });
 
   expect(spy).toHaveBeenCalledTimes(1);
 
@@ -157,14 +160,14 @@ function foldProgressAt(
   inset: number,
   t: Transform,
 ): number {
-  const dist = app.getUI().getDistElement();
+  const dist = app.getBlockElement();
   const from = toClient(edgePoint(app, edge, 1), t);
   const to = toClient(edgePoint(app, edge, inset), t);
 
   pointer('pointerdown', dist, { clientX: from.x, clientY: from.y });
   pointer('pointermove', dist, { clientX: to.x, clientY: to.y });
 
-  const calc = app.getFlipController()?.getCalculation();
+  const calc = testFlip(app)?.getCalculation();
   if (!calc) throw new Error('drag did not open a fold');
   return calc.getFlippingProgress();
 }
@@ -177,7 +180,7 @@ describe('the fixture really is scaled (precondition for everything below)', () 
   test('visual box and layout box differ under a scaled ancestor, and agree without one', () => {
     const t: Transform = { scaleX: 0.5, scaleY: 0.5, originX: 120, originY: 37 };
     const app = landscapeBook();
-    const el = app.getUI().getDistElement();
+    const el = app.getBlockElement();
 
     // Baseline: the fixture as `makeHtmlBook` leaves it has scale 1, where a
     // broken and a correct conversion are indistinguishable.
@@ -191,7 +194,7 @@ describe('the fixture really is scaled (precondition for everything below)', () 
     expect(el.getBoundingClientRect().height).not.toBe(el.offsetHeight);
     // And `Render` is still measuring the layout box — the other half of the
     // mismatch. If this ever stops being true the defect is somewhere else.
-    expect(app.getRender().getBlockWidth()).toBe(500);
+    expect(testRender(app).getBlockWidth()).toBe(500);
     expect(app.getBoundsRect()).toEqual({
       left: 50,
       top: 0,
@@ -246,7 +249,7 @@ describe('pointer coordinates are converted into the space Render measures (U3/I
 
   test('a hidden book (0×0) falls back to 1:1 instead of dividing by zero', () => {
     const app = landscapeBook();
-    const el = app.getUI().getDistElement();
+    const el = app.getBlockElement();
 
     Object.defineProperty(el, 'offsetWidth', { configurable: true, get: () => 0 });
     Object.defineProperty(el, 'offsetHeight', { configurable: true, get: () => 0 });
@@ -299,7 +302,7 @@ describe('pointer coordinates are converted into the space Render measures (U3/I
     applyAncestorScale(scaled, t);
 
     const progressAfterDrag = (app: PageFlip, tr: Transform): number => {
-      const dist = app.getUI().getDistElement();
+      const dist = app.getBlockElement();
       const start = edgePoint(app, 'right', 10);
       const mid = { x: start.x - 90, y: start.y + 15 };
       const c0 = toClient(start, tr);
@@ -308,7 +311,7 @@ describe('pointer coordinates are converted into the space Render measures (U3/I
       pointer('pointerdown', dist, { clientX: c0.x, clientY: c0.y });
       pointer('pointermove', dist, { clientX: c1.x, clientY: c1.y });
 
-      const calc = app.getFlipController()?.getCalculation();
+      const calc = testFlip(app)?.getCalculation();
       if (!calc) throw new Error('drag did not open a fold');
       return calc.getFlippingProgress();
     };
@@ -330,7 +333,7 @@ describe('pointer coordinates are converted into the space Render measures (U3/I
     const app = landscapeBook({ swipeDistance: 80 });
     applyAncestorScale(app, t);
 
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
     const spy = vi.spyOn(app, 'flipNext');
     const start = { x: 300, y: 150 };
     const end = { x: 180, y: 152 };
@@ -357,7 +360,7 @@ describe('the dead handler-bound flag is gone (U4)', () => {
     // every instance, and `protected get handlersAreBound()` is a plain
     // accessor on the prototype. Both are visible from here, so both can be
     // asserted absent — including the half-deletion that drops only the getter.
-    const ui = landscapeBook().getUI();
+    const ui = testUI(landscapeBook());
 
     expect(Object.getOwnPropertyNames(ui)).not.toContain('handlersBound');
 
@@ -381,7 +384,7 @@ describe('the dead handler-bound flag is gone (U4)', () => {
     // `false` in exactly the configuration where a handler IS bound (X7). A
     // reader added later would have been told the opposite of the truth.
     const app = landscapeBook({ pointerInput: [] });
-    const dist = app.getUI().getDistElement();
+    const dist = app.getBlockElement();
 
     const drag = new Event('dragstart', { bubbles: true, cancelable: true });
     dist.dispatchEvent(drag);
@@ -418,7 +421,7 @@ function wrote(writes: Array<[string, string]>, property: string, value?: string
 describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
   test('a leaf with no inline z-index gets no z-index declaration at all', () => {
     const app = landscapeBook();
-    const page = app.getPage(2) as HTMLPage;
+    const page = testPage(app, 2) as HTMLPage;
     const el = page.getElement();
 
     el.style.removeProperty('z-index');
@@ -431,8 +434,9 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
     expect(wrote(writes, 'z-index')).toBe(false);
     expect(wrote(writes, 'z-index', '')).toBe(false);
     // The rest of the engine block is still applied — this is not "drop the
-    // whole style", it is "omit one empty declaration".
-    expect(wrote(writes, 'display', 'block')).toBe(true);
+    // whole style", it is "omit one empty declaration". Visibility is a class
+    // (`.--shown`), not an inline `display` (that fought consumer flex layout).
+    expect(wrote(writes, 'position', 'absolute')).toBe(true);
     expect(wrote(writes, 'width', '200px')).toBe(true);
   });
 
@@ -441,7 +445,7 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
     // what `HTMLRender` just stamped. Removing the declaration unconditionally
     // would be the obvious wrong fix; under setProperty the same contract holds.
     const app = landscapeBook();
-    const page = app.getPage(2) as HTMLPage;
+    const page = testPage(app, 2) as HTMLPage;
     const el = page.getElement();
 
     el.style.zIndex = '17';
@@ -457,7 +461,7 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
     // inherits the original's inline style, so a page that never carried a
     // z-index produces a clone that never carries one either.
     const app = landscapeBook();
-    const page = app.getPage(2) as HTMLPage;
+    const page = testPage(app, 2) as HTMLPage;
 
     page.getElement().style.removeProperty('z-index');
 
@@ -500,7 +504,7 @@ describe('no invalid `z-index:;` declaration is emitted (X8)', () => {
 describe('drawn leaves state their own position (Y4)', () => {
   test('a static leaf states it inline — the parity this fix restores (precondition)', () => {
     const app = landscapeBook();
-    const page = app.getPage(2) as HTMLPage;
+    const page = testPage(app, 2) as HTMLPage;
     const el = page.getElement();
 
     const writes = captureStyleWrites(el);
@@ -512,7 +516,7 @@ describe('drawn leaves state their own position (Y4)', () => {
 
   test('a soft (folding) leaf states it too', () => {
     const app = landscapeBook();
-    const page = app.getPage(2) as HTMLPage;
+    const page = testPage(app, 2) as HTMLPage;
     const el = page.getElement();
 
     // Start from a leaf a consumer rule could have un-positioned: nothing
@@ -534,7 +538,7 @@ describe('drawn leaves state their own position (Y4)', () => {
 
   test('a hard leaf states it too — fixing only drawSoft leaves the cover behind', () => {
     const app = landscapeBook();
-    const page = app.getPage(2) as HTMLPage;
+    const page = testPage(app, 2) as HTMLPage;
     const el = page.getElement();
 
     el.style.removeProperty('position');
@@ -550,7 +554,7 @@ describe('drawn leaves state their own position (Y4)', () => {
 
   test('the temporary fold copy — the leaf that actually drops out — states it', () => {
     const app = landscapeBook();
-    const page = app.getPage(2) as HTMLPage;
+    const page = testPage(app, 2) as HTMLPage;
 
     const copy = page.newTemporaryCopy() as HTMLPage;
     expect(copy).not.toBe(page);
@@ -593,7 +597,7 @@ function hostBook(opts: Parameters<typeof makeHtmlBook>[0] = {}): {
 describe('applyHostSize honours the settings object it is given (Y5)', () => {
   test('a portrait engine handed LANDSCAPE settings stamps the two-page minimum', () => {
     const { app, host } = hostBook({ usePortrait: true, width: 200 });
-    const ui = app.getUI();
+    const ui = testUI(app);
 
     // PRECONDITION: the engine's live settings say the opposite of what is
     // about to be passed in, and it is a different object. With the same object
@@ -617,7 +621,7 @@ describe('applyHostSize honours the settings object it is given (Y5)', () => {
     // A fix that hardcoded `k = 2`, or read the parameter in one branch only,
     // passes the test above and fails this one.
     const { app, host } = hostBook({ usePortrait: false, width: 200, hostWidth: 500 });
-    const ui = app.getUI();
+    const ui = testUI(app);
 
     const live = app.getSettings();
     expect(live.usePortrait).toBe(false);
@@ -630,7 +634,7 @@ describe('applyHostSize honours the settings object it is given (Y5)', () => {
 
   test('the non-fixed minWidth branch takes the same k', () => {
     const { app, host } = hostBook({ usePortrait: true, width: 200 });
-    const ui = app.getUI();
+    const ui = testUI(app);
     const live = app.getSettings();
 
     const stretched = { ...live, sizing: 'responsive' as const, minWidth: 111, usePortrait: false };
@@ -647,7 +651,7 @@ describe('applyHostSize honours the settings object it is given (Y5)', () => {
     const { app, host } = hostBook({ usePortrait: false, width: 200, hostWidth: 500 });
 
     host.style.minWidth = '1px';
-    app.getUI().applyHostSize();
+    testUI(app).applyHostSize();
 
     expect(host.style.minWidth).toBe('400px');
   });

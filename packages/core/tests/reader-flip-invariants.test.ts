@@ -4,14 +4,14 @@
  */
 import { describe, expect, test } from 'vitest';
 import {
-  FlipDirection,
   backCurlAppearsRight,
   convertPageToGlobal,
   curlGoesLeft,
-  getPortraitFlippingPage,
   portraitCurlLocal,
-  shouldDrawBottomPage,
-} from '@gullabs/flipbook-core';
+} from '../src/geometry';
+import { getPortraitFlippingPage } from '../src/Collection/flippingPage';
+import { shouldDrawBottomPage } from '../src/Render/bottomPage';
+import { FlipDirection } from '../src/Flip/Flip';
 
 const RECT = {
   left: 0,

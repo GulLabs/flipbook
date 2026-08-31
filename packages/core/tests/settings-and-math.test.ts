@@ -3,15 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, test } from 'vitest';
-import { PageCollection, PageFlipError, Settings, SizeMode } from '@gullabs/flipbook-core';
-import type {
-  FlipOptions,
-  FlipSetting,
-  Page,
-  PageFlip,
-  Render,
-  Segment,
-} from '@gullabs/flipbook-core';
+import { PageFlipError, SizeMode } from '@gullabs/flipbook-core';
+import { PageCollection } from '../src/Collection/PageCollection';
+import { Settings } from '../src/Settings';
+import type { FlipOptions, FlipSetting, PageFlip } from '@gullabs/flipbook-core';
+import type { Page } from '../src/Page/Page';
+import type { Segment } from '../src/BasicTypes';
+import type { Render } from '../src/Render/Render';
 import { angleBetweenSegments, limitToCircle, pointsBetween } from '../src/Helper';
 
 /* ------------------------------------------------------------------ I12 -- */
