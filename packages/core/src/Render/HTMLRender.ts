@@ -1,382 +1,359 @@
-import { Orientation, Render } from './Render';
-import { PageFlip } from '../PageFlip';
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import { Orientation, Render, type Shadow } from './Render';
+import { GET_COLLECTION } from '../internal';
+import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { PageDensity, PageOrientation } from '../Page/Page';
-import { HTMLPage } from '../Page/HTMLPage';
-import { Helper } from '../Helper';
-import { FlipSetting } from '../Settings';
+import type { HTMLPage } from '../Page/HTMLPage';
+import { rotatePoint } from '../Helper';
+import type { FlipSetting } from '../Settings';
+import { shouldDrawBottomPage } from './bottomPage';
+import { PageFlipError } from '../errors';
 
 /**
  * Class responsible for rendering the HTML book
  */
 export class HTMLRender extends Render {
-    /** Parent HTML Element */
-    private readonly element: HTMLElement;
+  /** Parent HTML Element */
+  private readonly element: HTMLElement;
 
-    /** Pages List as HTMLElements */
-    private readonly items: NodeListOf<HTMLElement> | HTMLElement[];
+  private outerShadow!: HTMLElement;
+  private innerShadow!: HTMLElement;
+  private hardShadow!: HTMLElement;
+  private hardInnerShadow!: HTMLElement;
 
-    private outerShadow: HTMLElement = null;
-    private innerShadow: HTMLElement = null;
-    private hardShadow: HTMLElement = null;
-    private hardInnerShadow: HTMLElement = null;
+  /**
+   * @constructor
+   *
+   * @param {PageFlip} app - PageFlip object
+   * @param {FlipSetting} setting - Configuration object
+   * @param {HTMLElement} element - Parent HTML Element
+   */
+  constructor(app: PageFlip, setting: FlipSetting, element: HTMLElement) {
+    super(app, setting);
 
-    /**
-     * @constructor
-     *
-     * @param {PageFlip} app - PageFlip object
-     * @param {FlipSetting} setting - Configuration object
-     * @param {HTMLElement} element - Parent HTML Element
-     */
-    constructor(app: PageFlip, setting: FlipSetting, element: HTMLElement) {
-        super(app, setting);
+    this.element = element;
 
-        this.element = element;
+    this.createShadows();
+  }
 
-        this.createShadows();
+  private createShadows(): void {
+    this.element.insertAdjacentHTML(
+      'beforeend',
+      '<div class="stf__outerShadow"></div><div class="stf__innerShadow"></div>' +
+        '<div class="stf__hardShadow"></div><div class="stf__hardInnerShadow"></div>',
+    );
+
+    const outer = this.element.querySelector<HTMLElement>('.stf__outerShadow');
+    const inner = this.element.querySelector<HTMLElement>('.stf__innerShadow');
+    const hard = this.element.querySelector<HTMLElement>('.stf__hardShadow');
+    const hardInner = this.element.querySelector<HTMLElement>('.stf__hardInnerShadow');
+
+    if (!outer || !inner || !hard || !hardInner) {
+      throw new PageFlipError('Shadow setup failed', 'RENDER_SETUP');
     }
 
-    private createShadows(): void {
-        this.element.insertAdjacentHTML(
-            'beforeend',
-            `<div class="stf__outerShadow"></div>
-             <div class="stf__innerShadow"></div>
-             <div class="stf__hardShadow"></div>
-             <div class="stf__hardInnerShadow"></div>`
-        );
+    this.outerShadow = outer;
+    this.innerShadow = inner;
+    this.hardShadow = hard;
+    this.hardInnerShadow = hardInner;
+  }
 
-        this.outerShadow = this.element.querySelector('.stf__outerShadow');
-        this.innerShadow = this.element.querySelector('.stf__innerShadow');
-        this.hardShadow = this.element.querySelector('.stf__hardShadow');
-        this.hardInnerShadow = this.element.querySelector('.stf__hardInnerShadow');
+  public clearShadow(): void {
+    super.clearShadow();
+
+    this.outerShadow.style.cssText = 'display: none';
+    this.innerShadow.style.cssText = 'display: none';
+    this.hardShadow.style.cssText = 'display: none';
+    this.hardInnerShadow.style.cssText = 'display: none';
+  }
+
+  public reload(): void {
+    const testShadow = this.element.querySelector('.stf__outerShadow');
+
+    if (!testShadow) {
+      this.createShadows();
     }
+  }
 
-    public clearShadow(): void {
-        super.clearShadow();
+  /**
+   * Draw inner shadow to the hard page
+   */
+  private drawHardInnerShadow(shadow: Shadow): void {
+    const rect = this.getRect();
 
-        this.outerShadow.style.cssText = 'display: none';
-        this.innerShadow.style.cssText = 'display: none';
-        this.hardShadow.style.cssText = 'display: none';
-        this.hardInnerShadow.style.cssText = 'display: none';
-    }
+    const progress = shadow.progress > 100 ? 200 - shadow.progress : shadow.progress;
 
-    public reload(): void {
-        const testShadow = this.element.querySelector('.stf__outerShadow');
+    let innerShadowSize = ((100 - progress) * (2.5 * rect.pageWidth)) / 100 + 20;
+    if (innerShadowSize > rect.pageWidth) innerShadowSize = rect.pageWidth;
 
-        if (!testShadow) {
-            this.createShadows();
-        }
-    }
+    let newStyle =
+      `display:block;z-index:${this.getSettings().startZIndex + 5};` +
+      `width:${innerShadowSize}px;height:${rect.height}px;` +
+      `background:linear-gradient(to right,rgba(0,0,0,${(shadow.opacity * progress) / 100}) 5%,rgba(0,0,0,0) 100%);` +
+      `left:${rect.left + rect.width / 2}px;transform-origin:0 0;`;
 
-    /**
-     * Draw inner shadow to the hard page
-     */
-    private drawHardInnerShadow(): void {
-        const rect = this.getRect();
+    newStyle +=
+      (this.getDirection() === FlipDirection.FORWARD && shadow.progress > 100) ||
+      (this.getDirection() === FlipDirection.BACK && shadow.progress <= 100)
+        ? 'transform:translate3d(0,0,0);'
+        : 'transform:translate3d(0,0,0) rotateY(180deg);';
 
-        const progress =
-            this.shadow.progress > 100 ? 200 - this.shadow.progress : this.shadow.progress;
+    this.hardInnerShadow.style.cssText = newStyle;
+  }
 
-        let innerShadowSize = ((100 - progress) * (2.5 * rect.pageWidth)) / 100 + 20;
-        if (innerShadowSize > rect.pageWidth) innerShadowSize = rect.pageWidth;
+  /**
+   * Draw outer shadow to the hard page
+   */
+  private drawHardOuterShadow(shadow: Shadow): void {
+    const rect = this.getRect();
 
-        let newStyle = `
-            display: block;
-            z-index: ${(this.getSettings().startZIndex + 5).toString(10)};
-            width: ${innerShadowSize}px;
-            height: ${rect.height}px;
-            background: linear-gradient(to right,
-                rgba(0, 0, 0, ${(this.shadow.opacity * progress) / 100}) 5%,
-                rgba(0, 0, 0, 0) 100%);
-            left: ${rect.left + rect.width / 2}px;
-            transform-origin: 0 0;
-        `;
+    const progress = shadow.progress > 100 ? 200 - shadow.progress : shadow.progress;
 
-        newStyle +=
-            (this.getDirection() === FlipDirection.FORWARD && this.shadow.progress > 100) ||
-            (this.getDirection() === FlipDirection.BACK && this.shadow.progress <= 100)
-                ? `transform: translate3d(0, 0, 0);`
-                : `transform: translate3d(0, 0, 0) rotateY(180deg);`;
+    let shadowSize = ((100 - progress) * (2.5 * rect.pageWidth)) / 100 + 20;
+    if (shadowSize > rect.pageWidth) shadowSize = rect.pageWidth;
 
-        this.hardInnerShadow.style.cssText = newStyle;
-    }
+    let newStyle =
+      `display:block;z-index:${this.getSettings().startZIndex + 4};` +
+      `width:${shadowSize}px;height:${rect.height}px;` +
+      `background:linear-gradient(to left,rgba(0,0,0,${shadow.opacity}) 5%,rgba(0,0,0,0) 100%);` +
+      `left:${rect.left + rect.width / 2}px;transform-origin:0 0;`;
 
-    /**
-     * Draw outer shadow to the hard page
-     */
-    private drawHardOuterShadow(): void {
-        const rect = this.getRect();
+    newStyle +=
+      (this.getDirection() === FlipDirection.FORWARD && shadow.progress > 100) ||
+      (this.getDirection() === FlipDirection.BACK && shadow.progress <= 100)
+        ? 'transform:translate3d(0,0,0) rotateY(180deg);'
+        : 'transform:translate3d(0,0,0);';
 
-        const progress =
-            this.shadow.progress > 100 ? 200 - this.shadow.progress : this.shadow.progress;
+    this.hardShadow.style.cssText = newStyle;
+  }
 
-        let shadowSize = ((100 - progress) * (2.5 * rect.pageWidth)) / 100 + 20;
-        if (shadowSize > rect.pageWidth) shadowSize = rect.pageWidth;
+  /**
+   * Draw inner shadow to the soft page
+   */
+  private drawInnerShadow(shadow: Shadow): void {
+    const pageRect = this.pageRect;
+    if (pageRect === null) return;
 
-        let newStyle = `
-            display: block;
-            z-index: ${(this.getSettings().startZIndex + 4).toString(10)};
-            width: ${shadowSize}px;
-            height: ${rect.height}px;
-            background: linear-gradient(to left, rgba(0, 0, 0, ${
-                this.shadow.opacity
-            }) 5%, rgba(0, 0, 0, 0) 100%);
-            left: ${rect.left + rect.width / 2}px;
-            transform-origin: 0 0;
-        `;
+    const rect = this.getRect();
 
-        newStyle +=
-            (this.getDirection() === FlipDirection.FORWARD && this.shadow.progress > 100) ||
-            (this.getDirection() === FlipDirection.BACK && this.shadow.progress <= 100)
-                ? `transform: translate3d(0, 0, 0) rotateY(180deg);`
-                : `transform: translate3d(0, 0, 0);`;
+    const innerShadowSize = (shadow.width * 3) / 4;
+    const shadowTranslate = this.getDirection() === FlipDirection.FORWARD ? innerShadowSize : 0;
 
-        this.hardShadow.style.cssText = newStyle;
-    }
+    const shadowDirection = this.getDirection() === FlipDirection.FORWARD ? 'to left' : 'to right';
 
-    /**
-     * Draw inner shadow to the soft page
-     */
-    private drawInnerShadow(): void {
-        const rect = this.getRect();
+    const shadowPos = this.convertPointToGlobal(shadow.pos);
 
-        const innerShadowSize = (this.shadow.width * 3) / 4;
-        const shadowTranslate = this.getDirection() === FlipDirection.FORWARD ? innerShadowSize : 0;
+    const angle = shadow.angle + (3 * Math.PI) / 2;
 
-        const shadowDirection =
-            this.getDirection() === FlipDirection.FORWARD ? 'to left' : 'to right';
+    const clip = [pageRect.topLeft, pageRect.topRight, pageRect.bottomRight, pageRect.bottomLeft];
 
-        const shadowPos = this.convertToGlobal(this.shadow.pos);
-
-        const angle = this.shadow.angle + (3 * Math.PI) / 2;
-
-        const clip = [
-            this.pageRect.topLeft,
-            this.pageRect.topRight,
-            this.pageRect.bottomRight,
-            this.pageRect.bottomLeft,
-        ];
-
-        let polygon = 'polygon( ';
-        for (const p of clip) {
-            let g =
-                this.getDirection() === FlipDirection.BACK
-                    ? {
-                          x: -p.x + this.shadow.pos.x,
-                          y: p.y - this.shadow.pos.y,
-                      }
-                    : {
-                          x: p.x - this.shadow.pos.x,
-                          y: p.y - this.shadow.pos.y,
-                      };
-
-            g = Helper.GetRotatedPoint(g, { x: shadowTranslate, y: 100 }, angle);
-
-            polygon += g.x + 'px ' + g.y + 'px, ';
-        }
-        polygon = polygon.slice(0, -2);
-        polygon += ')';
-
-        const newStyle = `
-            display: block;
-            z-index: ${(this.getSettings().startZIndex + 10).toString(10)};
-            width: ${innerShadowSize}px;
-            height: ${rect.height * 2}px;
-            background: linear-gradient(${shadowDirection},
-                rgba(0, 0, 0, ${this.shadow.opacity}) 5%,
-                rgba(0, 0, 0, 0.05) 15%,
-                rgba(0, 0, 0, ${this.shadow.opacity}) 35%,
-                rgba(0, 0, 0, 0) 100%);
-            transform-origin: ${shadowTranslate}px 100px;
-            transform: translate3d(${shadowPos.x - shadowTranslate}px, ${
-            shadowPos.y - 100
-        }px, 0) rotate(${angle}rad);
-            clip-path: ${polygon};
-            -webkit-clip-path: ${polygon};
-        `;
-
-        this.innerShadow.style.cssText = newStyle;
-    }
-
-    /**
-     * Draw outer shadow to the soft page
-     */
-    private drawOuterShadow(): void {
-        const rect = this.getRect();
-
-        const shadowPos = this.convertToGlobal({ x: this.shadow.pos.x, y: this.shadow.pos.y });
-
-        const angle = this.shadow.angle + (3 * Math.PI) / 2;
-        const shadowTranslate = this.getDirection() === FlipDirection.BACK ? this.shadow.width : 0;
-
-        const shadowDirection =
-            this.getDirection() === FlipDirection.FORWARD ? 'to right' : 'to left';
-
-        const clip = [
-            { x: 0, y: 0 },
-            { x: rect.pageWidth, y: 0 },
-            { x: rect.pageWidth, y: rect.height },
-            { x: 0, y: rect.height },
-        ];
-
-        let polygon = 'polygon( ';
-        for (const p of clip) {
-            if (p !== null) {
-                let g =
-                    this.getDirection() === FlipDirection.BACK
-                        ? {
-                              x: -p.x + this.shadow.pos.x,
-                              y: p.y - this.shadow.pos.y,
-                          }
-                        : {
-                              x: p.x - this.shadow.pos.x,
-                              y: p.y - this.shadow.pos.y,
-                          };
-
-                g = Helper.GetRotatedPoint(g, { x: shadowTranslate, y: 100 }, angle);
-
-                polygon += g.x + 'px ' + g.y + 'px, ';
+    let polygon = 'polygon( ';
+    for (const p of clip) {
+      let g =
+        this.getDirection() === FlipDirection.BACK
+          ? {
+              x: -p.x + shadow.pos.x,
+              y: p.y - shadow.pos.y,
             }
-        }
+          : {
+              x: p.x - shadow.pos.x,
+              y: p.y - shadow.pos.y,
+            };
 
-        polygon = polygon.slice(0, -2);
-        polygon += ')';
+      g = rotatePoint(g, { x: shadowTranslate, y: 100 }, angle);
 
-        const newStyle = `
-            display: block;
-            z-index: ${(this.getSettings().startZIndex + 10).toString(10)};
-            width: ${this.shadow.width}px;
-            height: ${rect.height * 2}px;
-            background: linear-gradient(${shadowDirection}, rgba(0, 0, 0, ${
-            this.shadow.opacity
-        }), rgba(0, 0, 0, 0));
-            transform-origin: ${shadowTranslate}px 100px;
-            transform: translate3d(${shadowPos.x - shadowTranslate}px, ${
-            shadowPos.y - 100
-        }px, 0) rotate(${angle}rad);
-            clip-path: ${polygon};
-            -webkit-clip-path: ${polygon};
-        `;
-
-        this.outerShadow.style.cssText = newStyle;
+      polygon += `${g.x}px ${g.y}px, `;
     }
+    polygon = polygon.slice(0, -2);
+    polygon += ')';
 
-    /**
-     * Draw left static page
-     */
-    private drawLeftPage(): void {
-        if (this.orientation === Orientation.PORTRAIT || this.leftPage === null) return;
+    this.innerShadow.style.cssText =
+      `display:block;z-index:${this.getSettings().startZIndex + 10};` +
+      `width:${innerShadowSize}px;height:${rect.height * 2}px;` +
+      `background:linear-gradient(${shadowDirection},rgba(0,0,0,${shadow.opacity}) 5%,rgba(0,0,0,0.05) 15%,rgba(0,0,0,${shadow.opacity}) 35%,rgba(0,0,0,0) 100%);` +
+      `transform-origin:${shadowTranslate}px 100px;` +
+      `transform:translate3d(${shadowPos.x - shadowTranslate}px,${shadowPos.y - 100}px,0) rotate(${angle}rad);` +
+      `clip-path:${polygon};-webkit-clip-path:${polygon};`;
+  }
 
-        if (
-            this.direction === FlipDirection.BACK &&
-            this.flippingPage !== null &&
-            this.flippingPage.getDrawingDensity() === PageDensity.HARD
-        ) {
-            (this.leftPage as HTMLPage).getElement().style.zIndex = (
-                this.getSettings().startZIndex + 5
-            ).toString(10);
+  /**
+   * Draw outer shadow to the soft page
+   */
+  private drawOuterShadow(shadow: Shadow): void {
+    const rect = this.getRect();
 
-            this.leftPage.setHardDrawingAngle(180 + this.flippingPage.getHardAngle());
-            this.leftPage.draw(this.flippingPage.getDrawingDensity());
-        } else {
-            this.leftPage.simpleDraw(PageOrientation.LEFT);
-        }
-    }
+    const shadowPos = this.convertPointToGlobal({ x: shadow.pos.x, y: shadow.pos.y });
 
-    /**
-     * Draw right static page
-     */
-    private drawRightPage(): void {
-        if (this.rightPage === null) return;
+    const angle = shadow.angle + (3 * Math.PI) / 2;
+    const shadowTranslate = this.getDirection() === FlipDirection.BACK ? shadow.width : 0;
 
-        if (
-            this.direction === FlipDirection.FORWARD &&
-            this.flippingPage !== null &&
-            this.flippingPage.getDrawingDensity() === PageDensity.HARD
-        ) {
-            (this.rightPage as HTMLPage).getElement().style.zIndex = (
-                this.getSettings().startZIndex + 5
-            ).toString(10);
+    const shadowDirection = this.getDirection() === FlipDirection.FORWARD ? 'to right' : 'to left';
 
-            this.rightPage.setHardDrawingAngle(180 + this.flippingPage.getHardAngle());
-            this.rightPage.draw(this.flippingPage.getDrawingDensity());
-        } else {
-            this.rightPage.simpleDraw(PageOrientation.RIGHT);
-        }
-    }
+    const clip = [
+      { x: 0, y: 0 },
+      { x: rect.pageWidth, y: 0 },
+      { x: rect.pageWidth, y: rect.height },
+      { x: 0, y: rect.height },
+    ];
 
-    /**
-     * Draw the next page at the time of flipping
-     */
-    private drawBottomPage(): void {
-        if (this.bottomPage === null) return;
-
-        const tempDensity =
-            this.flippingPage != null ? this.flippingPage.getDrawingDensity() : null;
-
-        if (!(this.orientation === Orientation.PORTRAIT && this.direction === FlipDirection.BACK)) {
-            (this.bottomPage as HTMLPage).getElement().style.zIndex = (
-                this.getSettings().startZIndex + 3
-            ).toString(10);
-
-            this.bottomPage.draw(tempDensity);
-        }
-    }
-
-    protected drawFrame(): void {
-        this.clear();
-
-        this.drawLeftPage();
-
-        this.drawRightPage();
-
-        this.drawBottomPage();
-
-        if (this.flippingPage != null) {
-            (this.flippingPage as HTMLPage).getElement().style.zIndex = (
-                this.getSettings().startZIndex + 5
-            ).toString(10);
-
-            this.flippingPage.draw();
-        }
-
-        if (this.shadow != null && this.flippingPage !== null) {
-            if (this.flippingPage.getDrawingDensity() === PageDensity.SOFT) {
-                this.drawOuterShadow();
-                this.drawInnerShadow();
-            } else {
-                this.drawHardOuterShadow();
-                this.drawHardInnerShadow();
+    let polygon = 'polygon( ';
+    for (const p of clip) {
+      let g =
+        this.getDirection() === FlipDirection.BACK
+          ? {
+              x: -p.x + shadow.pos.x,
+              y: p.y - shadow.pos.y,
             }
-        }
+          : {
+              x: p.x - shadow.pos.x,
+              y: p.y - shadow.pos.y,
+            };
+
+      g = rotatePoint(g, { x: shadowTranslate, y: 100 }, angle);
+
+      polygon += `${g.x}px ${g.y}px, `;
     }
 
-    private clear(): void {
-        for (const page of this.app.getPageCollection().getPages()) {
-            if (
-                page !== this.leftPage &&
-                page !== this.rightPage &&
-                page !== this.flippingPage &&
-                page !== this.bottomPage
-            ) {
-                (page as HTMLPage).getElement().style.cssText = 'display: none';
-            }
+    polygon = polygon.slice(0, -2);
+    polygon += ')';
 
-            if (page.getTemporaryCopy() !== this.flippingPage) {
-                page.hideTemporaryCopy();
-            }
-        }
+    this.outerShadow.style.cssText =
+      `display:block;z-index:${this.getSettings().startZIndex + 10};` +
+      `width:${shadow.width}px;height:${rect.height * 2}px;` +
+      `background:linear-gradient(${shadowDirection},rgba(0,0,0,${shadow.opacity}),rgba(0,0,0,0));` +
+      `transform-origin:${shadowTranslate}px 100px;` +
+      `transform:translate3d(${shadowPos.x - shadowTranslate}px,${shadowPos.y - 100}px,0) rotate(${angle}rad);` +
+      `clip-path:${polygon};-webkit-clip-path:${polygon};`;
+  }
+
+  /**
+   * Draw left static page
+   */
+  private drawLeftPage(): void {
+    if (this.orientation === Orientation.PORTRAIT || this.leftPage === null) return;
+
+    if (
+      this.direction === FlipDirection.BACK &&
+      this.flippingPage !== null &&
+      this.flippingPage.getDrawingDensity() === PageDensity.HARD
+    ) {
+      (this.leftPage as HTMLPage).getElement().style.zIndex = String(
+        this.getSettings().startZIndex + 5,
+      );
+
+      this.leftPage.setHardDrawingAngle(180 + this.flippingPage.getHardAngle());
+      this.leftPage.draw(this.flippingPage.getDrawingDensity());
+    } else {
+      this.leftPage.simpleDraw(PageOrientation.LEFT);
+    }
+  }
+
+  /**
+   * Draw right static page
+   */
+  private drawRightPage(): void {
+    if (this.rightPage === null) return;
+
+    if (
+      this.direction === FlipDirection.FORWARD &&
+      this.flippingPage !== null &&
+      this.flippingPage.getDrawingDensity() === PageDensity.HARD
+    ) {
+      (this.rightPage as HTMLPage).getElement().style.zIndex = String(
+        this.getSettings().startZIndex + 5,
+      );
+
+      this.rightPage.setHardDrawingAngle(180 + this.flippingPage.getHardAngle());
+      this.rightPage.draw(this.flippingPage.getDrawingDensity());
+    } else {
+      this.rightPage.simpleDraw(PageOrientation.RIGHT);
+    }
+  }
+
+  /**
+   * Draw the next page at the time of flipping.
+   * Skip only when the mover is the bottom page (hard-cover), never on
+   * portrait BACK as a direction — that skip is the duplicate-current-page bug.
+   */
+  public drawBottomPage(): void {
+    const bottomPage = this.bottomPage;
+
+    if (bottomPage === null) return;
+    if (!shouldDrawBottomPage(this.flippingPage, bottomPage)) return;
+
+    const tempDensity =
+      this.flippingPage !== null ? this.flippingPage.getDrawingDensity() : undefined;
+
+    (bottomPage as HTMLPage).getElement().style.zIndex = String(this.getSettings().startZIndex + 3);
+
+    bottomPage.draw(tempDensity);
+  }
+
+  protected drawFrame(): void {
+    this.clear();
+
+    this.drawLeftPage();
+
+    this.drawRightPage();
+
+    this.drawBottomPage();
+
+    const flippingPage = this.flippingPage;
+
+    if (flippingPage !== null) {
+      (flippingPage as HTMLPage).getElement().style.zIndex = String(
+        this.getSettings().startZIndex + 5,
+      );
+
+      flippingPage.draw();
     }
 
-    public update(): void {
-        super.update();
+    const shadow = this.shadow;
 
-        if (this.rightPage !== null) {
-            this.rightPage.setOrientation(PageOrientation.RIGHT);
-        }
-
-        if (this.leftPage !== null) {
-            this.leftPage.setOrientation(PageOrientation.LEFT);
-        }
+    if (shadow !== null && flippingPage !== null) {
+      if (flippingPage.getDrawingDensity() === PageDensity.SOFT) {
+        this.drawOuterShadow(shadow);
+        this.drawInnerShadow(shadow);
+      } else {
+        this.drawHardOuterShadow(shadow);
+        this.drawHardInnerShadow(shadow);
+      }
     }
+  }
+
+  private clear(): void {
+    for (const page of this.app[GET_COLLECTION]().getPages()) {
+      if (
+        page !== this.leftPage &&
+        page !== this.rightPage &&
+        page !== this.flippingPage &&
+        page !== this.bottomPage
+      ) {
+        // Hide by REMOVING the shown class, not by writing `display:none`
+        // inline — and certainly not by wiping cssText, which took the
+        // consumer's own inline styles with it every frame.
+        (page as HTMLPage).getElement().classList.remove('--shown');
+      }
+
+      if (page.getTemporaryCopy() !== this.flippingPage) {
+        page.hideTemporaryCopy();
+      }
+    }
+  }
+
+  public update(): void {
+    super.update();
+
+    if (this.rightPage !== null) {
+      this.rightPage.setOrientation(PageOrientation.RIGHT);
+    }
+
+    if (this.leftPage !== null) {
+      this.leftPage.setOrientation(PageOrientation.LEFT);
+    }
+  }
 }

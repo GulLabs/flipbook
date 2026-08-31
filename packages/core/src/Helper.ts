@@ -1,203 +1,223 @@
-import { Point, Rect, Segment } from './BasicTypes';
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+import type { Point, Rect, Segment } from './BasicTypes';
+import { GeometryAbort, PageFlipError } from './errors';
+
+/** Distance between two points, or Infinity if either is null. */
+export function distanceBetween(a: Point | null, b: Point | null): number {
+  if (a === null || b === null) return Infinity;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/** Angle (radians) between two line segments. */
+export function angleBetweenSegments(a: Segment, b: Segment): number {
+  const A1 = a[0].y - a[1].y;
+  const A2 = b[0].y - b[1].y;
+  const B1 = a[1].x - a[0].x;
+  const B2 = b[1].x - b[0].x;
+
+  const lenA = Math.sqrt(A1 * A1 + B1 * B1);
+  const lenB = Math.sqrt(A2 * A2 + B2 * B2);
+
+  // A degenerate segment has no direction, so there is no angle to report.
+  // `getSegmentToShadowLine`'s `?? first` can construct exactly that, and
+  // dividing by zero here hands `acos` a `NaN` that then poisons the shadow
+  // transform for the rest of the frame.
+  if (lenA === 0 || lenB === 0) return 0;
+
+  // Rounding can push the cosine a hair outside [-1, 1], where `acos` is NaN.
+  const cos = (A1 * A2 + B1 * B2) / (lenA * lenB);
+
+  return Math.acos(Math.min(1, Math.max(-1, cos)));
+}
+
+/** Return `pos` if inside `rect`, else null. */
+export function pointInRect(rect: Rect, pos: Point | null): Point | null {
+  if (pos === null) return null;
+  if (
+    pos.x >= rect.left &&
+    pos.x <= rect.width + rect.left &&
+    pos.y >= rect.top &&
+    pos.y <= rect.top + rect.height
+  ) {
+    return pos;
+  }
+  return null;
+}
+
+/** Rotate `p` around `o` by `a` radians. */
+export function rotatePoint(p: Point, o: Point, a: number): Point {
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  return { x: p.x * c + p.y * s + o.x, y: p.y * c - p.x * s + o.y };
+}
 
 /**
- * A class containing helping mathematical methods
+ * Clamp `p` to the circle at `c` with the given radius.
+ *
+ * X9: the clamp is `c + (p - c) * (radius / d)` — a step of `radius` **along
+ * the ray from the centre towards `p`**. The shipped form computed
+ * `x = c.x + radius * |p.x - c.x| / d`, which always lands on the RIGHT of the
+ * centre, and then flipped the sign of the whole absolute coordinate when
+ * `p.x < 0` — a test of absolute position, not of direction from the centre. So
+ * `limitToCircle({ x: 100, y: 0 }, 10, { x: 0, y: 0 })` returned `{ x: 110 }`
+ * where the clamp is `{ x: 90 }`: on the circle, but 180° from the point being
+ * clamped, and the further `c` sits from the y axis the further the fold jumps.
+ *
+ * It survived because both call sites (`FlipCalculation.checkPositionAtCenterLine`)
+ * pass a centre at `x: 0`, where the two forms are algebraically identical: the
+ * `|dx|` and the sign flip cancel exactly when `c.x === 0`. Any test written
+ * against a centre on the y axis proves nothing about this function.
+ *
+ * The vertical special case is gone with the same edit rather than kept: it
+ * existed only because the old slope form divided by `dx`. This one does not:
+ * the only division is by `d`, and `d > radius` on every path that reaches it,
+ * so for any non-negative radius `d` cannot be zero. On a vertical input it
+ * yields exactly `{ c.x, c.y ± radius }` — what that branch returned.
  */
-export class Helper {
-    /**
-     * Get the distance between two points
-     *
-     * @param {Point} point1
-     * @param {Point} point2
-     */
-    public static GetDistanceBetweenTwoPoint(point1: Point, point2: Point): number {
-        if (point1 === null || point2 === null) {
-            return Infinity;
-        }
+export function limitToCircle(c: Point, radius: number, p: Point): Point {
+  const d = distanceBetween(c, p);
+  if (d <= radius) return p;
 
-        return Math.sqrt(Math.pow(point2.x - point1.x, 2) + Math.pow(point2.y - point1.y, 2));
-    }
+  return {
+    x: c.x + ((p.x - c.x) * radius) / d,
+    y: c.y + ((p.y - c.y) * radius) / d,
+  };
+}
 
-    /**
-     * Get the length of the line segment
-     *
-     * @param {Segment} segment
-     */
-    public static GetSegmentLength(segment: Segment): number {
-        return Helper.GetDistanceBetweenTwoPoint(segment[0], segment[1]);
-    }
+/** Intersection of two segments, or null if outside `border` / parallel. */
+export function intersectSegments(border: Rect, one: Segment, two: Segment): Point | null {
+  return pointInRect(border, intersectLines(one, two));
+}
 
-    /**
-     * Get the angle between two lines
-     *
-     * @param {Segment} line1
-     * @param {Segment} line2
-     */
-    public static GetAngleBetweenTwoLine(line1: Segment, line2: Segment): number {
-        const A1 = line1[0].y - line1[1].y;
-        const A2 = line2[0].y - line2[1].y;
+/** A segment whose endpoints coincide defines no line at all. */
+function isDegenerate(s: Segment): boolean {
+  return s[0].x === s[1].x && s[0].y === s[1].y;
+}
 
-        const B1 = line1[1].x - line1[0].x;
-        const B2 = line2[1].x - line2[0].x;
+/**
+ * Intersection of two infinite lines, or null if parallel.
+ *
+ * X10, two defects in the failure branch:
+ *
+ *  - It threw a bare `Error`, so no consumer could identify it by `code` the
+ *    way every other engine failure is identified. It is a `PageFlipError` now.
+ *    `FlipCalculation.calc` catches this untyped and broadly, on purpose, so the
+ *    change is invisible to the flip path: the same inputs still throw, and the
+ *    same frames are still skipped.
+ *  - It called degenerate input collinear. With
+ *    `A·x + B·y + C = 0` per line, coincident lines are `den === 0` **and both
+ *    Cramer numerators zero**; the shipped test, `|det1 - det2| < 0.1`, compared
+ *    the y numerator against the x numerator, which is not a relationship
+ *    between two lines at all. It reported two parallel lines 0.001 apart as
+ *    collinear, and it reported a zero-length segment — which has
+ *    `A = B = C = 0`, hence both numerators zero — as collinear as well. The
+ *    numerator test is now the real one, and the degenerate case is separated
+ *    out ahead of it so it reports what actually went wrong.
+ */
+export function intersectLines(one: Segment, two: Segment): Point | null {
+  const A1 = one[0].y - one[1].y;
+  const A2 = two[0].y - two[1].y;
+  const B1 = one[1].x - one[0].x;
+  const B2 = two[1].x - two[0].x;
+  const C1 = one[0].x * one[1].y - one[1].x * one[0].y;
+  const C2 = two[0].x * two[1].y - two[1].x * two[0].y;
+  const numX = C1 * B2 - C2 * B1;
+  const numY = A1 * C2 - A2 * C1;
+  const den = A1 * B2 - A2 * B1;
+  const x = -(numX / den);
+  const y = -(numY / den);
 
-        return Math.acos((A1 * A2 + B1 * B2) / (Math.sqrt(A1 * A1 + B1 * B1) * Math.sqrt(A2 * A2 + B2 * B2)));
-    }
+  if (isFinite(x) && isFinite(y)) return { x, y };
 
-    /**
-     * Check for a point in a rectangle
-     *
-     * @param {Rect} rect
-     * @param {Point} pos
-     *
-     * @returns {Point} If the point enters the rectangle its coordinates will be returned, otherwise - null
-     */
-    public static PointInRect(rect: Rect, pos: Point): Point {
-        if (pos === null) {
-            return null;
-        }
+  if (isDegenerate(one) || isDegenerate(two)) {
+    throw new PageFlipError(
+      'Segment has zero length: it defines no line to intersect',
+      'DEGENERATE_SEGMENT',
+    );
+  }
 
-        if (
-            pos.x >= rect.left &&
-            pos.x <= rect.width + rect.left &&
-            pos.y >= rect.top &&
-            pos.y <= rect.top + rect.height
-        ) {
-            return pos;
-        }
-        return null;
-    }
+  // Coincident lines are a POSE, not an invariant violation (B1 / P7). The
+  // terminal frame of every turn lays the flipping page flat on the page
+  // rect, so its edges lie exactly ON the borders they are intersected with —
+  // and the instant path (`flippingTime: 0`, reduced motion, deep links) runs
+  // ONLY that frame. This used to throw `PageFlipError('COLLINEAR_SEGMENTS')`,
+  // which escaped `FlipCalculation.calc`'s narrowed catch and turned every
+  // instant `flipNext` into `turnRejected { reason: 'setup' }` — the core
+  // verb failing on exactly the accessibility path this fork exists to serve.
+  //
+  // `GeometryAbort`, like the other no-valid-fold poses: `calc` returns
+  // false, `Flip.do` skips the frame's draw (there is nothing to draw — the
+  // fold is complete), and the animation's completion callback commits the
+  // turn. The zero-length degenerate case above stays a `PageFlipError`: a
+  // border with no length is a broken invariant, not a pose.
+  if (numX === 0 && numY === 0) {
+    throw new GeometryAbort('Segments are coincident: the fold lies on the border');
+  }
 
-    /**
-     * Transform point coordinates to a given angle
-     *
-     * @param {Point} transformedPoint - Point to rotate
-     * @param {Point} startPoint - Transformation reference point
-     * @param {number} angle - Rotation angle (in radians)
-     *
-     * @returns {Point} Point coordinates after rotation
-     */
-    public static GetRotatedPoint(transformedPoint: Point, startPoint: Point, angle: number): Point {
-        return {
-            x: transformedPoint.x * Math.cos(angle) + transformedPoint.y * Math.sin(angle) + startPoint.x,
-            y: transformedPoint.y * Math.cos(angle) - transformedPoint.x * Math.sin(angle) + startPoint.y,
-        };
-    }
+  return null;
+}
 
-    /**
-     * Limit a point "linePoint" to a given circle centered at point "startPoint" and a given radius
-     *
-     * @param {Point} startPoint - Circle center
-     * @param {number} radius - Circle radius
-     * @param {Point} limitedPoint - Сhecked point
-     *
-     * @returns {Point} If "linePoint" enters the circle, then its coordinates are returned.
-     * Else will be returned the intersection point between the line ([startPoint, linePoint]) and the circle
-     */
-    public static LimitPointToCircle(startPoint: Point, radius: number, limitedPoint: Point): Point {
-        // If "linePoint" enters the circle, do nothing
-        if (Helper.GetDistanceBetweenTwoPoint(startPoint, limitedPoint) <= radius) {
-            return limitedPoint;
-        }
+/**
+ * Upper bound on the points one interpolation may produce.
+ *
+ * Chosen to be duration-neutral, not tuned: `Flip.getAnimationDuration` treats
+ * every count at or above 1000 identically, so any cap ≥ 1000 changes no
+ * animation. 4096 leaves that threshold four times of headroom while bounding
+ * one turn's allocation at a few thousand points.
+ */
+const MAX_INTERPOLATION_STEPS = 4096;
 
-        const a = startPoint.x;
-        const b = startPoint.y;
-        const n = limitedPoint.x;
-        const m = limitedPoint.y;
+/**
+ * Point list from `a` to `b` (inclusive), 1px-stepped up to
+ * {@link MAX_INTERPOLATION_STEPS} and evenly spaced beyond it.
+ */
+export function pointsBetween(a: Point, b: Point): Point[] {
+  const sx = Math.abs(a.x - b.x);
+  const sy = Math.abs(a.y - b.y);
+  // `Math.ceil`, not the raw length: upstream iterated integer `i <= len`, so a
+  // fractional delta stopped one step short and the destination was never
+  // emitted — every animation ended up to 1px shy of its target on each axis.
+  // For an integral delta this is the same count as before, so the animation
+  // duration derived from `points.length` is unchanged there.
+  const steps = Math.ceil(Math.max(sx, sy));
+  const out: Point[] = [a];
 
-        // Find the intersection between the line at two points: (startPoint and limitedPoint) and the circle.
-        let x = Math.sqrt((Math.pow(radius, 2) * Math.pow(a - n, 2)) / (Math.pow(a - n, 2) + Math.pow(b - m, 2))) + a;
-        if (limitedPoint.x < 0) {
-            x *= -1;
-        }
+  // `steps` is the loop bound, and it comes from caller data. A non-finite
+  // endpoint makes it `Infinity`, and `i <= Infinity` never ends: the loop
+  // pushes points until the heap dies — measured, ~4 GB in six seconds under
+  // Node, a frozen tab in a browser. That is a worse failure than any wrong
+  // picture, and it is the one degenerate input this function cannot survive.
+  //
+  // A NaN endpoint already lands here harmlessly (`1 <= NaN` is false, so the
+  // list is just `[a]` and the turn does not move). This gives Infinity the
+  // same answer rather than inventing a second one, so there is one degenerate
+  // behaviour to reason about, not two. No engine path can produce either
+  // today — `Settings` rejects non-finite dimensions and the fold coordinates
+  // are derived from them — so this is a bound on the loop, not a live fix.
+  if (!Number.isFinite(steps)) return out;
 
-        let y = ((x - a) * (b - m)) / (a - n) + b;
-        if (a - n + b === 0) {
-            y = radius;
-        }
+  // …and a FINITE bound, because `Number.isFinite` was never the real limit.
+  // `Settings` accepts any positive finite dimension, so a legal (if absurd)
+  // 1e8 × 1e8 book asks for ~1.9e8 points and the same 1.9e8 closures in
+  // `animateFlippingTo` — the identical out-of-memory death the guard above was
+  // added to prevent, reached without a single non-finite number.
+  //
+  // The cap costs nothing anywhere. `getAnimationDuration` returns the full
+  // flipping time for any `size >= 1000`, so every cap at or above 1000 leaves
+  // the duration of every turn EXACTLY as it was; and `Render` samples frames
+  // by elapsed time, so points beyond the frames actually drawn were never
+  // rendered in the first place. What is discarded is only ever waste.
+  const steppedTo = Math.min(steps, MAX_INTERPOLATION_STEPS);
 
-        return { x, y };
-    }
-
-    /**
-     * Find the intersection of two lines bounded by a rectangle "rectBorder"
-     *
-     * @param {Rect} rectBorder
-     * @param {Segment} one
-     * @param {Segment} two
-     *
-     * @returns {Point} The intersection point, or "null" if it does not exist, or it lies outside the rectangle "rectBorder"
-     */
-    public static GetIntersectBetweenTwoSegment(rectBorder: Rect, one: Segment, two: Segment): Point {
-        return Helper.PointInRect(rectBorder, Helper.GetIntersectBeetwenTwoLine(one, two));
-    }
-
-    /**
-     * Find the intersection point of two lines
-     *
-     * @param one
-     * @param two
-     *
-     * @returns {Point} The intersection point, or "null" if it does not exist
-     * @throws Error if the segments are on the same line
-     */
-    public static GetIntersectBeetwenTwoLine(one: Segment, two: Segment): Point {
-        const A1 = one[0].y - one[1].y;
-        const A2 = two[0].y - two[1].y;
-
-        const B1 = one[1].x - one[0].x;
-        const B2 = two[1].x - two[0].x;
-
-        const C1 = one[0].x * one[1].y - one[1].x * one[0].y;
-        const C2 = two[0].x * two[1].y - two[1].x * two[0].y;
-
-        const det1 = A1 * C2 - A2 * C1;
-        const det2 = B1 * C2 - B2 * C1;
-
-        const x = -((C1 * B2 - C2 * B1) / (A1 * B2 - A2 * B1));
-        const y = -((A1 * C2 - A2 * C1) / (A1 * B2 - A2 * B1));
-
-        if (isFinite(x) && isFinite(y)) {
-            return { x, y };
-        } else {
-            if (Math.abs(det1 - det2) < 0.1) throw new Error('Segment included');
-        }
-
-        return null;
-    }
-
-    /**
-     * Get a list of coordinates (step: 1px) between two points
-     *
-     * @param pointOne
-     * @param pointTwo
-     *
-     * @returns {Point[]}
-     */
-    public static GetCordsFromTwoPoint(pointOne: Point, pointTwo: Point): Point[] {
-        const sizeX = Math.abs(pointOne.x - pointTwo.x);
-        const sizeY = Math.abs(pointOne.y - pointTwo.y);
-
-        const lengthLine = Math.max(sizeX, sizeY);
-
-        const result: Point[] = [pointOne];
-
-        function getCord(c1: number, c2: number, size: number, length: number, index: number): number {
-            if (c2 > c1) {
-                return c1 + index * (size / length);
-            } else if (c2 < c1) {
-                return c1 - index * (size / length);
-            }
-
-            return c1;
-        }
-
-        for (let i = 1; i <= lengthLine; i += 1) {
-            result.push({
-                x: getCord(pointOne.x, pointTwo.x, sizeX, lengthLine, i),
-                y: getCord(pointOne.y, pointTwo.y, sizeY, lengthLine, i),
-            });
-        }
-
-        return result;
-    }
+  for (let i = 1; i <= steppedTo; i += 1) {
+    // Clamped so the last point is exactly `b` rather than a rounding of it.
+    const t = Math.min(i / steppedTo, 1);
+    out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  }
+  return out;
 }

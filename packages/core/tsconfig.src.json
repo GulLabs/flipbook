@@ -1,0 +1,11 @@
+{
+  // Round-scoped: `src` only.
+  //
+  // The code-complete round lands product changes without their test updates by
+  // the owner's instruction, so `tsconfig.json` (which includes `tests`) cannot
+  // be green until the test round. This file keeps the PRODUCT code honestly
+  // type-checked in the meantime. Delete it, or fold it back, once `tests` is
+  // green again — it is scaffolding, not a second contract.
+  "extends": "./tsconfig.json",
+  "include": ["src"]
+}

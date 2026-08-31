@@ -1,0 +1,12 @@
+{
+  // Round-scoped: `src` only. See packages/core/tsconfig.src.json.
+  //
+  // NOTE: this needs a prior `pnpm build`. `packages/react/tsconfig.json`
+  // deliberately carries NO `paths` mapping for `@gullabs/flipbook-core`,
+  // because tsup reads it for the dts build — so react resolves core through
+  // `node_modules` to `dist`. On a clean worktree you get TS2307 plus a cascade
+  // of TS18046 errors that look like real narrowing failures and are not.
+  // Build core first.
+  "extends": "./tsconfig.json",
+  "include": ["src"]
+}

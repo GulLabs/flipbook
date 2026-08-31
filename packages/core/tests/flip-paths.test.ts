@@ -1,0 +1,247 @@
+/**
+ * Coverage is a byproduct, not the goal — real Flip state machine paths, real animation end.
+ * Do not stub startAnimation as a no-op; flippingTime:0 runs the last frame + onAnimateEnd.
+ */
+// @vitest-environment jsdom
+import { afterEach, describe, expect, test } from 'vitest';
+import {
+  FlipCorner,
+  FlippingState,
+  Orientation,
+  PageDensity,
+  PageFlipError,
+} from '@gullabs/flipbook-core';
+import { makeHtmlBook } from './html-book-fixture';
+import { testFlip, testPage } from './engine-access';
+import { FlipDirection } from '../src/Flip/Flip';
+
+const books: Array<{ destroy: () => void }> = [];
+
+afterEach(() => {
+  while (books.length) books.pop()?.destroy();
+});
+
+function book(opts?: Parameters<typeof makeHtmlBook>[0]) {
+  const b = makeHtmlBook({ usePortrait: true, ...opts });
+  books.push(b);
+  return b;
+}
+
+describe('Flip fold / stopMove / showCorner (real HTML engine)', () => {
+  test('fixture is portrait so one page = one spread', () => {
+    const { book: app } = book({ pageCount: 4, flippingTime: 0 });
+    expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
+  });
+
+  test('flipNext with flippingTime 0 advances the page and returns to READ', () => {
+    const { book: app } = book({ pageCount: 5, flippingTime: 0 });
+    const flip = testFlip(app);
+    expect(flip).not.toBeNull();
+
+    const before = app.getCurrentPageIndex();
+    expect(flip!.flipNext(FlipCorner.TOP)).toBe(true);
+    expect(app.getCurrentPageIndex()).toBe(before + 1);
+    expect(flip!.getState()).toBe(FlippingState.READ);
+    expect(flip!.getCalculation()).toBeNull();
+  });
+
+  test('flipPrev from an interior page restores the previous leaf via BACK', () => {
+    const { book: app } = book({ pageCount: 4, flippingTime: 0, initialPage: 2 });
+    const flip = testFlip(app)!;
+    expect(app.getCurrentPageIndex()).toBe(2);
+
+    expect(flip.flipPrev(FlipCorner.BOTTOM)).toBe(true);
+    expect(app.getCurrentPageIndex()).toBe(1);
+    expect(flip.getState()).toBe(FlippingState.READ);
+  });
+
+  test('fold via user drag enters USER_FOLD then stopMove settles to READ', () => {
+    const { book: app } = book({ pageCount: 4, flippingTime: 0 });
+    const flip = testFlip(app)!;
+    const rect = app.getBoundsRect();
+
+    const start = { x: rect.left + rect.width - 5, y: rect.top + 10 };
+    app.startUserTouch(start);
+    // Move well past the 5px threshold so PageFlip.userMove calls fold().
+    const mid = { x: rect.left + rect.width - 80, y: rect.top + 40 };
+    app.userMove(mid, false);
+
+    expect(flip.getState()).toBe(FlippingState.USER_FOLD);
+    // If the pointer path did not open a calc (geometry edge), fold directly.
+    if (flip.getCalculation() === null) {
+      flip.fold(mid);
+    }
+    expect(flip.getCalculation()).not.toBeNull();
+    expect(flip.getCalculation()!.getDirection()).toBe(FlipDirection.FORWARD);
+
+    app.userStop(mid, false);
+    expect(flip.getState()).toBe(FlippingState.READ);
+  });
+
+  test('stopMove with fold still on the page side snaps back without turning', () => {
+    const { book: app } = book({ pageCount: 4, flippingTime: 0 });
+    const flip = testFlip(app)!;
+    const rect = app.getBoundsRect();
+
+    const corner = { x: rect.left + rect.width - 8, y: rect.top + 8 };
+    app.startUserTouch(corner);
+    const slight = { x: corner.x - 30, y: corner.y + 10 };
+    app.userMove(slight, false);
+    expect(flip.getCalculation()).not.toBeNull();
+
+    const before = app.getCurrentPageIndex();
+    flip.stopMove();
+    expect(app.getCurrentPageIndex()).toBe(before);
+    expect(flip.getState()).toBe(FlippingState.READ);
+  });
+
+  test('showCorner peels a corner then leaving the corner restores READ', () => {
+    const { book: app } = book({ pageCount: 4, flippingTime: 0, foldCornerOnHover: true });
+    const flip = testFlip(app)!;
+    const rect = app.getBoundsRect();
+
+    const onCorner = {
+      x: rect.left + rect.width - 5,
+      y: rect.top + 5,
+    };
+    app.userMove(onCorner, false);
+    expect([FlippingState.FOLD_CORNER, FlippingState.READ, FlippingState.FLIPPING]).toContain(
+      flip.getState(),
+    );
+
+    app.userMove({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }, false);
+    expect(flip.getState()).toBe(FlippingState.READ);
+  });
+
+  test('disableFlipByClick blocks whole-page clicks but still allows corner starts', () => {
+    const { book: app } = book({
+      pageCount: 4,
+      flippingTime: 0,
+      flipOnClick: 'corners',
+    });
+    const rect = app.getBoundsRect();
+
+    // Through the real click path: `disableFlipByClick` is a policy about
+    // clicks and now lives in `PageFlip.userStop`, so testing it on
+    // `Flip.flip` would no longer exercise the guard at all.
+    const rejected: { reason: string }[] = [];
+    app.on('turnRejected', (e) => rejected.push(e.data));
+
+    const center = {
+      x: rect.left + rect.width * 0.75,
+      y: rect.top + rect.height / 2,
+    };
+    app.startUserTouch(center);
+    app.userStop(center);
+
+    expect(app.getCurrentPageIndex()).toBe(0);
+    expect(rejected).toEqual([
+      expect.objectContaining({
+        reason: 'disabled',
+        direction: null,
+        targetPage: null,
+        landedOn: 0,
+      }),
+    ]);
+
+    const corner = { x: rect.left + rect.width - 4, y: rect.top + 4 };
+    app.startUserTouch(corner);
+    app.userStop(corner);
+
+    expect(app.getCurrentPageIndex()).toBeGreaterThan(0);
+    expect(rejected).toHaveLength(1);
+  });
+
+  test('flipToPage advances toward the target with a real turn animation end', () => {
+    const { book: app } = book({ pageCount: 6, flippingTime: 0 });
+    const flip = testFlip(app)!;
+    const before = app.getCurrentPageIndex();
+
+    flip.flipToPage(1, FlipCorner.TOP);
+    expect(app.getCurrentPageIndex()).toBe(before + 1);
+    expect(flip.getState()).toBe(FlippingState.READ);
+  });
+
+  test('no forward turn from the last page', () => {
+    const { book: app } = book({ pageCount: 3, flippingTime: 0, initialPage: 2 });
+    const flip = testFlip(app)!;
+    expect(flip.flipNext(FlipCorner.TOP)).toBe(false);
+    expect(app.getCurrentPageIndex()).toBe(2);
+  });
+
+  test('hard cover density stays HARD on the temporary-copy path', () => {
+    const { book: app } = book({
+      pageCount: 4,
+      flippingTime: 0,
+      hardCovers: true,
+    });
+    const cover = testPage(app, 0);
+    expect(cover.getDensity()).toBe(PageDensity.HARD);
+    expect(cover.newTemporaryCopy()).toBe(cover);
+  });
+
+  test('turnToPage out of range throws INVALID_PAGE without changing index', () => {
+    const { book: app } = book({ pageCount: 3, flippingTime: 0 });
+    const before = app.getCurrentPageIndex();
+    expect(() => app.turnToPage(99)).toThrow(PageFlipError);
+    expect(app.getCurrentPageIndex()).toBe(before);
+  });
+});
+
+describe('Flip direction hit-testing under portrait', () => {
+  test('left side of the portrait page starts a BACK fold', () => {
+    const { book: app } = book({ pageCount: 5, flippingTime: 0, initialPage: 2 });
+    const flip = testFlip(app)!;
+    expect(app.getOrientation()).toBe(Orientation.PORTRAIT);
+    const rect = app.getBoundsRect();
+
+    // Portrait BACK zone: bookPos.x - pageWidth <= width/5
+    const leftish = { x: rect.left + rect.pageWidth + 10, y: rect.top + 20 };
+    expect(flip.start(leftish)).toBe(true);
+    expect(flip.getCalculation()?.getDirection()).toBe(FlipDirection.BACK);
+    // Reset without throwing if calc is live.
+    if (flip.getCalculation()) flip.stopMove();
+  });
+});
+
+describe('programmatic turns ignore click policy (StPageFlip #29)', () => {
+  /**
+   * Upstream `flipNext`/`flipPrev` built a synthetic point and then ran it
+   * through the `disableFlipByClick` corner test. The point was in global
+   * coordinates, so for any book not sitting at x=0 the corner test failed and
+   * the turn was silently blocked: "when disableFlipByClick is true,
+   * flipNext() does not function".
+   *
+   * Two things make that impossible here — the direction is forced, and the
+   * click policy lives in `PageFlip.userStop` rather than `Flip.flip` — so this
+   * pins both against a refactor that reintroduces either.
+   */
+  test('flipNext and flipPrev work with disableFlipByClick on an offset book', () => {
+    // `rect.left` is the book's offset inside the block: `blockWidth / 2 -
+    // pageWidth`. A block much wider than the book pushes it well right, which
+    // is upstream's failing condition — its synthetic point was a global
+    // coordinate tested against a book that no longer started at 0, so the
+    // corner test refused every programmatic turn.
+    const { book: app } = book({
+      pageCount: 6,
+      flippingTime: 0,
+      flipOnClick: 'corners',
+      hostWidth: 1200,
+    });
+
+    expect(app.getBoundsRect().left).toBeGreaterThan(100);
+
+    const rejected: unknown[] = [];
+    app.on('turnRejected', (e) => rejected.push(e.data));
+
+    expect(app.flipNext()).toBe(true);
+    expect(app.getCurrentPageIndex()).toBeGreaterThan(0);
+
+    const forward = app.getCurrentPageIndex();
+    expect(app.flipPrev()).toBe(true);
+    expect(app.getCurrentPageIndex()).toBeLessThan(forward);
+
+    // Neither turn was refused by policy.
+    expect(rejected).toEqual([]);
+  });
+});

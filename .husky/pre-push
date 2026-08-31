@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+# Fast local gate before push.
+# Full bar: pnpm quality:full
+pnpm typecheck && pnpm lint && pnpm test

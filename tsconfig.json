@@ -1,0 +1,41 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    // Type-check against SOURCE, not against the last build.
+    //
+    // `tsc` does not honour vitest's aliases: it resolved
+    // `@gullabs/flipbook-core` through node_modules to
+    // `packages/core/dist/index.d.ts`, so every test-file type assertion was
+    // graded against whatever `pnpm build` last emitted. Observed live — the
+    // same assertion failed `TS2339` and then passed eight minutes later,
+    // purely because a build ran in between — which makes the gate
+    // nondeterministic and makes it green on a genuinely broken API for as long
+    // as a stale `dist` happens to agree. On a clean checkout with no `dist` at
+    // all it cannot resolve the module.
+    //
+    // The published `.d.ts` is still the contract and is still guarded, by
+    // `fixtures/isolated-consumer` + `scripts/check-isolated-types.mjs`, which
+    // is the right place for it: it resolves the built
+    // `dist/index.d.ts` with `skipLibCheck: false`, which is the check that
+    // matters. Note it links the workspace rather than installing a packed
+    // tarball, so it does NOT prove the `files` list or `exports` map are
+    // right — `pnpm pack` is what would. This mapping is deliberately NOT added to
+    // `packages/react/tsconfig.json`, which tsup reads for the dts build.
+    "paths": {
+      "@gullabs/flipbook-core": ["./packages/core/src/index.ts"],
+      "@gullabs/react-flipbook": ["./packages/react/src/index.ts"]
+    },
+    "jsx": "react-jsx"
+  },
+  "include": [
+    "packages/*/src",
+    "packages/*/tests",
+    "e2e",
+    "examples/**/*",
+    "vitest.config.ts",
+    "eslint.config.mjs",
+    "vitest.setup.ts",
+    "playwright.config.ts"
+  ],
+  "exclude": ["**/node_modules", "**/dist", "**/.next"]
+}

@@ -1,3 +1,46 @@
+This repository is licensed per package. Check the package you are consuming.
+
+  packages/core  (@gullabs/flipbook-core)
+      Mozilla Public License, v. 2.0  —  packages/core/LICENSE
+
+  packages/react (@gullabs/react-flipbook)
+      MIT License  —  packages/react/LICENSE
+
+  Everything else — examples, fixtures, e2e, scripts, docs and build tooling —
+  is MIT, under the notice below.
+
+Why the split: the flip engine in packages/core is the substance of this fork,
+and MPL-2.0 is file-level copyleft. You may use, embed and ship it inside a
+closed-source or commercial product; MPL-2.0 places no license requirement on
+the consuming application.
+
+MPL-2.0's obligations are triggered by distribution, not by modification.
+Private and internal use -- including modifying the engine for an internal tool
+you never distribute -- carries no obligation. When you do distribute, two
+duties attach, and only to the Covered Software (the engine's own files):
+
+  - Section 3.1: any distribution of Covered Software in Source Code Form --
+    modified or not -- is under MPL-2.0, must carry the license notice, and
+    must not restrict recipients' rights in that source. Modification is
+    within its scope, not the trigger for it.
+  - Section 3.2: distributing the engine in Executable Form -- which includes
+    serving bundled JavaScript to a browser -- requires both that the
+    corresponding Source Code Form be available and that recipients be informed
+    how to obtain it. Both, for each such distribution.
+
+Files you write yourself are Covered only if they contain Covered Software;
+calling the public API does not make them Modifications. See
+https://github.com/gul-labs/flipbook for the Source Code Form.
+
+The React binding is a thin wrapper and stays MIT so it can be vendored or
+adapted without friction.
+
+"GulLabs", "@gullabs" and the GulLabs name and logo are trademarks of GulLabs.
+These licenses grant rights to the code, not to the marks. See the Trademark
+section of README.md.
+
+-------------------------------------------------------------------------------
+
 MIT License
 
 Copyright (c) 2026 Gul Labs
