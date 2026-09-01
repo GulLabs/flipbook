@@ -67,6 +67,12 @@ export type IEventProps = {
   /** The page collection was replaced. */
   onPagesChanged?: (snapshot: BookSnapshot) => void;
   onTurnRejected?: (info: TurnRejected) => void;
+  /**
+   * Fold progress while a turn or user fold is in flight. Unwrapped payload
+   * (`{ progress, direction }`), not a `WidgetEvent`. Never fires for instant
+   * turns; completion is `onPageChange` / `onChangeState`, not the last tick.
+   */
+  onTurnProgress?: (info: FlipbookEventMap['turnProgress']) => void;
 };
 
 /**

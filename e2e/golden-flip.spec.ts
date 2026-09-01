@@ -183,4 +183,24 @@ test.describe('golden mid-flip frames (§8.2)', () => {
       await captureFlipSeries(page, 'forward', 0, 'hardcover-forward');
     });
   });
+
+  /**
+   * PLAN-3.1 B2 — single mid-fold frames held under the pointer. Regression
+   * net for Campaign B3 frame-discipline opts; must stay pixel-stable.
+   */
+  test.describe('mid-fold held (B2)', () => {
+    test('landscape forward ~40%', async ({ page }) => {
+      await openBook(page, LANDSCAPE);
+      expect(await page.locator('body').getAttribute('data-orientation')).toBe('landscape');
+      await capturePathFrame(page, 'forward', 0, 0.4, 'mid-fold-landscape-forward.png');
+    });
+
+    test('portrait back mid-fold', async ({ page }) => {
+      await openBook(page, PORTRAIT);
+      expect(await page.locator('body').getAttribute('data-orientation')).toBe('portrait');
+      // Need a previous leaf so BACK peels the current page (the §4.1 case).
+      await settleAt(page, 1);
+      await capturePathFrame(page, 'back', 1, 0.5, 'mid-fold-portrait-back.png');
+    });
+  });
 });

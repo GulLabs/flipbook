@@ -28,7 +28,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from 'vitest';
 import { PageDensity, PageFlip } from '@gullabs/flipbook-core';
-import { HTMLPage } from '../src/Page/HTMLPage';
+import { Page } from '../src/Page/Page';
 import { makeHtmlBook, makePages, sizeElement } from './html-book-fixture';
 import { testCollection, testRender, testPage } from './engine-access';
 import { FlipDirection } from '../src/Flip/Flip';
@@ -352,9 +352,9 @@ describe('PC3 — a destroyed collection describes an empty book', () => {
     // Kept adjacent so a change to `destroy()` cannot drop it unnoticed.
     const { book: app } = book({ pageCount: 4, flippingTime: 0 });
     const pages = testCollection(app);
-    const page = testPage(app, 1) as HTMLPage;
+    const page = testPage(app, 1) as Page;
 
-    const copy = page.newTemporaryCopy() as HTMLPage;
+    const copy = page.newTemporaryCopy() as Page;
     expect(copy.getElement().isConnected).toBe(true);
 
     pages.destroy();

@@ -23,8 +23,9 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
 - [ ] **Spread-space position** — `getSpreadCount()` / current spread index on
       the façade, for scrubbers and PDF-style pagers that need position in
       spread space rather than leaf space.
-- [ ] **`onProgress` / turn frame tick** — drive a scrubber thumb during an
-      animated turn without rAF-polling `getState()`.
+- [x] **`turnProgress` / `onTurnProgress`** — drive a scrubber thumb during an
+      animated turn without rAF-polling `getState()` (PLAN-3.1 Campaign C,
+      2026-08-31).
 - [ ] **`<FlipPage>` wrapper component** (B2's optional half) — an inner-slot
       page primitive so consumers never learn the leaf-root layout rule the
       hard way.
@@ -52,12 +53,17 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
       a following floor shadow for both ends. The engine knows exactly when
       those states hold. At minimum: a documented recipe with `changeState` +
       `visiblePages`.
-- [ ] **Frame discipline budget** (Puddlebend Issue 3) — one 800 ms landscape
-      turn produces 40–60 style/class writes per frame across a 15-leaf book;
-      a turn should touch the moving leaf, its copy, the leaf beneath, and the
-      shadows. Add a max-writes-per-rAF-tick test, then trim the redraw set.
-      Not user-visible on desktop GPUs, but it scales with page count and
-      burns phone battery.
+- [x] **Frame discipline budget** (Puddlebend Issue 3) — PLAN-3.1 Campaign B
+      (2026-08-31): resting redraw **0** writes; mid-fold measured **48**
+      (was **106**); working-set identity + mid-fold goldens. Memoize
+      applyEngineStyle, delta clear/`lastShown`, zIndex + classList elision.
+      R2 (`foldFill` memo) fixed same day — mid-fold now **44**. Remaining
+      residue is R1 only (see `docs/FINDINGS-3.1-RESIDUAL.md`): soft static
+      leaves still enter `simpleDraw` every rAF (string build, no DOM writes)
+      and shadow nodes take full `cssText` per fold frame (values genuinely
+      change per frame, so a memo buys ~nothing mid-turn). Deferred until a
+      real device profile shows it matters — the counts no longer scale with
+      page count and the B1 budget test caps drift.
 - [ ] **Binding-owned leaf hosts** (Puddlebend Issue 2 residue) — the engine
       still stamps classes/inline styles on consumer-rendered roots (two-owner
       DOM). It did not cause the remount flicker, but engine-owned host
@@ -66,12 +72,9 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
 
 ## Internal hygiene (no observable change)
 
-- [ ] **Collapse the three remaining class pairs** — `Page`/`HTMLPage`,
-      `UI`/`HTMLUI`, `Render`/`HTMLRender` — and retire the façade-getter
-      service-locator routing between siblings. Decided in
-      `docs/ABSTRACTION-BOUNDARY.md`; the consumer-visible half already shipped.
-      Do each pair whole or not at all (the reverted first attempt is the
-      cautionary tale).
+- [x] **Collapse the three remaining class pairs** — `Page`/`HTMLPage`,
+      `UI`/`HTMLUI`, `Render`/`HTMLRender` — PLAN-3.1 Campaign A (2026-08-31).
+      Concrete `UI` / `Page` / `Render`; size re-ratcheted after collapse.
 - [ ] **Headless-controller renderer seam** — the real extension point for a
       second (WebGL) renderer, per `docs/WEBGL_RENDERER.md`. Do not publish
       `Render` instead.
@@ -80,6 +83,10 @@ example-authoring B/H findings (`.local/example-authoring-findings.md`).
 
 ## Examples & repo polish
 
+- [ ] **`scripts/update-golden-linux.sh` `$IMAGE…` under `set -u`** — line 35
+      expands `$IMAGE…` as one parameter name (Unicode ellipsis). Brace as
+      `${IMAGE}…`. Found during PLAN-3.1 B2; worked around manually for
+      baselines. See `docs/FINDINGS-3.1-RESIDUAL.md` §7.
 - [ ] **Next.js example gets a real `flippingTime`** (H7) — the App Router demo
       currently proves "instant page swap", not the product. Do with the docs
       round if e2e permits.

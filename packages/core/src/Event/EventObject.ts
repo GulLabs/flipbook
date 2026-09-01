@@ -96,6 +96,37 @@ export type FlipbookEventMap = {
   pagesChanged: BookSnapshot;
 
   turnRejected: TurnRejected;
+
+  /**
+   * Fires whenever the fold position UPDATES while a turn or user fold is in
+   * flight — once per animation frame action for a programmatic turn, once
+   * per accepted pointer move for a drag. NOT guaranteed one-per-painted-frame:
+   * several pointer moves can land between two paints. Treat it as a value
+   * stream, not a frame clock.
+   * Progress is the fold's geometric completion in [0, 1]; direction is
+   * SEMANTIC (page-index order), so under `direction: 'rtl'` it still means
+   * "towards higher indices" — consistent with every other event.
+   * Never fires for an instant turn (flippingTime 0 / reduced motion): an
+   * instant turn has no frames; consumers get `flip` + `changeState` as always.
+   */
+  turnProgress: {
+    progress: number;
+    direction: 'next' | 'prev';
+  };
+};
+
+/**
+ * Allocation seam for `turnProgress` payloads.
+ *
+ * A property lookup so `vi.spyOn(turnProgressPayload, 'build')` intercepts the
+ * factory from a deep import — a bare lexical function binding is not spy-able
+ * across modules. The emit path builds only after a listener check; tests pin
+ * that guard here.
+ */
+export const turnProgressPayload = {
+  build(progress: number, direction: 'next' | 'prev'): FlipbookEventMap['turnProgress'] {
+    return { progress, direction };
+  },
 };
 
 /**
@@ -346,6 +377,12 @@ export abstract class EventObject {
 
   protected clearListeners(): void {
     this.events.clear();
+  }
+
+  /** True when at least one listener is registered for `name`. */
+  protected hasListeners(name: FlipbookEventName): boolean {
+    const list = this.events.get(name);
+    return list !== undefined && list.length > 0;
   }
 
   /**

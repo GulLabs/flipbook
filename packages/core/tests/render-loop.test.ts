@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The shared render loop — `Render` is the base of BOTH renderers, so
- * everything here is repo-wide behaviour, not canvas behaviour.
+ * The shared render loop — rAF scheduling, animation frame discipline, and
+ * orientation measurement on the concrete `Render`.
  *
  * Covers three defects from `docs/CANVAS_FIRST_CLASS.md`:
  *
@@ -20,6 +20,7 @@
  * are exact: a real rAF cannot be asked to drop a frame on demand, and a test
  * that stubbed `startAnimation` would be testing nothing (AGENTS.md §2).
  */
+// @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ADOPT_ORIENTATION, GET_UI } from '../src/internal';
@@ -33,8 +34,8 @@ import { Settings, SizeMode, type FlipSetting } from '../src/Settings';
 class TestRender extends Render {
   public frameDraws = 0;
 
-  public constructor(app: PageFlip, setting: FlipSetting) {
-    super(app, setting);
+  public constructor(app: PageFlip, setting: FlipSetting, element: HTMLElement) {
+    super(app, setting, element);
   }
 
   protected drawFrame(): void {
@@ -87,7 +88,7 @@ function makeHarness(
     [ADOPT_ORIENTATION]: updateOrientation,
   } as unknown as PageFlip;
 
-  const render = new TestRender(app, setting);
+  const render = new TestRender(app, setting, document.createElement('div'));
 
   const tick = (timer: number): void => {
     const frame = pendingFrame;

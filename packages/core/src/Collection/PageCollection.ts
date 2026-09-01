@@ -5,7 +5,7 @@
 import { PageFlipError } from '../errors';
 import type { Render } from '../Render/Render';
 import { Orientation } from '../Render/Render';
-import type { Page } from '../Page/Page';
+import { Page } from '../Page/Page';
 import { PageDensity } from '../Page/Page';
 import {
   EMIT_PAGE_INDEX,
@@ -18,7 +18,6 @@ import type { PageFlip } from '../PageFlip';
 import { FlipDirection } from '../Flip/Flip';
 import { getPortraitFlippingPage } from './flippingPage';
 import { at } from '../arrayAccess';
-import { HTMLPage } from '../Page/HTMLPage';
 
 type NumberArray = number[];
 
@@ -129,7 +128,7 @@ export class PageCollection {
    */
   public load(): void {
     for (const pageElement of this.pagesElement) {
-      const page = new HTMLPage(
+      const page = new Page(
         this.render,
         pageElement,
         pageElement.dataset['density'] === 'hard' ? PageDensity.HARD : PageDensity.SOFT,
@@ -210,7 +209,7 @@ export class PageCollection {
         // Portrait has no spreads of two and no covers, so a leaf is only ever
         // here because of LANDSCAPE parity: a 4-page book gets no hard leaf, a
         // 5-page book gets one, and neither has declared a cover. The cost is
-        // not cosmetic. `HTMLPage.newTemporaryCopy()` returns `this` for a hard
+        // not cosmetic. `Page.newTemporaryCopy()` returns `this` for a hard
         // page, so `getPortraitFlippingPage` sees `copy === current` and falls
         // back to upstream's previous-leaf slide-in — measured on a 3-page
         // portrait book: the BACK turn from the last page animated `pages[1]`,
@@ -336,6 +335,19 @@ export class PageCollection {
     // than a supported operation or a loud refusal. Internal callers only
     // iterate it.
     return [...this.pages];
+  }
+
+  /**
+   * Bust every leaf's `applyEngineStyle` memo (PLAN-3.1 B3.1).
+   *
+   * Called from `Render.update` / `reload` so a resize, orientation change, or
+   * settings rewrite (including `pageBackground`) re-stamps inline styles on
+   * the next draw rather than trusting a cache keyed on the previous geometry.
+   *
+   * @internal
+   */
+  public invalidateDrawCache(): void {
+    for (const page of this.pages) page.invalidateDrawCache();
   }
 
   /**

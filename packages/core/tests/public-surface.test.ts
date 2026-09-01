@@ -109,16 +109,64 @@ describe('the engine public surface is frozen', () => {
   });
 
   test('UI — only reachable via closed GET_UI seam', () => {
+    // Collapsed from UI + HTMLUI (Campaign A1): clear/update/updateItems moved
+    // onto the concrete class; `abstract` is gone.
     expect(publicMembers('UI/UI.ts')).toEqual(
       [
-        'abstract',
         'applyHostSize',
+        'clear',
         'destroy',
         'getDistElement',
         'getWrapper',
         'refreshHandlers',
+        'update',
+        'updateItems',
       ].sort(),
     );
+  });
+
+  test('UI collapse — former subclass seam members stay private, not protected', () => {
+    // Codex A1 signoff: publicMembers only sees `public`, so reverting these
+    // six to `protected` would still green-pass the allowlist above. Pin the
+    // visibility keyword itself — the inheritance seam must stay closed.
+    const source = fs.readFileSync(`${SRC}/UI/UI.ts`, 'utf8');
+    for (const name of [
+      'parentElement',
+      'app',
+      'wrapper',
+      'distElement',
+      'removeHandlers',
+      'setHandlers',
+    ]) {
+      expect(source).toMatch(new RegExp(`^ {2}private(?: readonly)? ${name}\\b`, 'm'));
+      expect(source).not.toMatch(new RegExp(`^ {2}protected(?: readonly)? ${name}\\b`, 'm'));
+    }
+  });
+
+  test('Render collapse — former subclass seam fields stay private, not protected', () => {
+    // A3 audit follow-up (mirrors the A1 pin above): the twelve state fields
+    // inherited from the abstract era serve no subclass — TestRender and
+    // ProbeRender override only drawFrame/reload and call requestFrame.
+    // `drawFrame`, `reload`, `requestFrame` and `needsContinuousFrames` stay
+    // protected on purpose; the FIELDS are the closed seam.
+    const source = fs.readFileSync(`${SRC}/Render/Render.ts`, 'utf8');
+    for (const name of [
+      'setting',
+      'app',
+      'leftPage',
+      'rightPage',
+      'flippingPage',
+      'bottomPage',
+      'direction',
+      'orientation',
+      'shadow',
+      'animation',
+      'pageRect',
+      'timer',
+    ]) {
+      expect(source).toMatch(new RegExp(`^ {2}private(?: readonly)? ${name}\\b`, 'm'));
+      expect(source).not.toMatch(new RegExp(`^ {2}protected(?: readonly)? ${name}\\b`, 'm'));
+    }
   });
 
   test('PageCollection — only reachable via closed GET_COLLECTION seam', () => {
@@ -134,6 +182,7 @@ describe('the engine public surface is frozen', () => {
         'getPages',
         'getSpreadCount',
         'getSpreadIndexByPage',
+        'invalidateDrawCache',
         'load',
         'nextBy',
         'prevBy',

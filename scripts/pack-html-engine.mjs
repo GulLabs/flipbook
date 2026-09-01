@@ -86,7 +86,13 @@ console.log(`html-engine.js ${files.join('+')} ${bytes} B (${(bytes / 1000).toFi
 // the size-limit ceilings in packages/core/package.json. Both numbers exist and
 // both must move together; a mismatch fails the build with the other one's text,
 // which is how this was found. See docs/ROUND-CODE-COMPLETE.md.
-const RAW_ALARM_BYTES = 62_000;
+// 62_000 held post-B3.1 (measured 61_761 B). B3.2 delta-clear + copyOwner
+// B3.2 ~62.62 kB; B3.3–B3.4 elision helpers → 62_754 B. Ceiling 63_000 with
+// size-limit twins 63 / 15.5 / 17.4 kB.
+// PLAN-3.1 Campaign C (`turnProgress` event): measured 63_337 B raw /
+// 15.54 kB brotli / 17.57 kB gzip — feature may spend headroom (AGENTS.md §2).
+// Ceiling 63_500 with size-limit twins 63.5 / 15.6 / 17.6 kB.
+const RAW_ALARM_BYTES = 63_500;
 
 if (bytes > RAW_ALARM_BYTES) {
   console.error(

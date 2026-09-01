@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { PageFlip } from '@gullabs/flipbook-core';
-import { DEFAULT_PAGE_BACKGROUND } from '../src/Render/pageBackground';
+import { DEFAULT_PAGE_BACKGROUND, foldFill } from '../src/Render/pageBackground';
 import { safePageBackground } from '../src/Render/pageBackground';
 import { testPage } from './engine-access';
 
@@ -33,6 +33,44 @@ describe('invented colour names (needs CSS.supports)', () => {
   test('hex and rgb are unaffected', () => {
     expect(safePageBackground('#f4ecd8')).toBe('#f4ecd8');
     expect(safePageBackground('rgb(244, 236, 216)')).toBe('rgb(244, 236, 216)');
+  });
+});
+
+describe('R2 — an unchanged background validates once, not once per frame', () => {
+  /**
+   * `foldFill` runs on every `applyEngineStyle` cache miss, and the flipping
+   * leaf misses every frame — so before the size-1 memo, an unchanged
+   * `pageBackground` re-ran `CSS.supports` once per rAF for the length of
+   * every turn. The memo remembers the last (input → result) pair; a NEW
+   * value — the only thing that can change the verdict — still validates.
+   */
+  test('repeat calls skip CSS.supports; a new value re-validates', () => {
+    // Prime the memo with the value under test, then watch the platform call.
+    foldFill('#abcdef');
+    const spy = vi.spyOn(CSS, 'supports');
+
+    try {
+      expect(foldFill('#abcdef')).toBe('#abcdef');
+      expect(foldFill('#abcdef')).toBe('#abcdef');
+      expect(spy).not.toHaveBeenCalled();
+
+      // A different string is a memo miss and must hit the platform again —
+      // this is what keeps the untyped/defence-in-depth path honest.
+      expect(foldFill('#123456')).toBe('#123456');
+      expect(spy).toHaveBeenCalledTimes(1);
+
+      // The memo is size-1: the previous value now re-validates too.
+      expect(foldFill('#abcdef')).toBe('#abcdef');
+      expect(spy).toHaveBeenCalledTimes(2);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  test('a rejected value is memoized as its fallback, not as itself', () => {
+    expect(foldFill('papyrus')).toBe(DEFAULT_PAGE_BACKGROUND);
+    // Second call serves the same verdict from the memo.
+    expect(foldFill('papyrus')).toBe(DEFAULT_PAGE_BACKGROUND);
   });
 });
 

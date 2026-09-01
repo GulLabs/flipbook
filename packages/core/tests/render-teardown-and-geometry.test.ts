@@ -2,13 +2,13 @@
  * Four defects, two files.
  *
  *  - RD1: `Render.cancelAnimation()` set `this.shadow = null` directly instead
- *         of calling `clearShadow()`. `HTMLRender` overrides `clearShadow()` to
- *         hide the four shadow ELEMENTS, and `drawFrame` only ever writes them,
- *         so nulling the field stopped recomputation and left the last shadow
- *         painted over the replacement book.
+ *         of calling `clearShadow()`. `clearShadow()` also hides the four shadow
+ *         ELEMENTS, and `drawFrame` only ever writes them, so nulling the field
+ *         stopped recomputation and left the last shadow painted over the
+ *         replacement book.
  *  - RD2: neither `cancelAnimation()` nor `releasePages()` cleared `pageRect`,
- *         the clip `HTMLRender.drawInnerShadow` cuts against — so a rect from a
- *         destroyed collection outlived it.
+ *         the clip `drawInnerShadow` cuts against — so a rect from a destroyed
+ *         collection outlived it.
  *  - X9:  `limitToCircle` clamped to the wrong side of the circle horizontally.
  *  - X10: `intersectLines` threw a bare `Error` and called degenerate input
  *         collinear.

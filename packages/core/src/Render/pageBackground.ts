@@ -153,13 +153,34 @@ export const describePageBackgroundRejection = (reason: PageBackgroundRejection)
  * TypeError out of the render loop — the book stops mid-turn, not at the
  * assignment.
  */
+/**
+ * Size-1 memo over the last validated value (PLAN-3.1 residual R2).
+ *
+ * `foldFill` runs on every `applyEngineStyle` cache MISS, and the flipping
+ * leaf misses every frame — its clip/transform string changes — so an
+ * UNCHANGED `pageBackground` was re-validated (a `CSS.supports` parse; in
+ * jsdom also a throwaway-element probe that showed up in the write-budget
+ * recorder) once per rAF for the length of every turn. Validation is
+ * deterministic for a given input string, so remembering the last answer
+ * removes the repeat without weakening the untyped-path guard: a NEW string —
+ * including one assigned straight onto the live settings object — still
+ * validates before it reaches a pixel.
+ */
+let lastRawBackground: string | undefined;
+let lastNormalized: string = DEFAULT_PAGE_BACKGROUND;
+
 function normalizePageBackground(pageBackground?: string): string {
   if (typeof pageBackground !== 'string') return DEFAULT_PAGE_BACKGROUND;
+  if (pageBackground === lastRawBackground) return lastNormalized;
 
   const value = pageBackground.trim();
-  if (value.length === 0) return DEFAULT_PAGE_BACKGROUND;
+  const result =
+    value.length === 0 || rejectPageBackground(value) !== null ? DEFAULT_PAGE_BACKGROUND : value;
 
-  return rejectPageBackground(value) === null ? value : DEFAULT_PAGE_BACKGROUND;
+  lastRawBackground = pageBackground;
+  lastNormalized = result;
+
+  return result;
 }
 
 /**

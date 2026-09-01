@@ -1681,3 +1681,118 @@ describe('RB7 — the lazy window covers the whole next spread', () => {
     });
   });
 });
+
+describe('onTurnProgress (Campaign C)', () => {
+  /** Own rAF so an animated flip plays under controlled timestamps in jsdom. */
+  function installRafQueue(): {
+    flush: (stepMs?: number, maxTicks?: number) => void;
+    restore: () => void;
+  } {
+    const queued: FrameRequestCallback[] = [];
+    const realRaf = globalThis.requestAnimationFrame;
+    const realCancel = globalThis.cancelAnimationFrame;
+    globalThis.requestAnimationFrame = ((cb: FrameRequestCallback) => {
+      queued.push(cb);
+      return queued.length;
+    }) as typeof globalThis.requestAnimationFrame;
+    globalThis.cancelAnimationFrame = (() => {
+      queued.length = 0;
+    }) as typeof globalThis.cancelAnimationFrame;
+    let clock = 0;
+    return {
+      flush(stepMs = 20, maxTicks = 120) {
+        for (let i = 0; i < maxTicks && queued.length > 0; i += 1) {
+          const batch = queued.splice(0, queued.length);
+          clock += stepMs;
+          for (const cb of batch) cb(clock);
+        }
+      },
+      restore() {
+        globalThis.requestAnimationFrame = realRaf;
+        globalThis.cancelAnimationFrame = realCancel;
+      },
+    };
+  }
+
+  test('onTurnProgress receives in-range payloads during an animated flip', async () => {
+    const raf = installRafQueue();
+    try {
+      const onTurnProgress = vi.fn();
+      const ref = createRef<FlipBookHandle>();
+
+      render(
+        <HTMLFlipBook
+          ref={ref}
+          width={200}
+          height={300}
+          flippingTime={200}
+          onTurnProgress={onTurnProgress}
+        >
+          {pages('a', 'b', 'c', 'd')}
+        </HTMLFlipBook>,
+      );
+
+      await waitFor(() => {
+        expect(ref.current?.pageFlip()?.isReady()).toBe(true);
+      });
+      raf.flush();
+
+      act(() => {
+        expect(ref.current?.flipNext()).toBe(true);
+      });
+      raf.flush();
+
+      expect(onTurnProgress.mock.calls.length).toBeGreaterThanOrEqual(2);
+      for (const call of onTurnProgress.mock.calls) {
+        const payload = call[0] as { progress: number; direction: 'next' | 'prev' };
+        expect(payload.progress).toBeGreaterThanOrEqual(0);
+        expect(payload.progress).toBeLessThanOrEqual(1);
+        expect(payload.direction).toBe('next');
+      }
+    } finally {
+      raf.restore();
+    }
+  });
+
+  test('changing onTurnProgress does not remount and the NEW handler receives events', async () => {
+    const raf = installRafQueue();
+    try {
+      const first = vi.fn();
+      const second = vi.fn();
+      const ref = createRef<FlipBookHandle>();
+
+      const { rerender } = render(
+        <HTMLFlipBook ref={ref} width={200} height={300} flippingTime={200} onTurnProgress={first}>
+          {pages('a', 'b', 'c', 'd')}
+        </HTMLFlipBook>,
+      );
+
+      await waitFor(() => {
+        expect(ref.current?.pageFlip()?.isReady()).toBe(true);
+      });
+      raf.flush();
+
+      const engine = ref.current!.pageFlip();
+      expect(engine).not.toBeNull();
+
+      rerender(
+        <HTMLFlipBook ref={ref} width={200} height={300} flippingTime={200} onTurnProgress={second}>
+          {pages('a', 'b', 'c', 'd')}
+        </HTMLFlipBook>,
+      );
+
+      // Same engine instance — the prop is not in remountKeyOf.
+      expect(ref.current!.pageFlip()).toBe(engine);
+
+      act(() => {
+        expect(ref.current?.flipNext()).toBe(true);
+      });
+      raf.flush();
+
+      expect(second.mock.calls.length).toBeGreaterThanOrEqual(1);
+      expect(first).not.toHaveBeenCalled();
+    } finally {
+      raf.restore();
+    }
+  });
+});

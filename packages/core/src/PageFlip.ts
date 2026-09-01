@@ -16,24 +16,22 @@ import {
   DROP_POINTER_GESTURE,
   EMIT_PAGE_INDEX,
   EMIT_STATE,
+  EMIT_TURN_PROGRESS,
   INHERIT_PAGE_INDEX,
   SEED_OPENING_INDEX,
   SET_ORIENTATION_STYLE,
 } from './internal';
 import type { PageCollection } from './Collection/PageCollection';
 import { HTMLPageCollection } from './Collection/HTMLPageCollection';
-import { HTMLPage } from './Page/HTMLPage';
 import type { PageRect, Point } from './BasicTypes';
 import { Flip, FlipCorner, FlippingState } from './Flip/Flip';
-import type { Orientation, Render } from './Render/Render';
-import { HTMLUI } from './UI/HTMLUI';
+import { Render, type Orientation } from './Render/Render';
 import { distanceBetween } from './Helper';
-import { EventObject } from './Event/EventObject';
+import { EventObject, turnProgressPayload } from './Event/EventObject';
 import type { BookSnapshot, FlipbookEventMap } from './Event/EventObject';
-import { HTMLRender } from './Render/HTMLRender';
 import type { FlipOptions, FlipSetting, LiveSetting } from './Settings';
 import { Settings } from './Settings';
-import type { UI } from './UI/UI';
+import { UI } from './UI/UI';
 import { PageFlipError } from './errors';
 
 /**
@@ -692,7 +690,7 @@ export class PageFlip extends EventObject {
    */
   public loadFromHTML(items: NodeListOf<HTMLElement> | HTMLElement[]): void {
     // L1: `attachMode` refuses to attach to a destroyed engine, so this used to
-    // "work" — but only after `new HTMLUI(...)` had built the
+    // "work" — but only after `new UI(...)` had built the
     // `.stf__parent`/`.stf__wrapper`/`.stf__block` shell, ADOPTED the caller's
     // page nodes into the block and called `setHandlers()`. The teardown then
     // handed those nodes back to the HOST element, not to the parent they came
@@ -704,8 +702,8 @@ export class PageFlip extends EventObject {
 
     this.nextGeneration();
 
-    const ui = new HTMLUI(this.block, this, this.setting, items);
-    const render = new HTMLRender(this, this.setting, ui.getDistElement());
+    const ui = new UI(this.block, this, this.setting, items);
+    const render = new Render(this, this.setting, ui.getDistElement());
     const pages = new HTMLPageCollection(this, render, ui.getDistElement(), items);
     this[ATTACH_MODE](ui, render, pages);
   }
@@ -724,16 +722,6 @@ export class PageFlip extends EventObject {
     if (this.destroyed) return;
 
     const ui = this.uiOrThrow;
-
-    // Non-HTML UI (none today; kept for a future renderer) cannot adopt HTML
-    // page nodes. Load via the matching entry point instead of updating across
-    // renderers.
-    if (!(ui instanceof HTMLUI)) {
-      throw new PageFlipError(
-        'updateFromHtml requires HTML mode; use loadFromHTML to switch modes.',
-        'WRONG_MODE',
-      );
-    }
 
     this.nextGeneration();
     const render = this.renderOrThrow;
@@ -771,10 +759,10 @@ export class PageFlip extends EventObject {
 
     // NF2. ADOPT BEFORE LOADING, and the order is the whole fix.
     //
-    // `HTMLUI.adopt` snapshots which engine classes a leaf ALREADY carried, so
+    // `UI.adopt` snapshots which engine classes a leaf ALREADY carried, so
     // that `destroy()` hands back a node the consumer authored rather than
     // stripping a `--hard` they wrote themselves. `pages.load()` constructs the
-    // `HTMLPage`s, and their constructor stamps `stf__item` and `--soft` /
+    // `Page`s, and their constructor stamps `stf__item` and `--soft` /
     // `--hard` onto each element — so running it first meant `adopt` recorded
     // the engine's OWN classes as pre-existing, and release then refused to
     // remove them.
@@ -1038,7 +1026,7 @@ export class PageFlip extends EventObject {
     // still thrown synchronously — deliberately, so `try { … } catch` around a
     // public method keeps working. It used to sit in the MIDDLE of this
     // sequence, so a throwing `changeState('read')` listener aborted `clear()`
-    // before `HTMLUI.clear()` ran and before either collection event was
+    // before `UI.clear()` ran and before either collection event was
     // emitted. Measured against the built engine: `pageCount: 0` reported, six
     // leaves still parented to `.stf__block`, none handed back to the host, and
     // no `pagesChanged` — a half-cleared book that every
@@ -1053,9 +1041,7 @@ export class PageFlip extends EventObject {
     // the pages that had just been discarded.
     render.releasePages();
     this.resetUserGesture();
-    // HTML mode only today; `instanceof` stays so a future non-HTML UI is not
-    // cast blindly (WRONG_MODE family — same guard as updateFromHtml).
-    if (ui instanceof HTMLUI) ui.clear();
+    ui.clear();
 
     this.flipController?.abandon();
 
@@ -1431,6 +1417,17 @@ export class PageFlip extends EventObject {
   }
 
   /**
+   * Emit fold progress during a USER_FOLD / FLIPPING turn.
+   *
+   * See {@link EMIT_TURN_PROGRESS}. Primitives in; payload built only when a
+   * listener is registered, via {@link turnProgressPayload.build}.
+   */
+  public [EMIT_TURN_PROGRESS](progress: number, direction: 'next' | 'prev'): void {
+    if (!this.hasListeners('turnProgress')) return;
+    this.dispatch('turnProgress', turnProgressPayload.build(progress, direction));
+  }
+
+  /**
    * Call a page number change event trigger
    *
    * @internal Wiring seam for `PageCollection`. It only EMITS — it does not
@@ -1552,7 +1549,7 @@ export class PageFlip extends EventObject {
 
     const page = this.pages.getPage(pageIndex);
 
-    return page instanceof HTMLPage ? page.getElement() : null;
+    return page.getElement();
   }
 
   /**
