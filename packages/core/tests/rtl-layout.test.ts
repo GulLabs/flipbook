@@ -7,12 +7,16 @@ import { testRender, testPage } from './engine-access';
 import type { Render } from '../src/Render/Render';
 
 /**
- * `leftPage`/`rightPage` are protected with no public getters, and `drawFrame`
+ * `leftPage`/`rightPage` are private with no public getters, and `drawFrame`
  * must be driven explicitly — jsdom runs no rAF loop, so nothing writes the
  * inline styles these assertions read. Same casts the existing
  * `spread-construction` and `lifecycle` suites use.
  */
-type Internals = Render & {
+// `Omit`, not an intersection with `Render`: the pages are `private` now
+// (A3 seam closed like A1/A2), and intersecting a class with a same-named
+// private member reduces to `never`. `Omit` keeps only the public surface,
+// which is all these tests reach through besides the probed fields.
+type Internals = Omit<Render, 'drawFrame'> & {
   leftPage: Page | null;
   rightPage: Page | null;
   drawFrame: () => void;
@@ -20,7 +24,7 @@ type Internals = Render & {
 
 const inner = (render: Render): Internals => render as unknown as Internals;
 
-/** The render's in-flight animation slot — protected, no getter, like the pages. */
+/** The render's in-flight animation slot — private, no getter, like the pages. */
 function renderAnimation(book: ReturnType<typeof makeHtmlBook>): unknown {
   return (testRender(book.book) as unknown as { animation: unknown }).animation;
 }

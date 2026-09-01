@@ -353,8 +353,62 @@ describe('turnProgress — terminal ordering and teardown', () => {
       // After that dispatch, no further turnProgress / fabricated post-teardown stream.
       expect(postDestroy.filter((t) => t === 'progress')).toEqual([]);
       expect(postDestroy.filter((t) => t === 'flip')).toEqual([]);
+      // Permitted exception (a), ASSERTED rather than merely tolerated:
+      // destroy() → abandon() emits exactly ONE changeState (to 'read')
+      // before listeners clear. Zero would mean the teardown ordering moved;
+      // more than one would be a fabricated post-teardown stream.
+      expect(postDestroy.filter((t) => t === 'changeState')).toEqual(['changeState']);
     } finally {
       raf.restore();
     }
+  });
+
+  test('destroy from turnProgress during a REAL pointer fold: still exactly one changeState', () => {
+    // Release-audit pin (Codex final-review claim, refuted empirically): a
+    // destroy() from a progress listener while a POINTER fold is live runs
+    // abandon() TWICE — once via `UI.destroy → removeHandlers →
+    // cancelGesture` (the pointer is still active), once unconditionally from
+    // `PageFlip.destroy`. The second is silent because `Flip.setState` only
+    // dispatches on an actual state change — the book is already `read`. This
+    // test pins that dedupe for the pointer path the programmatic test above
+    // cannot reach; if it ever reports two `changeState`s, someone removed
+    // the equality guard in `setState`.
+    const { book: app } = book({ pageCount: 6, hostWidth: 900, hostHeight: 300 });
+    const dist = app.getBlockElement();
+    const postDestroy: string[] = [];
+    let destroyed = false;
+
+    app.on('changeState', (e) => {
+      if (destroyed) postDestroy.push(String(e.data.state));
+    });
+    app.on('turnProgress', () => {
+      if (!destroyed) {
+        destroyed = true;
+        app.destroy();
+      }
+    });
+
+    const dispatch = (type: string, clientX: number, clientY: number): void => {
+      dist.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 1,
+          button: 0,
+          buttons: 1,
+          pointerType: 'mouse',
+          clientX,
+          clientY,
+        }),
+      );
+    };
+
+    const rect = dist.getBoundingClientRect();
+    dispatch('pointerdown', rect.left + 880, rect.top + 150);
+    dispatch('pointermove', rect.left + 500, rect.top + 150);
+
+    expect(destroyed).toBe(true);
+    expect(app.isDestroyed()).toBe(true);
+    expect(postDestroy).toEqual(['read']);
   });
 });

@@ -182,8 +182,8 @@ tears the book down mid-animation.
 
 ## Known gaps in the current state
 
-- **Bundle size.** The packed HTML engine is **63.34 kB raw / 15.54 kB brotli /
-  17.57 kB gzip** against ceilings of **63.5 / 15.6 / 17.6 kB**, re-ratcheted
+- **Bundle size.** The packed HTML engine is **63.38 kB raw / 15.56 kB brotli /
+  17.54 kB gzip** against ceilings of **63.5 / 15.6 / 17.6 kB**, re-ratcheted
   after PLAN-3.1 Campaign C (`turnProgress`, +~0.58 kB raw vs post-B3.4). An
   agent may not raise ceilings without cause (AGENTS.md §2). Re-measure with
   `pnpm size` before quoting these. The §5 target of 35 kB minified is

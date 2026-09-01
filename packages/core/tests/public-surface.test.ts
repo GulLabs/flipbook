@@ -143,6 +143,32 @@ describe('the engine public surface is frozen', () => {
     }
   });
 
+  test('Render collapse — former subclass seam fields stay private, not protected', () => {
+    // A3 audit follow-up (mirrors the A1 pin above): the twelve state fields
+    // inherited from the abstract era serve no subclass — TestRender and
+    // ProbeRender override only drawFrame/reload and call requestFrame.
+    // `drawFrame`, `reload`, `requestFrame` and `needsContinuousFrames` stay
+    // protected on purpose; the FIELDS are the closed seam.
+    const source = fs.readFileSync(`${SRC}/Render/Render.ts`, 'utf8');
+    for (const name of [
+      'setting',
+      'app',
+      'leftPage',
+      'rightPage',
+      'flippingPage',
+      'bottomPage',
+      'direction',
+      'orientation',
+      'shadow',
+      'animation',
+      'pageRect',
+      'timer',
+    ]) {
+      expect(source).toMatch(new RegExp(`^ {2}private(?: readonly)? ${name}\\b`, 'm'));
+      expect(source).not.toMatch(new RegExp(`^ {2}protected(?: readonly)? ${name}\\b`, 'm'));
+    }
+  });
+
   test('PageCollection — only reachable via closed GET_COLLECTION seam', () => {
     expect(publicMembers('Collection/PageCollection.ts')).toEqual(
       [

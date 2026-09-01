@@ -23,8 +23,8 @@
  *   TESTABILITY NEVER JUSTIFIES A PUBLIC EXPORT. The runner already aliases
  *   this package to `src`, and 18 core suites already deep-import `../src/`.
  *
- * - **The implementation classes** — `Render`, `HTMLRender`, `Page`,
- *   `HTMLPage`, `PageCollection`, `HTMLPageCollection`, `Flip`, `Settings`.
+ * - **The implementation classes** — `Render`, `Page`, `PageCollection`,
+ *   `Flip`, `Settings` (and, before the 3.1 collapse, their `HTML*` halves).
  *   They were exported only because the façade's getters returned them. Those
  *   getters are gone, replaced by methods that answer the question directly
  *   (`getVisiblePages`, `canTurn`, `getBlockElement`, `getPageElement`,
@@ -32,7 +32,7 @@
  *
  *   Exporting them as VALUES also advertised an extension point that does not
  *   exist: `class MyRenderer extends Render` compiled, and then there was no
- *   way to install it — `loadFromHTML` constructs `new HTMLRender(...)`
+ *   way to install it — `loadFromHTML` constructs `new Render(...)`
  *   directly. An extension point that type-checks and dead-ends is worse than
  *   none, because it absorbs the effort of whoever tries.
  *

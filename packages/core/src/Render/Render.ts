@@ -130,8 +130,8 @@ function removeClass(el: HTMLElement, cls: string): void {
  * line. See `docs/ABSTRACTION-BOUNDARY.md`.
  */
 export class Render {
-  protected readonly setting: FlipSetting;
-  protected readonly app: PageFlip;
+  private readonly setting: FlipSetting;
+  private readonly app: PageFlip;
 
   /** Parent HTML Element (the engine's `.stf__block`) */
   private readonly element: HTMLElement;
@@ -142,14 +142,14 @@ export class Render {
   private hardInnerShadow!: HTMLElement;
 
   /** Left static book page */
-  protected leftPage: Page | null = null;
+  private leftPage: Page | null = null;
   /** Right static book page */
-  protected rightPage: Page | null = null;
+  private rightPage: Page | null = null;
 
   /** Page currently flipping */
-  protected flippingPage: Page | null = null;
+  private flippingPage: Page | null = null;
   /** Next page at the time of flipping */
-  protected bottomPage: Page | null = null;
+  private bottomPage: Page | null = null;
 
   /**
    * Pages that carried `--shown` (and copy-owners of temporary movers) after
@@ -171,15 +171,15 @@ export class Render {
    * page index the book is heading for; all of them care which half of the book
    * the leaf is being pulled off.
    */
-  protected direction: FlipDirection = FlipDirection.FORWARD;
+  private direction: FlipDirection = FlipDirection.FORWARD;
   /** Current book orientation */
-  protected orientation: Orientation | null = null;
+  private orientation: Orientation | null = null;
   /** Сurrent state of the shadows */
-  protected shadow: Shadow | null = null;
+  private shadow: Shadow | null = null;
   /** Сurrent animation process */
-  protected animation: AnimationProcess | null = null;
+  private animation: AnimationProcess | null = null;
   /** Page borders while flipping */
-  protected pageRect: RectPoints | null = null;
+  private pageRect: RectPoints | null = null;
   /** Current book area */
   private boundsRect: PageRect | null = null;
 
@@ -188,7 +188,7 @@ export class Render {
    * has run yet in this loop generation. Cleared by `start()`/`stop()` — see
    * `AnimationProcess.startedAt` (R5).
    */
-  protected timer: number | null = null;
+  private timer: number | null = null;
 
   /** Active requestAnimationFrame id; 0 when no frame is pending. */
   private rafId = 0;
